@@ -35,6 +35,17 @@ class EraSchedulerTest {
     }
 
     @Test
+    void eraDisplayNamesMatchSpecExactly() {
+        String[] expectedNames = {"牛市启动", "全民疯牛", "股灾降临", "灾后震荡", "熔断开局",
+                "蓝筹白马慢牛", "贸易战熊市", "新能源结构牛", "AI疯牛", "黑7月", "震荡再平衡"};
+        EraCode[] codes = EraCode.values();
+        assertEquals(expectedNames.length, codes.length);
+        for (int i = 0; i < codes.length; i++) {
+            assertEquals(expectedNames[i], codes[i].getName(), "display name of " + codes[i]);
+        }
+    }
+
+    @Test
     void boundariesNeitherOverlapNorLeaveGaps() {
         for (long seed = 1; seed <= 1000; seed++) {
             List<EraInstance> eras = scheduler.roll(seed);
