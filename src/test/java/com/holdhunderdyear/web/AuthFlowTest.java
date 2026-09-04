@@ -94,6 +94,15 @@ class AuthFlowTest {
     }
 
     @Test
+    void accessMeWithGarbageTokenReturnsUnauthorized() throws Exception {
+        JsonNode body = json(mockMvc.perform(get("/api/me")
+                        .header("Authorization", "Bearer this.is.not.a.jwt"))
+                .andExpect(status().isUnauthorized()));
+
+        assertEquals(1001, body.path("code").asInt(), "UNAUTHORIZED, body=" + body);
+    }
+
+    @Test
     void accessMeWithBearerTokenReturnsUserIdentity() throws Exception {
         String username = unique("me");
         long registeredUserId = json(register(username, "password123")

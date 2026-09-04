@@ -71,6 +71,9 @@ public class AuthController {
     @GetMapping("/me")
     public R<Map<String, Object>> me(@AuthenticationPrincipal Long userId) {
         SysUser user = sysUserMapper.selectById(userId);
+        if (user == null) {
+            throw new BizException(ErrorCode.NOT_FOUND);
+        }
         return R.ok(Map.of("userId", user.getId(), "username", user.getUsername()));
     }
 }
