@@ -597,7 +597,7 @@ BANKRUPT / FINISHED（终局：冻结一切操作，展示结局结算页）
 - 顶部 LED 跑马灯：状态条下方一条黑底红/绿字滚动条（CSS marquee），滚动播报行情快讯与 NPC 段子（"张大妈今日追高片爷科技被套，称长期看好"）。
 - 弹幕：页面底部半透明黑底条，弹幕自右向左飘，彩色 ID；与跑马灯二选一区域共存（跑马灯在大盘页顶部、弹幕在底部）。
 - NPC 头像：统一扁平卡通风格 PNG（AI 生成，见美术资产清单），圆形 2px 描边；张大妈/老王/老李/首席各一。
-- 吉祥物：小牛「牛小牛」（红）与小熊「熊小绿」（绿）为 **Q 版可爱吉祥物**——圆脑袋、水汪汪大眼睛带高光点、腮红、小奶角（牛）/小圆耳（熊）；牛咧嘴笑、熊委屈小嘴角；风格化贴纸描边，而非写实或凌厉造型。内联 SVG sprite 小尺寸用于纪元旗、空状态、加载，AI 生成大尺寸 PNG 用于登录页/结局页插画；空状态文案如"空仓中，牛小牛在吃草"。
+- 吉祥物：小牛「牛小牛」与小熊「熊小笨」为 **Q 版可爱吉祥物，但必须靠轮廓特征辨认、不靠颜色**：两者使用**同款暖棕毛色（#c99a6b）+ 米白鼻吻**，牛的辨识特征是一对醒目的大弯角+宽鼻吻大鼻孔+头顶小呆毛，熊的辨识特征是头顶两只圆耳+小圆鼻竖线嘴；圆眼睛带高光、粉色腮红保持可爱，但不允许用红/绿毛色区分（红绿只用于行情涨跌）。小尺寸（18~30px）剪影也必须能分出角和圆耳。内联 SVG sprite 用于纪元旗、空状态、加载，AI 生成大尺寸 PNG 用于登录页/结局页插画；空状态文案如"空仓中，牛小牛在吃草"。
 - 段位徽章：游戏段位牌样式（木牌/铜牌→金牌），圆体字，常驻状态条。
 
 **动效语气（克制）**：价格变动时数字红/绿闪烁一次；封板触发"盖章"弹出动画（scale + 轻微旋转）；称号/段位升级撒碎花（CSS 粒子，1 秒）；跌停/爆仓页面瞬间灰度+轻微抖动；弹幕匀速飘移；其余元素静态。尊重 `prefers-reduced-motion`。
@@ -611,7 +611,7 @@ BANKRUPT / FINISHED（终局：冻结一切操作，展示结局结算页）
 - 主题形象（牛/熊吉祥物、NPC 头像、营业部大门、通关奖状、天台背景）用 **AI 生成扁平卡通 PNG**（见美术资产清单），不用 emoji 占位。
 - 涨跌/状态指示不用红黄绿圆点 emoji：涨用红色块/红底白字、跌用绿色块、跑马灯涨跌用 CSS 圆点；消息三态用文字徽章（"未证实/已证实/已辟谣" + 黄/绿/灰色描边小标签）。
 
-**美术资产清单**（AI 生成扁平卡通 PNG，存前端 assets）：张大妈/老王/保安老李/首席分析师 4 个头像、小牛/小熊吉祥物 2 个、登录页营业部大门插画 1 张、通关奖状/天台结局背景 2 张。统一提示词风格："flat vector cartoon, thick outline, warm cream paper background, playful Chinese stock market theme, no text, no emoji"。吉祥物单独加可爱限定："cute chibi mascot, big round sparkly eyes with highlight dots, blush cheeks, tiny horns/round ears, kawaii friendly expression, rounded sticker style"。
+**美术资产清单**（AI 生成扁平卡通 PNG，存前端 assets）：张大妈/老王/保安老李/首席分析师 4 个头像、小牛/小熊吉祥物 2 个、登录页营业部大门插画 1 张、通关奖状/天台结局背景 2 张。统一提示词风格："flat vector cartoon, thick outline, warm cream paper background, playful Chinese stock market theme, no text, no emoji"。吉祥物单独加限定："cute chibi mascot pair, BOTH with the SAME warm tan-brown fur color and cream muzzle (do NOT use red or green fur — characters must be distinguishable by shape, not color): the bull has a pair of large curved crescent horns sweeping up, a wide snout with two big nostrils and a tiny hair tuft; the bear has two round ears on top of its head, a small round nose and a short muzzle; big sparkly eyes with highlight dots, blush cheeks, rounded sticker outline, kawaii friendly"。
 
 ### 12.1 页面清单
 

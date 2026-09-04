@@ -715,7 +715,7 @@ public record EventSkeleton(String code, Scope scope, Source source, Set<EraCode
 
 ### Task 12.6: AI 美术资产
 
-**Files:** `frontend/src/assets/img/`（dama.png/laowang.png/laoli.png/chief.png 头像、bull.png/bear.png 吉祥物——Q 版可爱风：圆脑袋/大眼高光/腮红/小奶角，用规格 §12.0 的 cute chibi mascot 提示词、bank-door.png 登录插画、certificate.png 奖状、rooftop.png 天台）；吉祥物小尺寸场景（纪元旗/空状态/加载）直接用 icons.svg 里的 bull/bear symbol，风格以 style-tile.html 第三节预览为准。
+**Files:** `frontend/src/assets/img/`（dama.png/laowang.png/laoli.png/chief.png 头像、bull.png/bear.png 吉祥物——Q 版可爱风但**同款暖棕毛色、不靠红绿颜色区分**：牛=大弯角+宽鼻吻+呆毛，熊=头顶圆耳+小圆鼻，用规格 §12.0 的 mascot 提示词、bank-door.png 登录插画、certificate.png 奖状、rooftop.png 天台）；吉祥物小尺寸场景（纪元旗/空状态/加载）直接用 icons.svg 里的 bull/bear symbol，风格以 style-tile.html 第三节预览为准（验收：18px 剪影下角/圆耳仍可辨，且两只毛色一致）。
 
 - [ ] 用统一提示词生成："flat vector cartoon, thick dark outline, warm cream paper background, playful Chinese stock market theme, simple shapes, no text, no emoji"；NpcAvatar/登录页/终局页引用。Commit：`feat(fe): ai-generated cartoon art assets`
 
