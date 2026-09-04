@@ -46,9 +46,14 @@ class StockDefsTest {
     }
 
     @Test
+    void weightedBetaNearOne() {
+        assertEquals(1.0, StockDefs.ALL.stream().mapToDouble(StockDef::beta).average().orElse(0), 0.05);
+    }
+
+    @Test
     void indexWeightsSumToOne() {
         double sum = StockDefs.ALL.stream().mapToDouble(StockDef::weight).sum();
-        assertEquals(1.0, sum, 0.02);
+        assertEquals(1.0, sum, 1e-9);
     }
 
     @Test
