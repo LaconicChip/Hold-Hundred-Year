@@ -71,6 +71,10 @@ public final class GameConstants {
     public static final double MAGNET_TRIGGER = 0.065;
     /** 磁吸漂移（每跳向涨跌停方向 0.15%）。 */
     public static final double MAGNET_DRIFT = 0.0015;
+    /** 连板磁吸强度加成系数（仅涨停方向）。 */
+    public static final double STREAK_MAGNET_BONUS = 0.5;
+    /** 连板磁吸加成上限（连板数封顶）。 */
+    public static final int STREAK_MAGNET_CAP = 4;
 
     // ---- 封板/炸板（Phase 6 封板机用，先立常量）----
     /** 封板基础概率。 */
@@ -89,6 +93,8 @@ public final class GameConstants {
     public static final double BREAK_SHOCK_MAX = 0.04;
     /** 一字板分时最小间隔（封板期间分时价与封板价的容差）。 */
     public static final double ONE_WORD_GAP = 0.10;
+    /** 触发位越近封板概率越高：每超触发点 1% 加 0.02。 */
+    public static final double PROXIMITY_SEAL_SCALE = 2.0;
 
     // ---- 交易/融资（Phase 6/7 用，先立常量；金额计算层用 BigDecimal，比率统一 double）----
     /** 一手股数。 */
