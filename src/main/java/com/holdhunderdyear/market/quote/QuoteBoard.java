@@ -1,7 +1,9 @@
 package com.holdhunderdyear.market.quote;
 
+import com.holdhunderdyear.game.model.enums.VolRegime;
 import com.holdhunderdyear.market.entity.UserStockState;
 import com.holdhunderdyear.market.engine.ShockQueue;
+import com.holdhunderdyear.world.EraScheduler;
 import lombok.Data;
 import lombok.ToString;
 
@@ -42,6 +44,18 @@ public class QuoteBoard {
 
     private int tickIndex;
 
+    /** 当日记元（开盘管线写入；restore 不设置，默认 null）。 */
+    private EraScheduler.EraInstance currentEra;
+
+    /** 当日波动体制（开盘管线写入；restore 不设置，默认 NORMAL）。 */
+    private VolRegime volRegime = VolRegime.NORMAL;
+
+    /** 反向意外日（spec §4.3，8% 概率掷出；开盘管线写入，restore 不设置）。 */
+    private boolean reverseDay;
+
+    /** 熔断日标记（spec §4.4：上午指数 ≤ −7% 提前收盘；开盘只立标记，判定在盘中引擎）。 */
+    private boolean circuitBreakerDay;
+
     /** 指数分时缓冲（cap 90）；toString 排除，避免日志倾倒 90 个值。 */
     @ToString.Exclude
     private Deque<Double> indexIntraday = new ArrayDeque<>();
@@ -51,6 +65,8 @@ public class QuoteBoard {
      * gapPct 不在此应用——那是开盘管线（跳空落地）的事；sealed=NONE、garchK=1、
      * dayAvg/tickCount=0、分时缓冲空（Checkpoint 不存分时，恢复后重新积累）。
      * prevIndex = indexValue（spec §10：index_value 即昨收/当前快照同列）。
+     * 当日上下文（currentEra/volRegime/reverseDay/circuitBreakerDay）不在此恢复——
+     * 由开盘管线（MarketStateService.openDay）写入。
      */
     public static QuoteBoard restore(List<UserStockState> states, double indexValue, int tickIndex) {
         QuoteBoard board = new QuoteBoard();

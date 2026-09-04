@@ -1,43 +1,87 @@
 package com.holdhunderdyear.market;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.holdhunderdyear.common.BizException;
 import com.holdhunderdyear.common.ErrorCode;
+import com.holdhunderdyear.game.constants.GameConstants;
+import com.holdhunderdyear.game.constants.StockDefs;
 import com.holdhunderdyear.game.model.enums.EraCode;
 import com.holdhunderdyear.game.model.enums.MarketState;
+import com.holdhunderdyear.game.model.enums.ScriptType;
+import com.holdhunderdyear.game.model.enums.SealState;
 import com.holdhunderdyear.game.model.enums.VolRegime;
 import com.holdhunderdyear.market.entity.UserEra;
 import com.holdhunderdyear.market.entity.UserGameState;
 import com.holdhunderdyear.market.entity.UserMessage;
+import com.holdhunderdyear.market.entity.UserScriptDay;
 import com.holdhunderdyear.market.entity.UserStockState;
+import com.holdhunderdyear.market.engine.PriceShock;
 import com.holdhunderdyear.market.engine.SealMachine;
 import com.holdhunderdyear.market.mapper.UserEraMapper;
 import com.holdhunderdyear.market.mapper.UserGameStateMapper;
 import com.holdhunderdyear.market.mapper.UserMessageMapper;
+import com.holdhunderdyear.market.mapper.UserScriptDayMapper;
 import com.holdhunderdyear.market.mapper.UserStockStateMapper;
 import com.holdhunderdyear.market.quote.Quote;
 import com.holdhunderdyear.market.quote.QuoteBoard;
+import com.holdhunderdyear.world.EraScheduler;
 import com.holdhunderdyear.world.WorldRandom;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 交易日状态机与开盘管线（spec §3）：startDay 是唯一的日入口——
  * NOT_STARTED 开启第 1 日；CLOSED 开启下一交易日（current_day+1、隔夜跳空落地、
  * 纪元切换消息、波动体制掷点）；盘中态幂等返回；午休/结算/终态拒绝。
  * 开盘走 evict-then-reload：缓存板从最新 stock_state 行重建，陈旧分时/冲击自然清空。
+ *
+ * <p>开盘还依次完成（spec §4.3/§4.4）：当日上下文写入（纪元/体制/熔断标记）、
+ * 停牌复牌补跌、反向意外日掷点、剧本日强制行为（千股涨停/跌停钉板、救市全市场冲击、
+ * 制裁闪崩钉跌停、黑7月按板块钉板；熔断与 IPO 开盘无行为）。
+ * 全部随机性经 WorldRandom.of(worldSeed, salt)，盐与消费顺序固定（同 seed 同日必得同结果）：
+ * <ul>
+ *   <li>"gap"+day：隔夜跳空（每股按 stockId 升序经 SealMachine，一字板时消费封板时长 int）；</li>
+ *   <li>"resume"+day：复牌补跌（每股按 stockId 升序：路径 double → 补跌幅度 u double? →
+ *       妖股一字板时长 int?）；</li>
+ *   <li>"reverse"+day：反向意外日（单个 double，p&lt;0.08）；</li>
+ *   <li>"script"+day：千股涨停/跌停选股（每条 LIMIT_*_ALL 行一次 Collections.shuffle，
+ *       剧本日行按 ScriptType 声明顺序处理）；</li>
+ *   <li>"rescue"+day：救市冲击幅度（单个 double）；</li>
+ *   <li>"volregime"+day：体制掷点（单个 double）。</li>
+ * </ul>
  */
 @Service
 public class MarketStateService {
+
+    private static final JsonMapper MAPPER = JsonMapper.builder().build();
+
+    /** 黑7月崩盘（spec §4.4）：钉跌停的科技板块。 */
+    private static final Set<String> CRASH_DOWN_SECTORS = Set.of("半导体", "算力", "通信");
+
+    /** 黑7月崩盘：钉涨停的防御板块。 */
+    private static final Set<String> CRASH_UP_SECTORS = Set.of("银行", "煤炭");
+
+    private static final Map<Long, String> SECTOR_BY_STOCK_ID = StockDefs.ALL.stream()
+            .collect(Collectors.toUnmodifiableMap(StockDefs.StockDef::id, StockDefs.StockDef::sector));
 
     private final UserGameStateMapper userGameStateMapper;
     private final UserStockStateMapper userStockStateMapper;
     private final UserMessageMapper userMessageMapper;
     private final UserEraMapper userEraMapper;
+    private final UserScriptDayMapper userScriptDayMapper;
     private final QuoteBoardRegistry quoteBoardRegistry;
     private final SealMachine sealMachine = new SealMachine();
 
@@ -45,11 +89,13 @@ public class MarketStateService {
                               UserStockStateMapper userStockStateMapper,
                               UserMessageMapper userMessageMapper,
                               UserEraMapper userEraMapper,
+                              UserScriptDayMapper userScriptDayMapper,
                               QuoteBoardRegistry quoteBoardRegistry) {
         this.userGameStateMapper = userGameStateMapper;
         this.userStockStateMapper = userStockStateMapper;
         this.userMessageMapper = userMessageMapper;
         this.userEraMapper = userEraMapper;
+        this.userScriptDayMapper = userScriptDayMapper;
         this.quoteBoardRegistry = quoteBoardRegistry;
     }
 
@@ -80,21 +126,36 @@ public class MarketStateService {
         }
     }
 
-    /** 开启第 newDay 个交易日：跳空落地（非首日）、清板重载、纪元消息、体制掷点、状态落库。 */
+    /** 开启第 newDay 个交易日：跳空落地（非首日，先于一切）→ 清板重载 → 当日上下文
+     *  （纪元/体制/熔断标记）→ 停牌复牌补跌 → 反向意外日掷点 → 剧本日强制行为
+     *  （钉板覆盖跳空落地的价格）→ 纪元消息 → 状态落库。 */
     private QuoteBoard openDay(long userId, UserGameState gameState, int newDay) {
         int prevDay = newDay - 1;
+        long worldSeed = gameState.getWorldSeed();
 
         quoteBoardRegistry.evict(userId);
         QuoteBoard board = quoteBoardRegistry.getOrLoad(userId);
+
+        VolRegime regime = rollVolRegime(worldSeed, newDay);
+        List<UserScriptDay> scriptDays = scriptDaysFor(userId, newDay);
 
         // 世界锁协议（P5）：开盘与调度/快进/交易互斥，锁内完成行情板写入。
         board.getLock().lock();
         try {
             if (prevDay > 0) {
-                applyOvernightGaps(userId, board, newDay, gameState.getWorldSeed());
+                applyOvernightGaps(userId, board, newDay, worldSeed);
             }
             board.getShocks().clear();
             board.setTickIndex(0);
+
+            board.setCurrentEra(eraInstanceForDay(worldSeed, newDay));
+            board.setVolRegime(regime);
+            board.setCircuitBreakerDay(scriptDays.stream()
+                    .anyMatch(day -> ScriptType.CIRCUIT_BREAKER.name().equals(day.getScriptType())));
+
+            resumeHaltedStocks(userId, board, newDay, worldSeed);
+            board.setReverseDay(WorldRandom.of(worldSeed, "reverse" + newDay).nextDouble() < 0.08);
+            applyScriptDayBehaviors(userId, board, scriptDays, newDay, worldSeed);
         } finally {
             board.getLock().unlock();
         }
@@ -104,7 +165,7 @@ public class MarketStateService {
         gameState.setCurrentDay(newDay);
         gameState.setMarketState(MarketState.MORNING_OPEN.name());
         gameState.setTickIndex(0);
-        gameState.setVolRegime(rollVolRegime(gameState.getWorldSeed(), newDay).name());
+        gameState.setVolRegime(regime.name());
         userGameStateMapper.updateById(gameState);
         return board;
     }
@@ -131,6 +192,146 @@ public class MarketStateService {
             state.setGapPct(0.0);
             userStockStateMapper.updateById(state);
         }
+    }
+
+    /** 停牌复牌补跌（spec §4.4）：halt_until_day 到期的停牌股当日复牌，rng salt "resume"+day，
+     *  每股（stockId 升序）先掷路径 double——<0.15 妖股出关（+10% 一字涨停），否则补跌
+     *  −(5%+5%·u)——再经 SealMachine.applyOpenGap 落地（妖股路径额外消费封板时长 int）。
+     *  halted=false、halt_until_day=null、limit_up_streak=0、陈旧 gap_pct 一并清零
+     *  （UpdateWrapper 显式 set null，updateById 会忽略 null 字段）。
+     *  未到期或无限期停牌股保持冻结：无跳空、无复牌、价格不动。 */
+    private void resumeHaltedStocks(long userId, QuoteBoard board, int newDay, long worldSeed) {
+        Random rng = WorldRandom.of(worldSeed, "resume" + newDay);
+        List<UserStockState> states = userStockStateMapper.selectList(
+                new LambdaQueryWrapper<UserStockState>()
+                        .eq(UserStockState::getUserId, userId)
+                        .orderByAsc(UserStockState::getStockId));
+        for (UserStockState state : states) {
+            if (!Boolean.TRUE.equals(state.getHalted())
+                    || state.getHaltUntilDay() == null || state.getHaltUntilDay() > newDay) {
+                continue;
+            }
+            Quote quote = board.quote(state.getStockId());
+            quote.setHalted(false);
+            quote.setLimitUpStreak(0);
+            double roll = rng.nextDouble();
+            double resumeGap = roll < 0.15 ? 0.10 : -(0.05 + 0.05 * rng.nextDouble());
+            sealMachine.applyOpenGap(quote, resumeGap, rng);
+            userStockStateMapper.update(null, new UpdateWrapper<UserStockState>()
+                    .eq("user_id", userId)
+                    .eq("stock_id", state.getStockId())
+                    .set("halted", false)
+                    .set("halt_until_day", null)
+                    .set("open_price", BigDecimal.valueOf(quote.getOpen()))
+                    .set("high_price", BigDecimal.valueOf(quote.getHigh()))
+                    .set("low_price", BigDecimal.valueOf(quote.getLow()))
+                    .set("current_price", BigDecimal.valueOf(quote.getCurrent()))
+                    .set("limit_up_streak", 0)
+                    .set("gap_pct", 0.0));
+        }
+    }
+
+    /** 剧本日强制行为（spec §4.4）：千股涨停/跌停按 sealRatio 洗牌选股钉板（rng salt
+     *  "script"+day，停牌股排除）；救市日全市场 +2%~4% ONCE 冲击入队（salt "rescue"+day）；
+     *  制裁闪崩把 params.targetStockId 钉死跌停；黑7月按板块钉板（半导体/算力/通信 跌停、
+     *  银行/煤炭 涨停）；熔断/IPO 开盘无行为。强制钉板覆盖跳空落地的价格，
+     *  current_price 回写 stock_state 保持库内一致。 */
+    private void applyScriptDayBehaviors(long userId, QuoteBoard board, List<UserScriptDay> scriptDays,
+                                         int newDay, long worldSeed) {
+        if (scriptDays.isEmpty()) {
+            return;
+        }
+        Random shuffleRng = WorldRandom.of(worldSeed, "script" + newDay);
+        for (UserScriptDay scriptDay : scriptDays) {
+            ScriptType type = ScriptType.valueOf(scriptDay.getScriptType());
+            JsonNode params = MAPPER.readTree(scriptDay.getParamsJson());
+            switch (type) {
+                case LIMIT_UP_ALL -> sealAllDirection(userId, board,
+                        params.get("sealRatio").asDouble(), SealState.UP, shuffleRng);
+                case LIMIT_DOWN_ALL -> sealAllDirection(userId, board,
+                        params.get("sealRatio").asDouble(), SealState.DOWN, shuffleRng);
+                case RESCUE -> board.getShocks().enqueue(new PriceShock(0L, true,
+                        0.02 + 0.02 * WorldRandom.of(worldSeed, "rescue" + newDay).nextDouble(),
+                        1, PriceShock.Decay.ONCE));
+                case SANCTION -> forceSealStock(userId, board,
+                        params.get("targetStockId").asLong(), SealState.DOWN);
+                case CRASH_WEEK -> sealCrashSectors(userId, board);
+                case CIRCUIT_BREAKER, IPO -> {
+                    // 熔断由盘中引擎按指数 ≤ −7% 判定提前收盘（Task 5.2）；IPO 由打新流程处理（Phase 9.2）。
+                }
+            }
+        }
+    }
+
+    /** 千股涨停/跌停：非停牌股洗牌后取前 round(24×sealRatio) 只钉板。 */
+    private void sealAllDirection(long userId, QuoteBoard board, double sealRatio,
+                                  SealState direction, Random rng) {
+        List<Long> candidates = new ArrayList<>();
+        for (Quote quote : board.getQuotes().values()) {
+            if (!quote.isHalted()) {
+                candidates.add(quote.getStockId());
+            }
+        }
+        Collections.shuffle(candidates, rng);
+        int target = (int) Math.round(board.getQuotes().size() * sealRatio);
+        int sealedCount = 0;
+        for (Long stockId : candidates) {
+            if (sealedCount >= target) {
+                break;
+            }
+            forceSealStock(userId, board, stockId, direction);
+            sealedCount++;
+        }
+    }
+
+    /** 黑7月崩盘：半导体/算力/通信全部钉跌停，银行/煤炭全部钉涨停（停牌股除外）。 */
+    private void sealCrashSectors(long userId, QuoteBoard board) {
+        for (Quote quote : board.getQuotes().values()) {
+            String sector = SECTOR_BY_STOCK_ID.get(quote.getStockId());
+            if (CRASH_DOWN_SECTORS.contains(sector)) {
+                forceSealStock(userId, board, quote.getStockId(), SealState.DOWN);
+            } else if (CRASH_UP_SECTORS.contains(sector)) {
+                forceSealStock(userId, board, quote.getStockId(), SealState.UP);
+            }
+        }
+    }
+
+    /** 强制钉板：sealed=direction、current=对应涨跌停价、sealTicksLeft=TOTAL_TICKS（封至收盘），
+     *  并回写 stock_state.current_price；停牌股冻结跳过。 */
+    private void forceSealStock(long userId, QuoteBoard board, long stockId, SealState direction) {
+        Quote quote = board.quote(stockId);
+        if (quote.isHalted()) {
+            return;
+        }
+        quote.setSealed(direction);
+        quote.setCurrent(direction == SealState.UP ? quote.limitUpPrice() : quote.limitDownPrice());
+        quote.setSealTicksLeft(GameConstants.TOTAL_TICKS);
+        userStockStateMapper.update(null, new UpdateWrapper<UserStockState>()
+                .eq("user_id", userId)
+                .eq("stock_id", stockId)
+                .set("current_price", BigDecimal.valueOf(quote.getCurrent())));
+    }
+
+    /** 查询 day 的剧本日行，按 ScriptType 声明顺序排序（与 ScriptDayScheduler 输出序一致），
+     *  保证同日多剧本时随机消费顺序确定。 */
+    private List<UserScriptDay> scriptDaysFor(long userId, int day) {
+        List<UserScriptDay> rows = userScriptDayMapper.selectList(
+                new LambdaQueryWrapper<UserScriptDay>()
+                        .eq(UserScriptDay::getUserId, userId)
+                        .eq(UserScriptDay::getGameDay, day));
+        rows.sort(Comparator.comparingInt(row -> ScriptType.valueOf(row.getScriptType()).ordinal()));
+        return rows;
+    }
+
+    /** day 所属纪元（EraScheduler 按 worldSeed 重掷——与 WorldSeeder 播种的 user_era 行
+     *  同 seed 同结果，11 个纪元恰好铺满 1..108）。 */
+    private EraScheduler.EraInstance eraInstanceForDay(long worldSeed, int day) {
+        for (EraScheduler.EraInstance era : new EraScheduler().roll(worldSeed)) {
+            if (era.startDay() <= day && day <= era.endDay()) {
+                return era;
+            }
+        }
+        return null;
     }
 
     /** 纪元切换检测：newDay 所在纪元 != prevDay 所在纪元（prevDay=0 视为无纪元，首日常开）时
