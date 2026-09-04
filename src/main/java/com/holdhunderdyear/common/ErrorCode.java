@@ -23,7 +23,9 @@ public enum ErrorCode {
     FINISHED_STATE(1013, "本局已结束，无法操作"),
     USERNAME_EXISTS(1014, "用户名已被注册"),
     PARAM_ERROR(1015, "请求参数错误"),
-    INTERNAL_ERROR(1016, "系统开小差了，请稍后重试");
+    INTERNAL_ERROR(1016, "系统开小差了，请稍后重试"),
+    LOGIN_FAILED(1017, "用户名或密码错误"),
+    NOT_FOUND(1018, "资源不存在");
 
     private final int code;
     private final String msg;
