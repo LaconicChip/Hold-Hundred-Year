@@ -89,6 +89,7 @@ public class ScriptDayScheduler {
         int end3 = era3.endDay();
         int len3 = end3 - start3 + 1;
         int n = 2 + r.nextInt(2);
+        n = Math.min(n, len3 - 1); // 防御：若未来纪元抖动放宽导致 len3 变小，避免 pickDay 候选耗尽
         int rescueDay = pickDay(r, start3 + (len3 + 1) / 2, end3, new HashSet<>());
         if (len3 - blockedCount(rescueDay, start3, end3) < n) {
             rescueDay = end3;
