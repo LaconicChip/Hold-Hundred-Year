@@ -176,5 +176,6 @@ CREATE TABLE IF NOT EXISTS user_ipo_record (
     status VARCHAR(16) NOT NULL,
     profit DECIMAL(12,2) NULL,
     game_day INT NOT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user_day (user_id, game_day)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
