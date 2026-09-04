@@ -63,7 +63,8 @@ class ScriptDaySchedulerTest {
         for (long seed = 1; seed <= MAX_SEED; seed++) {
             List<EraInstance> eras = eraScheduler.roll(seed);
             EraInstance era3 = eras.get(2);
-            List<ScriptDayInstance> downDays = ofType(scheduler.roll(seed, eras), ScriptType.LIMIT_DOWN_ALL);
+            List<ScriptDayInstance> allDays = scheduler.roll(seed, eras);
+            List<ScriptDayInstance> downDays = ofType(allDays, ScriptType.LIMIT_DOWN_ALL);
             assertTrue(downDays.size() >= 2 && downDays.size() <= 3,
                     "seed " + seed + " LIMIT_DOWN_ALL count " + downDays.size());
             int first = downDays.get(0).gameDay();
@@ -73,6 +74,12 @@ class ScriptDaySchedulerTest {
             for (ScriptDayInstance d : downDays) {
                 assertTrue(d.gameDay() >= era3.startDay() && d.gameDay() <= era3.endDay(),
                         "seed " + seed + " LIMIT_DOWN_ALL day " + d.gameDay() + " outside era3");
+            }
+            int rescueDay = ofType(allDays, ScriptType.RESCUE).get(0).gameDay();
+            for (ScriptDayInstance d : downDays) {
+                assertTrue(d.gameDay() != rescueDay && d.gameDay() != rescueDay + 1,
+                        "seed " + seed + " LIMIT_DOWN_ALL day " + d.gameDay()
+                                + " collides with rescue day " + rescueDay + " or its next day");
             }
         }
     }
