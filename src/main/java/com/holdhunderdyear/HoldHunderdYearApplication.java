@@ -6,8 +6,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 public class HoldHunderdYearApplication {
 
-	public static void main(String[] args) {
-		SpringApplication.run(HoldHunderdYearApplication.class, args);
-	}
+    public static void main(String[] args) {
+        SpringApplication.run(HoldHunderdYearApplication.class, args);
+    }
 
 }
