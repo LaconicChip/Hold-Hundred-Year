@@ -597,7 +597,7 @@ BANKRUPT / FINISHED（终局：冻结一切操作，展示结局结算页）
 - 顶部 LED 跑马灯：状态条下方一条黑底红/绿字滚动条（CSS marquee），滚动播报行情快讯与 NPC 段子（"张大妈今日追高片爷科技被套，称长期看好"）。
 - 弹幕：页面底部半透明黑底条，弹幕自右向左飘，彩色 ID；与跑马灯二选一区域共存（跑马灯在大盘页顶部、弹幕在底部）。
 - NPC 头像：统一扁平卡通风格 PNG（AI 生成，见美术资产清单），圆形 2px 描边；张大妈/老王/老李/首席各一。
-- 吉祥物：小牛「牛小牛」与小熊猫「滚滚」为 **Q 版可爱吉祥物，靠轮廓/花纹特征辨认、不靠红绿颜色**：牛=暖棕毛色（#c99a6b）+ 一对醒目大弯角+宽鼻吻大鼻孔+头顶小呆毛；熊猫=黑白配色（米白脸 #fffdf7 + 墨色 #2b2620）+ 两只黑色圆耳+标志性倾斜黑色椭圆黑眼圈（眼圈内小亮眼睛）+小黑鼻+委屈小嘴角；黑/白/棕均为中性色，红/绿只用于行情涨跌。小尺寸（18~30px）剪影也必须能分出"弯角"与"黑耳+黑眼圈"。内联 SVG sprite（symbol id：bull/bear，其中 bear 画的是熊猫）用于纪元旗、空状态、加载，AI 生成大尺寸 PNG 用于登录页/结局页插画；空状态文案如"空仓中，牛小牛在吃草"。
+- 吉祥物：小牛「牛小牛」与小熊猫「滚滚」为 **Q 版可爱吉祥物，靠轮廓/花纹特征辨认、不靠红绿颜色**：牛=暖棕毛色（#c99a6b）+ 一对醒目大弯角+宽鼻吻大鼻孔+头顶小呆毛；熊猫=黑白配色+两只黑色圆耳+标志性圆润黑色椭圆黑眼圈（眼圈内亮晶晶大眼+高光点）+小黑鼻+害羞笑嘴+粉腮红。黑/白/棕均为中性色，红/绿只用于行情涨跌。**双轨实现：大尺寸场景（空状态、加载、登录页/结局页）用 AI 生成贴纸风插画 PNG，标准像见 docs/design/mascot-bull.jpg、mascot-panda.jpg（风格：粗深棕描边、米白纸底色、大眼高光、坐姿）；小尺寸（18~30px）用内联 SVG sprite**（symbol id：bull/bear，其中 bear 画的是熊猫），剪影必须能分出"弯角"与"黑耳+黑眼圈"，用于纪元旗等。空状态文案如"空仓中，牛小牛在吃草"。
 - 段位徽章：游戏段位牌样式（木牌/铜牌→金牌），圆体字，常驻状态条。
 
 **动效语气（克制）**：价格变动时数字红/绿闪烁一次；封板触发"盖章"弹出动画（scale + 轻微旋转）；称号/段位升级撒碎花（CSS 粒子，1 秒）；跌停/爆仓页面瞬间灰度+轻微抖动；弹幕匀速飘移；其余元素静态。尊重 `prefers-reduced-motion`。
@@ -611,7 +611,7 @@ BANKRUPT / FINISHED（终局：冻结一切操作，展示结局结算页）
 - 主题形象（牛/熊猫吉祥物、NPC 头像、营业部大门、通关奖状、天台背景）用 **AI 生成扁平卡通 PNG**（见美术资产清单），不用 emoji 占位。
 - 涨跌/状态指示不用红黄绿圆点 emoji：涨用红色块/红底白字、跌用绿色块、跑马灯涨跌用 CSS 圆点；消息三态用文字徽章（"未证实/已证实/已辟谣" + 黄/绿/灰色描边小标签）。
 
-**美术资产清单**（AI 生成扁平卡通 PNG，存前端 assets）：张大妈/老王/保安老李/首席分析师 4 个头像、小牛/熊猫吉祥物 2 个（bull.png / panda.png）、登录页营业部大门插画 1 张、通关奖状/天台结局背景 2 张。统一提示词风格："flat vector cartoon, thick outline, warm cream paper background, playful Chinese stock market theme, no text, no emoji"。吉祥物单独加限定："cute chibi sticker-style mascot pair, characters must be distinguishable by shape, NOT by red/green color coding (no red or green fur): the BULL is warm tan-brown with a pair of large curved crescent horns sweeping up, a wide snout with two big nostrils and a tiny hair tuft, smiling; the PANDA is classic black and white — cream-white round face, two solid black round ears on top, signature tilted black teardrop eye patches with little sparkly eyes inside, a tiny black nose and a gentle worried little mouth, blush cheeks; both with rounded thick dark outline, kawaii friendly"。
+**美术资产清单**（AI 生成扁平卡通 PNG，存前端 assets）：张大妈/老王/保安老李/首席分析师 4 个头像、小牛/熊猫吉祥物 2 个（bull.png / panda.png，**定稿参考图已在 docs/design/mascot-bull.jpg、mascot-panda.jpg**，生产版需无水印重生成）、登录页营业部大门插画 1 张、通关奖状/天台结局背景 2 张。统一提示词风格："flat vector cartoon, thick outline, warm cream paper background, playful Chinese stock market theme, no text, no emoji"。吉祥物单独加限定："cute chibi sticker-style mascot pair, characters must be distinguishable by shape, NOT by red/green color coding (no red or green fur): the BULL is warm tan-brown with a pair of large curved crescent horns sweeping up, a wide snout with two big nostrils and a tiny hair tuft, smiling; the PANDA is classic black and white — cream-white round face, two solid black round ears on top, signature tilted black teardrop eye patches with little sparkly eyes inside, a tiny black nose and a gentle worried little mouth, blush cheeks; both with rounded thick dark outline, kawaii friendly"。
 
 ### 12.1 页面清单
 

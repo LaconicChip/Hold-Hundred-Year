@@ -715,7 +715,7 @@ public record EventSkeleton(String code, Scope scope, Source source, Set<EraCode
 
 ### Task 12.6: AI 美术资产
 
-**Files:** `frontend/src/assets/img/`（dama.png/laowang.png/laoli.png/chief.png 头像、bull.png/panda.png 吉祥物——Q 版可爱风、**不靠红绿颜色区分**：牛=暖棕毛+大弯角+宽鼻吻+呆毛；熊市吉祥物是**熊猫「滚滚」**=黑白配色+黑圆耳+倾斜黑椭圆黑眼圈+小黑鼻委屈嘴，用规格 §12.0 的 mascot 提示词、bank-door.png 登录插画、certificate.png 奖状、rooftop.png 天台）；吉祥物小尺寸场景（纪元旗/空状态/加载）直接用 icons.svg 里的 bull/bear symbol（bear symbol 画的就是熊猫，id 不改），风格以 style-tile.html 第三节预览为准（验收：18px 剪影下"弯角"与"黑耳+黑眼圈"仍可辨）。
+**Files:** `frontend/src/assets/img/`（dama.png/laowang.png/laoli.png/chief.png 头像、bull.png/panda.png 吉祥物——Q 版可爱风、**不靠红绿颜色区分**：牛=暖棕毛+大弯角+宽鼻吻+呆毛；熊市吉祥物是**熊猫「滚滚」**=黑白配色+黑圆耳+圆润黑椭圆黑眼圈+亮晶晶大眼+粉腮红。**吉祥物已有定稿参考图** `docs/design/mascot-bull.jpg` / `mascot-panda.jpg`（Seedream 生成、style-tile 第三节在用）：直接拷贝进 frontend assets，并用同款提示词以 `--no-watermark` 重生成无水印生产版（现有参考图右下角带淡"AI生成"水印）；bank-door.png 登录插画、certificate.png 奖状、rooftop.png 天台）；吉祥物小尺寸场景（纪元旗等）用 icons.svg 里的 bull/bear symbol（bear symbol 画的就是熊猫，id 不改），风格以 style-tile.html 第三节预览为准（验收：18px 剪影下"弯角"与"黑耳+黑眼圈"仍可辨）。
 
 - [ ] 用统一提示词生成："flat vector cartoon, thick dark outline, warm cream paper background, playful Chinese stock market theme, simple shapes, no text, no emoji"；NpcAvatar/登录页/终局页引用。Commit：`feat(fe): ai-generated cartoon art assets`
 

@@ -56,7 +56,7 @@ h2::before{content:"";width:10px;height:24px;background:var(--brand);border:2px 
   transform:rotate(-12deg);opacity:.92;line-height:1.1;text-align:center;background:#fffdf7;}
 .seal.broken{border-color:#999;color:#999;text-decoration:line-through;}
 .flame-ico{width:20px;height:20px;display:inline-block;}
-.mascot{width:72px;height:72px;display:block;margin:0 auto;}
+.mascot{width:96px;height:96px;display:block;margin:0 auto;object-fit:contain;}
 .mascot-sm{width:30px;height:30px;display:inline-block;vertical-align:-0.4em;}
 .tier{display:inline-flex;flex-direction:column;align-items:center;gap:2px;}
 .tier .badge{font-family:var(--font-fun);font-size:16px;padding:6px 18px;border:2px solid var(--ink);
@@ -202,27 +202,27 @@ table.quotes tr:hover td{background:#fdf6e3;}
   </symbol>
   <symbol id="i-bear" viewBox="0 0 24 24">
     <!-- 熊猫：两只黑色圆耳 -->
-    <circle cx="7" cy="6.6" r="2.5" fill="#2b2620"/>
-    <circle cx="17" cy="6.6" r="2.5" fill="#2b2620"/>
+    <circle cx="6.8" cy="6.5" r="2.6" fill="#2b2620"/>
+    <circle cx="17.2" cy="6.5" r="2.6" fill="#2b2620"/>
     <!-- 白色圆脸 -->
-    <circle cx="12" cy="14" r="6.6" fill="#fffdf7" stroke="#2b2620" stroke-width="1.8"/>
+    <circle cx="12" cy="13.9" r="6.7" fill="#fffdf7" stroke="#2b2620" stroke-width="1.8"/>
+    <!-- 圆润黑眼圈（圆角短椭圆，熊猫第一辨识特征） -->
+    <ellipse cx="9.6" cy="12.9" rx="1.7" ry="2.05" fill="#2b2620" transform="rotate(-14 9.6 12.9)"/>
+    <ellipse cx="14.4" cy="12.9" rx="1.7" ry="2.05" fill="#2b2620" transform="rotate(14 14.4 12.9)"/>
+    <!-- 亮晶晶大眼睛（白珠+黑瞳+高光，瞳略朝内看，害羞感） -->
+    <circle cx="9.7" cy="12.8" r="0.95" fill="#fffdf7" stroke="none"/>
+    <circle cx="9.85" cy="13" r="0.52" fill="#2b2620" stroke="none"/>
+    <circle cx="10.05" cy="12.65" r="0.2" fill="#fffdf7" stroke="none"/>
+    <circle cx="14.3" cy="12.8" r="0.95" fill="#fffdf7" stroke="none"/>
+    <circle cx="14.15" cy="13" r="0.52" fill="#2b2620" stroke="none"/>
+    <circle cx="13.95" cy="12.65" r="0.2" fill="#fffdf7" stroke="none"/>
     <!-- 腮红 -->
-    <circle cx="7.4" cy="15.1" r="1" fill="#f2b5a7" stroke="none"/>
-    <circle cx="16.6" cy="15.1" r="1" fill="#f2b5a7" stroke="none"/>
-    <!-- 标志性黑眼圈（倾斜水滴形，熊猫第一辨识特征） -->
-    <ellipse cx="9.7" cy="12.9" rx="1.75" ry="2.25" fill="#2b2620" transform="rotate(-18 9.7 12.9)"/>
-    <ellipse cx="14.3" cy="12.9" rx="1.75" ry="2.25" fill="#2b2620" transform="rotate(18 14.3 12.9)"/>
-    <!-- 黑眼圈里的亮眼睛（白珠+瞳+高光） -->
-    <circle cx="9.95" cy="12.6" r="0.72" fill="#fffdf7" stroke="none"/>
-    <circle cx="9.95" cy="12.75" r="0.38" fill="#2b2620" stroke="none"/>
-    <circle cx="10.1" cy="12.5" r="0.13" fill="#fffdf7" stroke="none"/>
-    <circle cx="14.05" cy="12.6" r="0.72" fill="#fffdf7" stroke="none"/>
-    <circle cx="14.05" cy="12.75" r="0.38" fill="#2b2620" stroke="none"/>
-    <circle cx="14.2" cy="12.5" r="0.13" fill="#fffdf7" stroke="none"/>
-    <!-- 小鼻子 + 委屈小嘴角（熊市气质） -->
-    <ellipse cx="12" cy="15.7" rx="0.9" ry="0.62" fill="#2b2620" stroke="none"/>
-    <path d="M12 16.3 V16.9 M12 16.9 Q11.2 17.5 10.7 17 M12 16.9 Q12.8 17.5 13.3 17"
-      fill="none" stroke="#2b2620" stroke-width="1.3" stroke-linecap="round"/>
+    <circle cx="7.3" cy="15.2" r="1" fill="#f2b5a7" stroke="none"/>
+    <circle cx="16.7" cy="15.2" r="1" fill="#f2b5a7" stroke="none"/>
+    <!-- 小圆鼻 + 害羞小笑嘴 -->
+    <ellipse cx="12" cy="15.7" rx="0.85" ry="0.6" fill="#2b2620" stroke="none"/>
+    <path d="M12 16.3 V16.6 M12 16.6 Q11.3 17.2 10.8 16.7 M12 16.6 Q12.7 17.2 13.2 16.7"
+      fill="none" stroke="#2b2620" stroke-width="1.25" stroke-linecap="round"/>
   </symbol>
   <symbol id="i-bank" viewBox="0 0 24 24">
     <path d="M12 2.5 L21 8.5 H3 Z" fill="#fffdf7" stroke="#2b2620"/>
@@ -292,12 +292,18 @@ table.quotes tr:hover td{background:#fdf6e3;}
     </div>
     <div style="display:flex;gap:32px;flex-wrap:wrap;margin-top:22px;justify-content:center;">
       <div style="text-align:center;">
-        <svg class="mascot"><use href="#i-bull"/></svg>
+        <img class="mascot" src="mascot-bull.jpg" alt="牛小牛吉祥物">
         <div style="margin-top:6px;font-family:var(--font-fun);font-size:18px;color:var(--ink);">牛小牛 · 大弯角</div>
+        <small style="color:#8a7f70;">大尺寸用 AI 插画 PNG</small><br>
+        <svg class="mascot-sm"><use href="#i-bull"/></svg>
+        <small style="color:#8a7f70;">小尺寸用 SVG symbol</small>
       </div>
       <div style="text-align:center;">
-        <svg class="mascot"><use href="#i-bear"/></svg>
+        <img class="mascot" src="mascot-panda.jpg" alt="滚滚熊猫吉祥物">
         <div style="margin-top:6px;font-family:var(--font-fun);font-size:18px;color:var(--ink);">滚滚 · 黑眼圈熊猫</div>
+        <small style="color:#8a7f70;">大尺寸用 AI 插画 PNG</small><br>
+        <svg class="mascot-sm"><use href="#i-bear"/></svg>
+        <small style="color:#8a7f70;">小尺寸用 SVG symbol</small>
       </div>
     </div>
   </div>
