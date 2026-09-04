@@ -36,6 +36,9 @@ public final class StockDefs {
             new StockDef(24L, "600024", "通天信联", "通信", 7.50, 1.35, 1.0 / 24.0)
     );
 
+    /** 全部板块名（按声明顺序去重，共 21 个）：波动引擎 beginTick 按此顺序抽板块因子。 */
+    public static final List<String> ALL_SECTORS = ALL.stream().map(StockDef::sector).distinct().toList();
+
     private StockDefs() {
     }
 
