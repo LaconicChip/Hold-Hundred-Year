@@ -40,5 +40,5 @@ public class UserStockState {
     private Double gapPct;
 
     @Version
-    private Integer version;
+    private Integer version = 0;
 }
