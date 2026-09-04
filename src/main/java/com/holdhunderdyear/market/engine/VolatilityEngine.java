@@ -45,7 +45,7 @@ public class VolatilityEngine {
         double k = GameConstants.VOL_REGIME.get(regime);
         double rMkt = muMkt + GameConstants.SIGMA_MKT * k * u * ctx.zMkt();
         double coef = sectorCoefs.getOrDefault(def.sector(), 0.0);
-        double rSec = coef + GameConstants.SIGMA_SEC * k * u * ctx.zSector().get(def.sector());
+        double rSec = coef + GameConstants.SIGMA_SEC * k * u * ctx.zSector().getOrDefault(def.sector(), 0.0);
         double zI = rng.nextGaussian();
         double r = def.beta() * rMkt + rSec + GameConstants.SIGMA_STOCK * k * u * q.getGarchK() * zI;
         if (rng.nextDouble() < GameConstants.JUMP_PROB) {
