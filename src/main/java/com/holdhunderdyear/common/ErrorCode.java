@@ -25,7 +25,8 @@ public enum ErrorCode {
     PARAM_ERROR(1015, "请求参数错误"),
     INTERNAL_ERROR(1016, "系统开小差了，请稍后重试"),
     LOGIN_FAILED(1017, "用户名或密码错误"),
-    NOT_FOUND(1018, "资源不存在");
+    NOT_FOUND(1018, "资源不存在"),
+    GAME_NOT_FINISHED(1019, "本局尚未结束");
 
     private final int code;
     private final String msg;

@@ -287,6 +287,11 @@ public class SettlementService {
         return TIER_ORDER.get(0);
     }
 
+    /** 段位代码转中文名（终局结算页用，与 TIER_ORDER/TIER_NAMES 同序映射）。 */
+    public static String tierNameOf(String tier) {
+        return TIER_NAMES.get(TIER_ORDER.indexOf(tier));
+    }
+
     /** 步骤⑧：每日快照落库（NPC 资产 JSON 属 Phase 8，置空；排行榜无独立表不落）。 */
     private void insertSnapshot(long userId, int day, UserGameState gs, BigDecimal cash, BigDecimal marketValue,
                                 BigDecimal debt, BigDecimal netAsset, double dayReturnPct, double indexDayPct) {

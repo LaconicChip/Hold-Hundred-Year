@@ -85,6 +85,18 @@ public class WorldSeeder {
 
         ensureStockInfoSeeded();
 
+        seedWorld(userId, worldSeed);
+
+        return userId;
+    }
+
+    /**
+     * 播种一个已有账号的游戏世界（spec §2/§3/§4.4/§5）：股票状态 24 行 → 纪元 →
+     * 剧本日 → day0 快照。注册（seedUser）与终局重开共用；调用方需保证该 userId
+     * 的旧世界数据已清空、user/GameState 行已就绪。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void seedWorld(long userId, long worldSeed) {
         for (StockDefs.StockDef def : StockDefs.ALL) {
             BigDecimal price = BigDecimal.valueOf(def.basePrice());
             UserStockState stockState = new UserStockState();
@@ -135,8 +147,6 @@ public class WorldSeeder {
         snapshot.setIndexValue(1000.0);
         snapshot.setNpcAssetsJson(npcAssetsJson());
         userDailySnapshotMapper.insert(snapshot);
-
-        return userId;
     }
 
     /** 幂等播种 stock_info：24 只 StockDefs 以显式 id 写入，已存在则跳过。 */
