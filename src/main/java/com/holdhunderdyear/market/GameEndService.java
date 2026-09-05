@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.holdhunderdyear.common.BizException;
 import com.holdhunderdyear.common.ErrorCode;
 import com.holdhunderdyear.event.EventFactory;
+import com.holdhunderdyear.event.NpcService;
 import com.holdhunderdyear.game.constants.GameConstants;
 import com.holdhunderdyear.game.model.dto.GameResultDTO;
 import com.holdhunderdyear.game.model.enums.MarketState;
@@ -77,6 +78,7 @@ public class GameEndService {
     private final QuoteBoardRegistry quoteBoardRegistry;
     private final WorldSeeder worldSeeder;
     private final EventFactory eventFactory;
+    private final NpcService npcService;
     private final TransactionTemplate transactionTemplate;
 
     public GameEndService(UserGameStateMapper userGameStateMapper,
@@ -95,6 +97,7 @@ public class GameEndService {
                           QuoteBoardRegistry quoteBoardRegistry,
                           WorldSeeder worldSeeder,
                           EventFactory eventFactory,
+                          NpcService npcService,
                           PlatformTransactionManager transactionManager) {
         this.userGameStateMapper = userGameStateMapper;
         this.sysUserMapper = sysUserMapper;
@@ -112,6 +115,7 @@ public class GameEndService {
         this.quoteBoardRegistry = quoteBoardRegistry;
         this.worldSeeder = worldSeeder;
         this.eventFactory = eventFactory;
+        this.npcService = npcService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
@@ -196,6 +200,7 @@ public class GameEndService {
         gameEventMapper.delete(new LambdaQueryWrapper<GameEvent>()
                 .eq(GameEvent::getUserId, userId));
         eventFactory.clearPending(userId);
+        npcService.clearUserState(userId);
 
         SysUser user = sysUserMapper.selectById(userId);
         if (user == null) {

@@ -3,6 +3,7 @@ package com.holdhunderdyear.market;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhunderdyear.common.BizException;
 import com.holdhunderdyear.common.ErrorCode;
+import com.holdhunderdyear.event.NpcService;
 import com.holdhunderdyear.game.constants.GameConstants;
 import com.holdhunderdyear.game.constants.StockDefs;
 import com.holdhunderdyear.game.model.enums.MarketState;
@@ -60,6 +61,7 @@ public class SettlementService {
     private final UserMessageMapper userMessageMapper;
     private final QuoteBoardRegistry quoteBoardRegistry;
     private final MarginService marginService;
+    private final NpcService npcService;
 
     public SettlementService(UserGameStateMapper userGameStateMapper,
                              UserStockStateMapper userStockStateMapper,
@@ -69,7 +71,8 @@ public class SettlementService {
                              UserDailySnapshotMapper userDailySnapshotMapper,
                              UserMessageMapper userMessageMapper,
                              QuoteBoardRegistry quoteBoardRegistry,
-                             MarginService marginService) {
+                             MarginService marginService,
+                             NpcService npcService) {
         this.userGameStateMapper = userGameStateMapper;
         this.userStockStateMapper = userStockStateMapper;
         this.userPositionMapper = userPositionMapper;
@@ -79,6 +82,7 @@ public class SettlementService {
         this.userMessageMapper = userMessageMapper;
         this.quoteBoardRegistry = quoteBoardRegistry;
         this.marginService = marginService;
+        this.npcService = npcService;
     }
 
     /**
@@ -117,22 +121,24 @@ public class SettlementService {
         BigDecimal marketValue = marketValue(positions, stateByStock);
         BigDecimal netAsset = cash.add(marketValue).subtract(debt);
 
+        // NPC 资产 JSON 与角色线消息（Task 8.4）：指数日收益提为一次，两个分支快照前统一生成
+        double indexDayPct = indexDayPct(userId, day, gs);
+        String npcJson = npcService.dailyAssetsJson(userId, day, gs, board, indexDayPct / 100.0);
+
         if (bankrupt) {
             // 爆仓终局（spec §6.4）：快照留痕后短路，跳过日收益评价/段位评定/状态落位
-            double indexDayPct = indexDayPct(userId, day, gs);
             double dayReturnPct = dayReturnPctOf(gs, netAsset);
-            insertSnapshot(userId, day, gs, cash, marketValue, debt, netAsset, dayReturnPct, indexDayPct);
+            insertSnapshot(userId, day, gs, cash, marketValue, debt, netAsset, dayReturnPct, indexDayPct, npcJson);
             gs.setPrevTotalAsset(netAsset);
             userGameStateMapper.updateById(gs);
             return;
         }
         // 步骤⑥：日收益评价（首日 prevTotalAsset 为空按初始资金 10 万基准）
-        double indexDayPct = indexDayPct(userId, day, gs);
         double dayReturnPct = notifyDailyReview(userId, day, gs, netAsset, indexDayPct);
         // 步骤⑦：段位评定（升档递烟、降档慰问、持平沉默）
         assessTier(userId, day, gs, netAsset);
         // 步骤⑧：每日快照
-        insertSnapshot(userId, day, gs, cash, marketValue, debt, netAsset, dayReturnPct, indexDayPct);
+        insertSnapshot(userId, day, gs, cash, marketValue, debt, netAsset, dayReturnPct, indexDayPct, npcJson);
         // 步骤⑫：状态落位
         closeOutDay(userId, day, gs, netAsset, dayReturnPct);
 
@@ -292,9 +298,10 @@ public class SettlementService {
         return TIER_NAMES.get(TIER_ORDER.indexOf(tier));
     }
 
-    /** 步骤⑧：每日快照落库（NPC 资产 JSON 属 Phase 8，置空；排行榜无独立表不落）。 */
+    /** 步骤⑧：每日快照落库（NPC 资产 JSON 由 NpcService 生成，写入 npc_assets_json）。 */
     private void insertSnapshot(long userId, int day, UserGameState gs, BigDecimal cash, BigDecimal marketValue,
-                                BigDecimal debt, BigDecimal netAsset, double dayReturnPct, double indexDayPct) {
+                                BigDecimal debt, BigDecimal netAsset, double dayReturnPct, double indexDayPct,
+                                String npcJson) {
         UserDailySnapshot snapshot = new UserDailySnapshot();
         snapshot.setUserId(userId);
         snapshot.setGameDay(day);
@@ -305,6 +312,7 @@ public class SettlementService {
         snapshot.setDayReturnPct(dayReturnPct);
         snapshot.setIndexValue(gs.getIndexValue());
         snapshot.setIndexDayPct(indexDayPct);
+        snapshot.setNpcAssetsJson(npcJson);
         userDailySnapshotMapper.insert(snapshot);
     }
 
