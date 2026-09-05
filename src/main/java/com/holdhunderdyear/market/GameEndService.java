@@ -35,6 +35,7 @@ import com.holdhunderdyear.market.mapper.UserPositionMapper;
 import com.holdhunderdyear.market.mapper.UserScriptDayMapper;
 import com.holdhunderdyear.market.mapper.UserStockStateMapper;
 import com.holdhunderdyear.market.mapper.UserTitleMapper;
+import com.holdhunderdyear.trade.CorporateActionService;
 import com.holdhunderdyear.world.WorldSeeder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -79,6 +80,7 @@ public class GameEndService {
     private final WorldSeeder worldSeeder;
     private final EventFactory eventFactory;
     private final NpcService npcService;
+    private final CorporateActionService corporateActionService;
     private final TransactionTemplate transactionTemplate;
 
     public GameEndService(UserGameStateMapper userGameStateMapper,
@@ -98,6 +100,7 @@ public class GameEndService {
                           WorldSeeder worldSeeder,
                           EventFactory eventFactory,
                           NpcService npcService,
+                          CorporateActionService corporateActionService,
                           PlatformTransactionManager transactionManager) {
         this.userGameStateMapper = userGameStateMapper;
         this.sysUserMapper = sysUserMapper;
@@ -116,6 +119,7 @@ public class GameEndService {
         this.worldSeeder = worldSeeder;
         this.eventFactory = eventFactory;
         this.npcService = npcService;
+        this.corporateActionService = corporateActionService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
@@ -201,6 +205,7 @@ public class GameEndService {
                 .eq(GameEvent::getUserId, userId));
         eventFactory.clearPending(userId);
         npcService.clearUserState(userId);
+        corporateActionService.clearUserState(userId);
 
         SysUser user = sysUserMapper.selectById(userId);
         if (user == null) {

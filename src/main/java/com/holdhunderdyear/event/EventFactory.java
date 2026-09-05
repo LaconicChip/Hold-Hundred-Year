@@ -16,6 +16,7 @@ import com.holdhunderdyear.market.mapper.GameEventMapper;
 import com.holdhunderdyear.market.mapper.UserMessageMapper;
 import com.holdhunderdyear.market.mapper.UserPositionMapper;
 import com.holdhunderdyear.market.quote.QuoteBoard;
+import com.holdhunderdyear.trade.CorporateActionService;
 import com.holdhunderdyear.world.WorldRandom;
 import org.springframework.stereotype.Service;
 
@@ -42,6 +43,11 @@ import java.util.stream.Collectors;
  * <p>calf 映射：七种冲击模式在入队时展开为 ShockQueue 的 PriceShock 与/或待到期
  * 定时器（TRUTH_REVEAL/REVEAL_SHOCK/REVERT_SHOCK/CHAIN_SHOCK）。TIMED 结构经
  * {@link #flushDueActions} 在每跳开头结算（到期翻面、追 followup 或入 shock）。
+ *
+ * <p>企业行动（Task 9.1）：掷出 fund-st-hat / fund-st-unhat / fund-turnaround /
+ * fund-high-transfer / fund-dividend 这些 pool① 个股骨架时，在写库之后、入 shock 之前按
+ * skeleton.code() 分派给 {@link CorporateActionService} 做真实的戴帽/摘帽/除权/分红
+ * （事件氛围文案与 7 模式冲击照常保留，真实机制动作叠加其上）。
  *
  * <p>并发协议：正常读写都在 per-user 世界锁内串行（tickOne / restart），
  * ConcurrentHashMap 与 synchronizedList 仅为防御性兜底；遍历统一持同一 list 监视器。
@@ -73,6 +79,7 @@ public class EventFactory {
     private final GameEventMapper gameEventMapper;
     private final UserPositionMapper userPositionMapper;
     private final MainScriptService mainScriptService;
+    private final CorporateActionService corporateActionService;
 
     /** userId → 到期待结算动作（TRUTH_REVEAL 每事件一条；冲击类每股一条）。 */
     private final ConcurrentHashMap<Long, List<PendingAction>> pendingActions = new ConcurrentHashMap<>();
@@ -80,11 +87,13 @@ public class EventFactory {
     public EventFactory(UserMessageMapper userMessageMapper,
                         GameEventMapper gameEventMapper,
                         UserPositionMapper userPositionMapper,
-                        MainScriptService mainScriptService) {
+                        MainScriptService mainScriptService,
+                        CorporateActionService corporateActionService) {
         this.userMessageMapper = userMessageMapper;
         this.gameEventMapper = gameEventMapper;
         this.userPositionMapper = userPositionMapper;
         this.mainScriptService = mainScriptService;
+        this.corporateActionService = corporateActionService;
     }
 
     /**
@@ -231,6 +240,24 @@ public class EventFactory {
         event.setGameDay(gs.getCurrentDay());
         event.setCreatedAt(LocalDateTime.now());
         gameEventMapper.insert(event);
+
+        // 企业行动接入（Task 9.1）：ST 戴帽/摘帽、10转10 除权、现金分红——对 target 股做真实
+        // 世界行动（STOCK scope 才有 target；SECTOR/MARKET 骨架不命中，null 守卫跳过）。
+        // 分红额在同一 rng 追加一次 nextDouble（0.5~2.0），计入本事件固定的随机消费顺序。
+        // gameDay 与消息落库的 game_day 同口径（user_message.game_day schema 非空）
+        int gameDay = gs.getCurrentDay();
+        if (targetStockId != null) {
+            switch (skeleton.code()) {
+                case "fund-st-hat" -> corporateActionService.hat(userId, board, targetStockId, gameDay);
+                case "fund-st-unhat", "fund-turnaround" ->
+                        corporateActionService.unhat(userId, board, targetStockId, gameDay);
+                case "fund-high-transfer" ->
+                        corporateActionService.split10to10(userId, board, targetStockId, gameDay);
+                case "fund-dividend" -> corporateActionService.cashDividend(userId, board, targetStockId,
+                        0.5 + 1.5 * rng.nextDouble(), gameDay);
+                default -> { }
+            }
+        }
 
         List<Long> shockTargets = marketWide ? List.of(0L)
                 : skeleton.scope() == EventSkeleton.Scope.SECTOR
