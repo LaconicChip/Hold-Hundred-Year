@@ -160,7 +160,9 @@ class WorldTickServiceTest {
             if ("LUNCH_BREAK".equals(gameState(userId).getMarketState())) {
                 marketStateService.resumeAfternoon(userId);
             }
-            if (oneWord.getSealed() != SealState.NONE) {
+            // 第 90 跳触发收盘结算（spec §3 步骤② prev_close 滚动为收盘价），
+            // 封板钉板不变式仅对盘中 89 跳断言
+            if (i < 89 && oneWord.getSealed() != SealState.NONE) {
                 double limit = oneWord.getSealed() == SealState.UP
                         ? oneWord.limitUpPrice() : oneWord.limitDownPrice();
                 assertEquals(limit, oneWord.getCurrent(), 1e-9, "tick " + (i + 1));

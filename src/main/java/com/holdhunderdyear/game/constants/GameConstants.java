@@ -123,6 +123,8 @@ public final class GameConstants {
     public static final int TOTAL_DAYS = DAYS_PER_YEAR * 3;
     /** 熔断阈值：指数日内自昨收跌幅（spec §3/§4.4）。 */
     public static final double CIRCUIT_BREAKER_DROP = 0.07;
+    /** 指数基期值：无前日快照时日收益评价的指数基准（spec §3 结算⑥）。 */
+    public static final double INITIAL_INDEX = 1000.0;
 
     private GameConstants() {
     }
