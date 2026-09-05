@@ -490,7 +490,8 @@ public class MarketStateService {
         return VolRegime.WILD;
     }
 
-    private UserGameState requireGameState(long userId) {
+    /** 取 game_state，无则抛 NOT_FOUND：本类与同包调度/快进共用的状态读取入口。 */
+    UserGameState requireGameState(long userId) {
         UserGameState gameState = userGameStateMapper.selectOne(
                 new LambdaQueryWrapper<UserGameState>().eq(UserGameState::getUserId, userId));
         if (gameState == null) {

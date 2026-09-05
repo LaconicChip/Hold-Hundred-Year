@@ -60,6 +60,13 @@ public class QuoteBoard {
     @ToString.Exclude
     private Deque<Double> indexIntraday = new ArrayDeque<>();
 
+    /** 午休开始打点（System.nanoTime()，0=未打点）：调度器在首个 LUNCH_BREAK 轮懒打点，
+     *  用于 {@link GameConstants#LUNCH_MS} 午休恢复判定。重启后从零重计（可接受）；
+     *  纯挂钟计时，绝不进入随机数协议、不影响确定性。volatile 兜底跨线程读，
+     *  写读均在世界锁内。 */
+    @ToString.Exclude
+    private volatile long lunchStartedNanos;
+
     /**
      * 从 stock_state 快照恢复行情板：价格、连板数、停牌、ST 从实体读取；
      * gapPct 不在此应用——那是开盘管线（跳空落地）的事；sealed=NONE、garchK=1、
@@ -109,6 +116,21 @@ public class QuoteBoard {
         if (indexIntraday.size() > INDEX_INTRADAY_CAP) {
             indexIntraday.removeFirst();
         }
+    }
+
+    /** 午休已流逝毫秒：尚未打点时先打点并返回 0（首个调度轮恒为 0，下一轮起正常计时）；
+     *  本方法是唯一打点路径，起点一旦确立不因重复调用推迟。 */
+    public long lunchElapsedMillis() {
+        if (lunchStartedNanos == 0) {
+            lunchStartedNanos = System.nanoTime();
+            return 0;
+        }
+        return (System.nanoTime() - lunchStartedNanos) / 1_000_000;
+    }
+
+    /** 清零午休打点（下午开盘后由恢复方调用），保证下一次午休重新计时。 */
+    public void clearLunchTiming() {
+        lunchStartedNanos = 0L;
     }
 
     /** schema 中 open/high/low 可空：缺失时退化为当前价（无日内历史可恢复）。 */

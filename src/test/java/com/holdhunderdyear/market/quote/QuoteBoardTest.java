@@ -123,4 +123,34 @@ class QuoteBoardTest {
         assertEquals(1095.0, board.getIndexIntraday().getLast(), 1e-9);
         assertEquals(1095.0, board.getIndexValue(), 1e-9);
     }
+
+    @Test
+    void lunchElapsedStartsTimingOnFirstCall() {
+        QuoteBoard board = QuoteBoard.restore(List.of(state(StockDefs.ALL.get(0))), 1000.0, 0);
+        assertEquals(0, board.lunchElapsedMillis(), "first call starts timing and reports zero");
+        assertTrue(board.lunchElapsedMillis() <= 5,
+                "immediate second call must stay at the same origin, not restart it");
+    }
+
+    @Test
+    void lunchElapsedGrowsMonotonically() throws InterruptedException {
+        QuoteBoard board = QuoteBoard.restore(List.of(state(StockDefs.ALL.get(0))), 1000.0, 0);
+        assertEquals(0, board.lunchElapsedMillis());
+        Thread.sleep(30);
+        long first = board.lunchElapsedMillis();
+        assertTrue(first > 0, "elapsed must grow with wall clock");
+        Thread.sleep(30);
+        assertTrue(board.lunchElapsedMillis() >= first, "elapsed must never go backwards");
+    }
+
+    @Test
+    void clearLunchTimingRestartsTiming() throws InterruptedException {
+        QuoteBoard board = QuoteBoard.restore(List.of(state(StockDefs.ALL.get(0))), 1000.0, 0);
+        board.lunchElapsedMillis();
+        Thread.sleep(30);
+        assertTrue(board.lunchElapsedMillis() > 0);
+        board.clearLunchTiming();
+        assertEquals(0, board.lunchElapsedMillis(),
+                "after clear the next lunch must re-time from zero");
+    }
 }
