@@ -65,6 +65,9 @@ public class QuoteBoard {
      * gapPct 不在此应用——那是开盘管线（跳空落地）的事；sealed=NONE、garchK=1、
      * dayAvg/tickCount=0、分时缓冲空（Checkpoint 不存分时，恢复后重新积累）。
      * prevIndex = indexValue（spec §10：index_value 即昨收/当前快照同列）。
+     * 已知限制：熔断日盘中重启时 prevIndex 退化为最近 checkpoint 的盘中指数而非昨收
+     * （单列两用无法区分），熔断阈值基数随之偏移——触发窗口极窄，根治需 game_state
+     * 增加 prev_index 列（暂不做）。
      * 当日上下文（currentEra/volRegime/reverseDay/circuitBreakerDay）不在此恢复——
      * 由开盘管线（MarketStateService.openDay）写入。
      */

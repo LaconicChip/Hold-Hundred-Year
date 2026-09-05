@@ -1,6 +1,9 @@
 package com.holdhunderdyear.game.constants;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -39,11 +42,30 @@ public final class StockDefs {
     /** 全部板块名（按声明顺序去重，共 21 个）：波动引擎 beginTick 按此顺序抽板块因子。 */
     public static final List<String> ALL_SECTORS = ALL.stream().map(StockDef::sector).distinct().toList();
 
+    /** id → 档案（LinkedHashMap 保持声明顺序）：盘中引擎每跳按 id 查静态档案。 */
+    private static final Map<Long, StockDef> BY_ID;
+    static {
+        Map<Long, StockDef> byId = new LinkedHashMap<>();
+        for (StockDef def : ALL) {
+            byId.put(def.id(), def);
+        }
+        BY_ID = Collections.unmodifiableMap(byId);
+    }
+
     private StockDefs() {
     }
 
     public static Optional<StockDef> byCode(String code) {
         return ALL.stream().filter(s -> s.code().equals(code)).findFirst();
+    }
+
+    /** 按 id 查静态档案；未知 id 属编程错误，直接抛。 */
+    public static StockDef byId(long id) {
+        StockDef def = BY_ID.get(id);
+        if (def == null) {
+            throw new IllegalArgumentException("Unknown stockId: " + id);
+        }
+        return def;
     }
 
     /**

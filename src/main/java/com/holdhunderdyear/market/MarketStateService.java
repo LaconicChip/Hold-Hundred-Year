@@ -6,6 +6,7 @@ import com.holdhunderdyear.common.BizException;
 import com.holdhunderdyear.common.ErrorCode;
 import com.holdhunderdyear.game.constants.GameConstants;
 import com.holdhunderdyear.game.constants.StockDefs;
+import com.holdhunderdyear.game.constants.StockDefs.StockDef;
 import com.holdhunderdyear.game.model.enums.EraCode;
 import com.holdhunderdyear.game.model.enums.MarketState;
 import com.holdhunderdyear.game.model.enums.ScriptType;
@@ -16,6 +17,7 @@ import com.holdhunderdyear.market.entity.UserGameState;
 import com.holdhunderdyear.market.entity.UserMessage;
 import com.holdhunderdyear.market.entity.UserScriptDay;
 import com.holdhunderdyear.market.entity.UserStockState;
+import com.holdhunderdyear.market.engine.IndexCalculator;
 import com.holdhunderdyear.market.engine.PriceShock;
 import com.holdhunderdyear.market.engine.SealMachine;
 import com.holdhunderdyear.market.mapper.UserEraMapper;
@@ -28,7 +30,9 @@ import com.holdhunderdyear.market.quote.QuoteBoard;
 import com.holdhunderdyear.world.EraScheduler;
 import com.holdhunderdyear.world.WorldRandom;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -36,6 +40,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -48,9 +53,12 @@ import java.util.stream.Collectors;
  * 纪元切换消息、波动体制掷点）；盘中态幂等返回；午休/结算/终态拒绝。
  * 开盘走 evict-then-reload：缓存板从最新 stock_state 行重建，陈旧分时/冲击自然清空。
  *
+ * <p>盘中还提供日内状态转换（toLunchBreak/resumeAfternoon，由 WorldTickService 在
+ * 半场边界自动调用）与盘中恢复兜底（rederiveDayContext，restore 后重算当日上下文）。
+ *
  * <p>开盘还依次完成（spec §4.3/§4.4）：当日上下文写入（纪元/体制/熔断标记）、
  * 停牌复牌补跌、反向意外日掷点、剧本日强制行为（千股涨停/跌停钉板、救市全市场冲击、
- * 制裁闪崩钉跌停、黑7月按板块钉板；熔断与 IPO 开盘无行为）。
+ * 制裁闪崩钉跌停、黑7月按板块钉板；熔断日开盘补强 −6%~−8% 跳空；IPO 开盘无行为）。
  * 全部随机性经 WorldRandom.of(worldSeed, salt)，盐与消费顺序固定（同 seed 同日必得同结果）：
  * <ul>
  *   <li>"gap"+day：隔夜跳空（每股按 stockId 升序经 SealMachine，一字板时消费封板时长 int）；</li>
@@ -60,6 +68,7 @@ import java.util.stream.Collectors;
  *   <li>"script"+day：千股涨停/跌停选股（每条 LIMIT_*_ALL 行一次 Collections.shuffle，
  *       剧本日行按 ScriptType 声明顺序处理）；</li>
  *   <li>"rescue"+day：救市冲击幅度（单个 double）；</li>
+ *   <li>"circuit"+day：熔断日开盘补强跳空（每股按声明序一个 double）；</li>
  *   <li>"volregime"+day：体制掷点（单个 double）。</li>
  * </ul>
  */
@@ -84,28 +93,45 @@ public class MarketStateService {
     private final UserScriptDayMapper userScriptDayMapper;
     private final QuoteBoardRegistry quoteBoardRegistry;
     private final SealMachine sealMachine = new SealMachine();
+    private final IndexCalculator indexCalculator = new IndexCalculator();
+    private final TransactionTemplate transactionTemplate;
 
     public MarketStateService(UserGameStateMapper userGameStateMapper,
                               UserStockStateMapper userStockStateMapper,
                               UserMessageMapper userMessageMapper,
                               UserEraMapper userEraMapper,
                               UserScriptDayMapper userScriptDayMapper,
-                              QuoteBoardRegistry quoteBoardRegistry) {
+                              QuoteBoardRegistry quoteBoardRegistry,
+                              PlatformTransactionManager transactionManager) {
         this.userGameStateMapper = userGameStateMapper;
         this.userStockStateMapper = userStockStateMapper;
         this.userMessageMapper = userMessageMapper;
         this.userEraMapper = userEraMapper;
         this.userScriptDayMapper = userScriptDayMapper;
         this.quoteBoardRegistry = quoteBoardRegistry;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
     /**
      * 开盘（或进入下一交易日）。返回开盘后的行情板。
      * MORNING_OPEN/AFTERNOON_OPEN：幂等返回当前板；LUNCH_BREAK/SETTLING：NOT_TRADING_TIME；
      * BANKRUPT/FINISHED：FINISHED_STATE；无 game_state：NOT_FOUND。
+     *
+     * <p>并发协议（P5）：全程持有用户世界锁（registry 层，跨 evict 存活），事务经
+     * TransactionTemplate 在锁内开启并提交——后到线程拿到锁时读到的必是已提交状态，
+     * 杜绝并发双开（重复跳空/纪元消息）。
      */
-    @Transactional(rollbackFor = Exception.class)
     public QuoteBoard startDay(long userId) {
+        quoteBoardRegistry.worldLock(userId).lock();
+        try {
+            return transactionTemplate.execute(status -> doStartDay(userId));
+        } finally {
+            quoteBoardRegistry.worldLock(userId).unlock();
+        }
+    }
+
+    /** startDay 事务体（世界锁内开启，提交先于锁释放）。 */
+    private QuoteBoard doStartDay(long userId) {
         UserGameState gameState = requireGameState(userId);
         MarketState state = MarketState.valueOf(gameState.getMarketState());
         switch (state) {
@@ -124,6 +150,53 @@ public class MarketStateService {
             default:
                 throw new BizException(ErrorCode.FINISHED_STATE);
         }
+    }
+
+    /** 上午收盘：MORNING_OPEN → LUNCH_BREAK 持久化（tickOne 走满 45 跳自动调用）。
+     *  其他源状态抛 MARKET_CLOSED。 */
+    @Transactional(rollbackFor = Exception.class)
+    public void toLunchBreak(long userId) {
+        transitionState(userId, MarketState.MORNING_OPEN, MarketState.LUNCH_BREAK);
+    }
+
+    /** 下午开盘：LUNCH_BREAK → AFTERNOON_OPEN 持久化（午休结束消息跳空 Phase 8 接入，
+     *  现在直转）。其他源状态抛 MARKET_CLOSED。 */
+    @Transactional(rollbackFor = Exception.class)
+    public void resumeAfternoon(long userId) {
+        transitionState(userId, MarketState.LUNCH_BREAK, MarketState.AFTERNOON_OPEN);
+    }
+
+    /** 收盘进入结算态（spec §3：45 跳收盘 AFTERNOON_OPEN → SETTLING，熔断提前收盘
+     *  MORNING_OPEN → SETTLING）；源状态不符抛 MARKET_CLOSED。结算体（settle）随后
+     *  在同一世界锁事务内落位终态。 */
+    @Transactional(rollbackFor = Exception.class)
+    public void toSettling(long userId, MarketState expected) {
+        transitionState(userId, expected, MarketState.SETTLING);
+    }
+
+    /** 状态机转换落库：源状态不匹配抛 MARKET_CLOSED。 */
+    private void transitionState(long userId, MarketState expected, MarketState target) {
+        UserGameState gameState = requireGameState(userId);
+        if (MarketState.valueOf(gameState.getMarketState()) != expected) {
+            throw new BizException(ErrorCode.MARKET_CLOSED);
+        }
+        gameState.setMarketState(target.name());
+        userGameStateMapper.updateById(gameState);
+    }
+
+    /** 盘中恢复兜底（P9 重启恢复）：全部当日上下文确定性重算，不依赖 DB 已写值——
+     *  currentEra=eraInstanceForDay、volRegime=盐 "volregime"+day 重掷、reverseDay=
+     *  盐 "reverse"+day 重掷、circuitBreakerDay=当日 script 含 CIRCUIT_BREAKER。
+     *  调用方持有世界锁（restore 后 currentEra==null 即触发）。 */
+    public void rederiveDayContext(long userId, QuoteBoard board) {
+        UserGameState gameState = requireGameState(userId);
+        long worldSeed = gameState.getWorldSeed();
+        int day = gameState.getCurrentDay();
+        board.setCurrentEra(eraInstanceForDay(worldSeed, day));
+        board.setVolRegime(rollVolRegime(worldSeed, day));
+        board.setReverseDay(WorldRandom.of(worldSeed, "reverse" + day).nextDouble() < 0.08);
+        board.setCircuitBreakerDay(scriptDaysFor(userId, day).stream()
+                .anyMatch(scriptDay -> ScriptType.CIRCUIT_BREAKER.name().equals(scriptDay.getScriptType())));
     }
 
     /** 开启第 newDay 个交易日：跳空落地（非首日，先于一切）→ 清板重载 → 当日上下文
@@ -256,11 +329,44 @@ public class MarketStateService {
                 case SANCTION -> forceSealStock(userId, board,
                         params.get("targetStockId").asLong(), SealState.DOWN);
                 case CRASH_WEEK -> sealCrashSectors(userId, board);
-                case CIRCUIT_BREAKER, IPO -> {
-                    // 熔断由盘中引擎按指数 ≤ −7% 判定提前收盘（Task 5.2）；IPO 由打新流程处理（Phase 9.2）。
+                case CIRCUIT_BREAKER -> applyCircuitBreakerOpen(userId, board, newDay, worldSeed);
+                case IPO -> {
+                    // IPO 由打新流程处理（Phase 9.2）。
                 }
             }
         }
+    }
+
+    /** 熔断日开盘补强（spec §4.4 上午开盘指数即重挫）：除 circuitBreakerDay 标记外，
+     *  对每只非停牌且未封板的股票再落地开盘跳空 −(0.06+0.02·u)（rng 盐 "circuit"+day
+     *  每股一个 double，覆盖原隔夜跳空落地的价格，clamp 到跌停价）并回写 stock_state；
+     *  指数同步吃进等权平均跳空收益（跳空均值 −7% 恰为熔断阈值）——保证熔断日指数
+     *  必然深跌、上午触及 −7% 提前收盘。已封板股（隔夜一字板/剧本钉板）跳过：其隔夜
+     *  跌幅已随开盘落地入指数，此处按 0 收益计权，避免钉板价被二次改写与指数开口虚高。 */
+    private void applyCircuitBreakerOpen(long userId, QuoteBoard board, int newDay, long worldSeed) {
+        Random rng = WorldRandom.of(worldSeed, "circuit" + newDay);
+        Map<Long, Double> gapReturns = new HashMap<>();
+        for (Quote quote : board.getQuotes().values()) {
+            if (quote.isHalted() || quote.getSealed() != SealState.NONE) {
+                continue;
+            }
+            double before = quote.getCurrent();
+            double gap = -(0.06 + 0.02 * rng.nextDouble());
+            sealMachine.applyOpenGap(quote, gap, rng);
+            gapReturns.put(quote.getStockId(), (quote.getCurrent() - before) / before);
+            userStockStateMapper.update(null, new UpdateWrapper<UserStockState>()
+                    .eq("user_id", userId)
+                    .eq("stock_id", quote.getStockId())
+                    .set("open_price", BigDecimal.valueOf(quote.getOpen()))
+                    .set("high_price", BigDecimal.valueOf(quote.getHigh()))
+                    .set("low_price", BigDecimal.valueOf(quote.getLow()))
+                    .set("current_price", BigDecimal.valueOf(quote.getCurrent())));
+        }
+        List<StockDef> active = board.getQuotes().values().stream()
+                .filter(q -> !q.isHalted())
+                .map(q -> StockDefs.byId(q.getStockId()))
+                .toList();
+        board.setIndexValue(indexCalculator.nextIndex(board.getIndexValue(), active, gapReturns));
     }
 
     /** 千股涨停/跌停：非停牌股洗牌后取前 round(24×sealRatio) 只钉板。 */

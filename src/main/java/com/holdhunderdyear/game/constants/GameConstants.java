@@ -119,6 +119,10 @@ public final class GameConstants {
     public static final double ANNUAL_INTEREST = 0.08;
     /** 一游戏年交易日数。 */
     public static final int DAYS_PER_YEAR = 36;
+    /** 游戏总交易日数（3 年收官，spec §3）。 */
+    public static final int TOTAL_DAYS = DAYS_PER_YEAR * 3;
+    /** 熔断阈值：指数日内自昨收跌幅（spec §3/§4.4）。 */
+    public static final double CIRCUIT_BREAKER_DROP = 0.07;
 
     private GameConstants() {
     }
