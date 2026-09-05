@@ -44,6 +44,11 @@ public class QuoteBoard {
 
     private int tickIndex;
 
+    /** 下一跳事件掷骰闸门（绝对跳 = gameDay*TOTAL_TICKS + tickIndex）：纯内存态、不持久化，
+     *  新板默认 10（重启即回到默认值，重启丢 pending 同理，spec §8 已授权）。
+     *  由事件工厂在每次掷骰时按 rng.nextInt(10,21) 后移，lombok @Data 自动访问器。 */
+    private long nextRollAbsTick = 10;
+
     /** 当日记元（开盘管线写入；restore 不设置，默认 null）。 */
     private EraScheduler.EraInstance currentEra;
 

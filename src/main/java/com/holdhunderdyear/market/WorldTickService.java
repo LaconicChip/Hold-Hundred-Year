@@ -3,6 +3,7 @@ package com.holdhunderdyear.market;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhunderdyear.common.BizException;
 import com.holdhunderdyear.common.ErrorCode;
+import com.holdhunderdyear.event.EventFactory;
 import com.holdhunderdyear.game.constants.GameConstants;
 import com.holdhunderdyear.game.constants.StockDefs;
 import com.holdhunderdyear.game.constants.StockDefs.StockDef;
@@ -48,7 +49,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * QuoteBoardRegistry（跨 evict 存活），tickOne 全程持锁并经 TransactionTemplate
  * 锁内提交，与 startDay/交易互斥。盘中恢复兜底：currentEra==null（restore 板）时
  * 先 rederiveDayContext 重算当日上下文。非盘中态静默返回（调用方负责频率）。
- * 事件掷骰/弹幕（Phase 8）与 WebSocket 推送（Phase 10）的调用点后续接入。
+ * 事件掷骰已接入；弹幕与 WebSocket 推送（Phase 8.3/10）后续接入。
  */
 @Service
 public class WorldTickService {
@@ -59,6 +60,7 @@ public class WorldTickService {
     private final UserGameStateMapper userGameStateMapper;
     private final UserStockStateMapper userStockStateMapper;
     private final MarginService marginService;
+    private final EventFactory eventFactory;
     private final TransactionTemplate transactionTemplate;
 
     private final VolatilityEngine volEngine = new VolatilityEngine();
@@ -71,6 +73,7 @@ public class WorldTickService {
                             UserGameStateMapper userGameStateMapper,
                             UserStockStateMapper userStockStateMapper,
                             MarginService marginService,
+                            EventFactory eventFactory,
                             PlatformTransactionManager transactionManager) {
         this.quoteBoardRegistry = quoteBoardRegistry;
         this.marketStateService = marketStateService;
@@ -78,6 +81,7 @@ public class WorldTickService {
         this.userGameStateMapper = userGameStateMapper;
         this.userStockStateMapper = userStockStateMapper;
         this.marginService = marginService;
+        this.eventFactory = eventFactory;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
@@ -171,6 +175,7 @@ public class WorldTickService {
             }
 
             board.setTickIndex(tick + 1);
+            eventFactory.maybeRoll(userId, gs, board);
 
             // 盘中担保检查（追保/强平/爆仓，spec §6.4）：爆仓立即返回，不再推进 45/90 边界
             if (marginService.intradayCheck(userId, gs, board)) {
