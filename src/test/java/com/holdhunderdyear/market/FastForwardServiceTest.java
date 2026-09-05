@@ -1,9 +1,11 @@
 package com.holdhunderdyear.market;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.holdhunderdyear.market.entity.UserDailySnapshot;
 import com.holdhunderdyear.market.entity.UserGameState;
 import com.holdhunderdyear.market.entity.UserMessage;
 import com.holdhunderdyear.market.entity.UserStockState;
+import com.holdhunderdyear.market.mapper.UserDailySnapshotMapper;
 import com.holdhunderdyear.market.mapper.UserGameStateMapper;
 import com.holdhunderdyear.market.mapper.UserMessageMapper;
 import com.holdhunderdyear.market.mapper.UserStockStateMapper;
@@ -38,6 +40,7 @@ class FastForwardServiceTest {
     @Autowired private UserGameStateMapper userGameStateMapper;
     @Autowired private UserStockStateMapper userStockStateMapper;
     @Autowired private UserMessageMapper userMessageMapper;
+    @Autowired private UserDailySnapshotMapper userDailySnapshotMapper;
 
     @Test
     void skipRunsIntradayDayStraightToClose() {
@@ -158,6 +161,8 @@ class FastForwardServiceTest {
         assertEquals(stateA.getTickIndex(), stateB.getTickIndex(), "tick count must match");
         assertEquals(stateA.getMarketState(), stateB.getMarketState(), "market state must match");
         assertEquals(messagesOf(userIdA), messagesOf(userIdB), "same seed worlds must deliver the same messages");
+        assertEquals(snapshotsOf(userIdA), snapshotsOf(userIdB),
+                "same seed worlds must settle to identical daily snapshots");
     }
 
     private UserGameState gameState(long userId) {
@@ -184,6 +189,27 @@ class FastForwardServiceTest {
         for (UserMessage message : messages) {
             keys.add(String.join("|", message.getSource(), message.getType(),
                     String.valueOf(message.getGameDay()), message.getTitle(), message.getContent()));
+        }
+        keys.sort(String::compareTo);
+        return keys;
+    }
+
+    private List<String> snapshotsOf(long userId) {
+        List<UserDailySnapshot> snapshots = userDailySnapshotMapper.selectList(
+                new LambdaQueryWrapper<UserDailySnapshot>()
+                        .eq(UserDailySnapshot::getUserId, userId));
+        List<String> keys = new ArrayList<>();
+        for (UserDailySnapshot snapshot : snapshots) {
+            keys.add(String.join("|",
+                    String.valueOf(snapshot.getGameDay()),
+                    String.valueOf(snapshot.getCash()),
+                    String.valueOf(snapshot.getMarketValue()),
+                    String.valueOf(snapshot.getDebt()),
+                    String.valueOf(snapshot.getNetAsset()),
+                    String.valueOf(snapshot.getDayReturnPct()),
+                    String.valueOf(snapshot.getIndexValue()),
+                    String.valueOf(snapshot.getIndexDayPct()),
+                    String.valueOf(snapshot.getNpcAssetsJson())));
         }
         keys.sort(String::compareTo);
         return keys;
