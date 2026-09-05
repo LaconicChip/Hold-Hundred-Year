@@ -72,16 +72,19 @@ public class EventFactory {
     private final UserMessageMapper userMessageMapper;
     private final GameEventMapper gameEventMapper;
     private final UserPositionMapper userPositionMapper;
+    private final MainScriptService mainScriptService;
 
     /** userId → 到期待结算动作（TRUTH_REVEAL 每事件一条；冲击类每股一条）。 */
     private final ConcurrentHashMap<Long, List<PendingAction>> pendingActions = new ConcurrentHashMap<>();
 
     public EventFactory(UserMessageMapper userMessageMapper,
                         GameEventMapper gameEventMapper,
-                        UserPositionMapper userPositionMapper) {
+                        UserPositionMapper userPositionMapper,
+                        MainScriptService mainScriptService) {
         this.userMessageMapper = userMessageMapper;
         this.gameEventMapper = gameEventMapper;
         this.userPositionMapper = userPositionMapper;
+        this.mainScriptService = mainScriptService;
     }
 
     /**
@@ -101,6 +104,8 @@ public class EventFactory {
                 "event" + gs.getCurrentDay() + "." + board.getTickIndex());
         board.setNextRollAbsTick(absTick + rng.nextInt(10, 21));
         if (rng.nextDouble() >= EVENT_GATE) {
+            // 事件出现闸落空分支（35%）由 8.5 主力剧本接管（零剧本待命时入队一个新剧本）
+            mainScriptService.maybeStart(userId, gs, board, rng);
             return;
         }
 

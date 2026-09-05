@@ -3,6 +3,7 @@ package com.holdhunderdyear.market;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.holdhunderdyear.common.BizException;
+import com.holdhunderdyear.event.HaltService;
 import com.holdhunderdyear.common.ErrorCode;
 import com.holdhunderdyear.game.constants.GameConstants;
 import com.holdhunderdyear.game.constants.StockDefs;
@@ -92,6 +93,7 @@ public class MarketStateService {
     private final UserEraMapper userEraMapper;
     private final UserScriptDayMapper userScriptDayMapper;
     private final QuoteBoardRegistry quoteBoardRegistry;
+    private final HaltService haltService;
     private final SealMachine sealMachine = new SealMachine();
     private final IndexCalculator indexCalculator = new IndexCalculator();
     private final TransactionTemplate transactionTemplate;
@@ -102,6 +104,7 @@ public class MarketStateService {
                               UserEraMapper userEraMapper,
                               UserScriptDayMapper userScriptDayMapper,
                               QuoteBoardRegistry quoteBoardRegistry,
+                              HaltService haltService,
                               PlatformTransactionManager transactionManager) {
         this.userGameStateMapper = userGameStateMapper;
         this.userStockStateMapper = userStockStateMapper;
@@ -109,6 +112,7 @@ public class MarketStateService {
         this.userEraMapper = userEraMapper;
         this.userScriptDayMapper = userScriptDayMapper;
         this.quoteBoardRegistry = quoteBoardRegistry;
+        this.haltService = haltService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
@@ -326,8 +330,13 @@ public class MarketStateService {
                 case RESCUE -> board.getShocks().enqueue(new PriceShock(0L, true,
                         0.02 + 0.02 * WorldRandom.of(worldSeed, "rescue" + newDay).nextDouble(),
                         1, PriceShock.Decay.ONCE));
-                case SANCTION -> forceSealStock(userId, board,
-                        params.get("targetStockId").asLong(), SealState.DOWN);
+                case SANCTION -> {
+                    long ts = params.get("targetStockId").asLong();
+                    forceSealStock(userId, board, ts, SealState.DOWN);
+                    // 制裁闪崩 → 当日在跌停封死并停牌 1~3 天 → 复牌补跌（盐 "halt"+day 单个 int 确定性）
+                    int days = 1 + WorldRandom.of(worldSeed, "halt" + newDay).nextInt(3);
+                    haltService.haltForDays(userId, board, ts, newDay, days);
+                }
                 case CRASH_WEEK -> sealCrashSectors(userId, board);
                 case CIRCUIT_BREAKER -> applyCircuitBreakerOpen(userId, board, newDay, worldSeed);
                 case IPO -> {
