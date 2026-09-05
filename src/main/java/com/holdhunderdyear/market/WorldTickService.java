@@ -17,6 +17,7 @@ import com.holdhunderdyear.market.mapper.UserGameStateMapper;
 import com.holdhunderdyear.market.mapper.UserStockStateMapper;
 import com.holdhunderdyear.market.quote.Quote;
 import com.holdhunderdyear.market.quote.QuoteBoard;
+import com.holdhunderdyear.trade.MarginService;
 import com.holdhunderdyear.world.WorldRandom;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -57,6 +58,7 @@ public class WorldTickService {
     private final SettlementService settlementService;
     private final UserGameStateMapper userGameStateMapper;
     private final UserStockStateMapper userStockStateMapper;
+    private final MarginService marginService;
     private final TransactionTemplate transactionTemplate;
 
     private final VolatilityEngine volEngine = new VolatilityEngine();
@@ -68,12 +70,14 @@ public class WorldTickService {
                             SettlementService settlementService,
                             UserGameStateMapper userGameStateMapper,
                             UserStockStateMapper userStockStateMapper,
+                            MarginService marginService,
                             PlatformTransactionManager transactionManager) {
         this.quoteBoardRegistry = quoteBoardRegistry;
         this.marketStateService = marketStateService;
         this.settlementService = settlementService;
         this.userGameStateMapper = userGameStateMapper;
         this.userStockStateMapper = userStockStateMapper;
+        this.marginService = marginService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
@@ -167,6 +171,11 @@ public class WorldTickService {
             }
 
             board.setTickIndex(tick + 1);
+
+            // 盘中担保检查（追保/强平/爆仓，spec §6.4）：爆仓立即返回，不再推进 45/90 边界
+            if (marginService.intradayCheck(userId, gs, board)) {
+                return;
+            }
 
             if (tick + 1 == GameConstants.TICKS_PER_SESSION && state == MarketState.MORNING_OPEN) {
                 persistSnapshot(userId, board, gs);

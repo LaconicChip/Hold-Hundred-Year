@@ -22,6 +22,7 @@ import com.holdhunderdyear.market.mapper.UserPositionMapper;
 import com.holdhunderdyear.market.mapper.UserStockStateMapper;
 import com.holdhunderdyear.market.quote.Quote;
 import com.holdhunderdyear.market.quote.QuoteBoard;
+import com.holdhunderdyear.trade.MarginService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,10 +34,11 @@ import java.util.Map;
 
 /**
  * 收盘结算器（spec §3 结算 12 步）：由 WorldTickService 在世界锁+事务内调用，自身不加锁。
- * 落地范围：prev_close 双写、T+1 解冻、连板统计与三连板停牌核查、融资计息与追保警告、
+ * 落地范围：prev_close 双写、T+1 解冻、连板统计与三连板停牌核查、融资计息、
  * 日收益评价与每日快照、段位评定、OHL 重置、状态落位。
- * <p>边界：步骤①当前价快照由 WorldTickService.persistSnapshot 完成；强平与 BANKRUPT（Phase 7）、
- * 5 日 4 板与异动公告（Phase 8）、打新/除权（Phase 9）均不做；步骤⑩不掷盘后消息，
+ * <p>边界：步骤①当前价快照由 WorldTickService.persistSnapshot 完成；追保/强平/爆仓
+ * 委托 MarginService 执行（settleCheck，爆仓时快照留痕后短路）；5 日 4 板与异动公告
+ * （Phase 8）、打新/除权（Phase 9）均不做；步骤⑩不掷盘后消息，
  * gap_pct 保持 0——无消息则次日无跳空是正确行为。
  */
 @Service
@@ -57,6 +59,7 @@ public class SettlementService {
     private final UserDailySnapshotMapper userDailySnapshotMapper;
     private final UserMessageMapper userMessageMapper;
     private final QuoteBoardRegistry quoteBoardRegistry;
+    private final MarginService marginService;
 
     public SettlementService(UserGameStateMapper userGameStateMapper,
                              UserStockStateMapper userStockStateMapper,
@@ -65,7 +68,8 @@ public class SettlementService {
                              LoanRecordMapper loanRecordMapper,
                              UserDailySnapshotMapper userDailySnapshotMapper,
                              UserMessageMapper userMessageMapper,
-                             QuoteBoardRegistry quoteBoardRegistry) {
+                             QuoteBoardRegistry quoteBoardRegistry,
+                             MarginService marginService) {
         this.userGameStateMapper = userGameStateMapper;
         this.userStockStateMapper = userStockStateMapper;
         this.userPositionMapper = userPositionMapper;
@@ -74,6 +78,7 @@ public class SettlementService {
         this.userDailySnapshotMapper = userDailySnapshotMapper;
         this.userMessageMapper = userMessageMapper;
         this.quoteBoardRegistry = quoteBoardRegistry;
+        this.marginService = marginService;
     }
 
     /**
@@ -102,14 +107,25 @@ public class SettlementService {
         List<UserPosition> positions = unfreezeT1(userId);
         // 步骤⑤：融资计息（spec §6.4 权威口径：日利率 = 年化 8% / 36）
         SysUser user = sysUserMapper.selectById(userId);
-        BigDecimal debt = accrueInterest(userId, user, day);
+        accrueInterest(userId, user, day);
 
+        // 步骤⑤续：追保 + 强平 + 爆仓（MarginService 在调用方事务内原地改账，强平会改
+        // 余额/负债/持仓，其后必须重算口径再评价与快照）
+        boolean bankrupt = marginService.settleCheck(userId, gs, user, positions, board);
         BigDecimal cash = user.getBalance();
+        BigDecimal debt = user.getDebt() != null ? user.getDebt() : BigDecimal.ZERO;
         BigDecimal marketValue = marketValue(positions, stateByStock);
         BigDecimal netAsset = cash.add(marketValue).subtract(debt);
 
-        // 步骤⑤续：追保警告（强平属 Phase 7，此处只推警告）
-        warnMarginCall(userId, day, cash, marketValue, debt);
+        if (bankrupt) {
+            // 爆仓终局（spec §6.4）：快照留痕后短路，跳过日收益评价/段位评定/状态落位
+            double indexDayPct = indexDayPct(userId, day, gs);
+            double dayReturnPct = dayReturnPctOf(gs, netAsset);
+            insertSnapshot(userId, day, gs, cash, marketValue, debt, netAsset, dayReturnPct, indexDayPct);
+            gs.setPrevTotalAsset(netAsset);
+            userGameStateMapper.updateById(gs);
+            return;
+        }
         // 步骤⑥：日收益评价（首日 prevTotalAsset 为空按初始资金 10 万基准）
         double indexDayPct = indexDayPct(userId, day, gs);
         double dayReturnPct = notifyDailyReview(userId, day, gs, netAsset, indexDayPct);
@@ -186,11 +202,11 @@ public class SettlementService {
         return positions;
     }
 
-    /** 步骤⑤：对正负债计提当日利息并落 INTEREST 流水，返回计息后负债（空负债按 0）。 */
-    private BigDecimal accrueInterest(long userId, SysUser user, int day) {
+    /** 步骤⑤：对正负债计提当日利息并落 INTEREST 流水（空负债跳过）。 */
+    private void accrueInterest(long userId, SysUser user, int day) {
         BigDecimal debt = user.getDebt();
         if (debt == null || debt.compareTo(BigDecimal.ZERO) <= 0) {
-            return BigDecimal.ZERO;
+            return;
         }
         BigDecimal interest = debt.multiply(BigDecimal.valueOf(GameConstants.ANNUAL_INTEREST))
                 .divide(BigDecimal.valueOf(GameConstants.DAYS_PER_YEAR), 2, RoundingMode.HALF_UP);
@@ -204,7 +220,6 @@ public class SettlementService {
         record.setDebtAfter(debt);
         record.setGameDay(day);
         loanRecordMapper.insert(record);
-        return debt;
     }
 
     /** 收盘总市值：收盘价 × 持股数求和。 */
@@ -217,17 +232,6 @@ public class SettlementService {
         return marketValue;
     }
 
-    /** 步骤⑤续：维持担保比例 = (现金+市值)/负债 低于追保线时推警告（BigDecimal 判界，规避双精度误差）。 */
-    private void warnMarginCall(long userId, int day, BigDecimal cash, BigDecimal marketValue, BigDecimal debt) {
-        if (debt.compareTo(BigDecimal.ZERO) > 0
-                && cash.add(marketValue).compareTo(
-                        debt.multiply(BigDecimal.valueOf(GameConstants.MARGIN_CALL_RATIO))) < 0) {
-            notify(userId, day, "追保通知",
-                    "维持担保比例已低于 " + percentText(GameConstants.MARGIN_CALL_RATIO)
-                            + "%，请补充担保物或偿还负债。", null);
-        }
-    }
-
     /** 指数日涨跌幅：昨收指数取前日快照，无前日快照按 INITIAL_INDEX 基期（spec §3 结算⑥）。 */
     private double indexDayPct(long userId, int day, UserGameState gs) {
         UserDailySnapshot prevSnapshot = userDailySnapshotMapper.selectOne(
@@ -238,11 +242,16 @@ public class SettlementService {
         return (gs.getIndexValue() / prevIndex - 1) * 100;
     }
 
-    /** 步骤⑥：日收益评价并推消息，返回日收益率。 */
-    private double notifyDailyReview(long userId, int day, UserGameState gs, BigDecimal netAsset, double indexDayPct) {
+    /** 日收益率：昨净资产取 prevTotalAsset，首日为空按初始资金 10 万基准。 */
+    private static double dayReturnPctOf(UserGameState gs, BigDecimal netAsset) {
         BigDecimal prevTotal = gs.getPrevTotalAsset() != null
                 ? gs.getPrevTotalAsset() : BigDecimal.valueOf(GameConstants.INITIAL_BALANCE);
-        double dayReturnPct = (netAsset.doubleValue() / prevTotal.doubleValue() - 1) * 100;
+        return (netAsset.doubleValue() / prevTotal.doubleValue() - 1) * 100;
+    }
+
+    /** 步骤⑥：日收益评价并推消息，返回日收益率。 */
+    private double notifyDailyReview(long userId, int day, UserGameState gs, BigDecimal netAsset, double indexDayPct) {
+        double dayReturnPct = dayReturnPctOf(gs, netAsset);
         notify(userId, day, "日收益评价",
                 "今日净资产 " + money(netAsset) + " 元，收益率 " + pct(dayReturnPct) + "%；大盘 "
                         + pct(indexDayPct) + "%，您" + (dayReturnPct >= indexDayPct ? "跑赢" : "跑输")
@@ -307,12 +316,6 @@ public class SettlementService {
                             + pct(dayReturnPct) + "%。",
                     null);
         }
-    }
-
-    /** 比例转百分比文本（1.4 → "140"），文案由常量派生。 */
-    private static String percentText(double ratio) {
-        return BigDecimal.valueOf(ratio).multiply(BigDecimal.valueOf(100))
-                .stripTrailingZeros().toPlainString();
     }
 
     /** 金额格式化：2 位 HALF_UP，规避 Locale 分组符。 */
