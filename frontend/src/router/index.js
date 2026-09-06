@@ -19,6 +19,12 @@ const routes = [
     path: '/stock/:id',
     name: 'stock-detail',
     component: () => import('../views/StockDetail.vue')
+  },
+  // 资产持仓页（Task 12.4）
+  {
+    path: '/assets',
+    name: 'assets',
+    component: () => import('../views/Assets.vue')
   }
 ]
 
