@@ -1,0 +1,307 @@
+/* =========================================================
+   《你持有一百年看看》设计令牌与通用工具类
+   唯一权威来源：docs/design/style-tile.html 的 :root 与 <style>
+   漫画贴纸风：墨色硬描边 + 硬阴影；红涨绿跌；全站无 emoji
+   ========================================================= */
+
+:root {
+  /* ---------- 色彩令牌 ---------- */
+  --paper: #f6f1e7;
+  --card: #fffdf7;
+  --ink: #2b2620;
+  --ink-2: #6f675c;
+  --ink-3: #a89f91;
+  --up: #ef3b3b;   /* 涨·红 */
+  --down: #12a150; /* 跌·绿 */
+  --brand: #ff2436;
+  --orange: #ff652b;
+  --yellow: #ffc53d;
+  --seal: #d93025;
+  --blue: #3a7bd5;
+
+  /* ---------- 形状与阴影 ---------- */
+  --radius: 14px;
+  --border: 2px solid var(--ink);
+  --shadow: 3px 3px 0 var(--ink);
+
+  /* ---------- 字体 ---------- */
+  --font-body: "PingFang SC", "Microsoft YaHei", 微软雅黑, sans-serif;
+  --font-fun: "ZCOOL KuaiLe", "PingFang SC", "Microsoft YaHei", sans-serif;
+
+  /* ---------- Element Plus 主题覆盖（尽量贴近贴纸风） ---------- */
+  --el-color-primary: #ff2436;
+  --el-border-radius-base: 14px;
+}
+
+/* ---------- 基础重置 ---------- */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* ---------- 页面底纹：纸点纹理 ---------- */
+body {
+  background-color: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
+  background-image: radial-gradient(#e6dcc8 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* ---------- 标题（站酷快乐体） ---------- */
+h1 {
+  font-family: var(--font-fun);
+  font-size: 34px;
+  letter-spacing: 1px;
+}
+h2 {
+  font-family: var(--font-fun);
+  font-size: 22px;
+  margin: 36px 0 14px;
+}
+
+/* ---------- 数字 / 涨跌 ---------- */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.up {
+  color: var(--up);
+}
+.down {
+  color: var(--down);
+}
+
+/* ---------- 卡片 ---------- */
+.card {
+  background: var(--card);
+  border: var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px;
+}
+
+/* ---------- 按钮（胶囊 + 硬阴影） ---------- */
+.btn {
+  font-family: var(--font-fun);
+  font-size: 17px;
+  border: var(--border);
+  border-radius: 999px;
+  padding: 9px 22px;
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+  cursor: pointer;
+  transition: 0.08s;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 var(--ink);
+}
+.btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--ink);
+}
+.btn-primary {
+  background: var(--brand);
+  color: #fff;
+}
+.btn-warn {
+  border-color: var(--orange);
+  color: var(--orange);
+}
+.btn-lg {
+  font-size: 21px;
+  padding: 12px 30px;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---------- 贴纸 / 徽章 ---------- */
+.sticker {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  padding: 1px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 2px 2px 0 var(--ink);
+  transform: rotate(-2deg);
+}
+.st-st {
+  background: var(--orange);
+  color: #fff;
+}
+.st-halt {
+  background: var(--yellow);
+  color: var(--ink);
+  transform: rotate(-6deg);
+}
+
+/* ---------- 印章 ---------- */
+.seal {
+  width: 52px;
+  height: 52px;
+  border: 3px solid var(--seal);
+  color: var(--seal);
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-fun);
+  font-size: 15px;
+  transform: rotate(-12deg);
+  opacity: 0.92;
+  line-height: 1.1;
+  text-align: center;
+  background: #fffdf7;
+}
+.seal.broken {
+  border-color: #999;
+  color: #999;
+  text-decoration: line-through;
+}
+.seal-mini {
+  width: 34px;
+  height: 34px;
+  border-width: 2px;
+  font-size: 11px;
+}
+
+/* ---------- 纪元旗帜 ---------- */
+.era-flag {
+  font-family: var(--font-fun);
+  font-size: 14px;
+  padding: 4px 12px;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  box-shadow: 2px 2px 0 var(--ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.era-bull {
+  background: #ffd9d4;
+}
+.era-bear {
+  background: #d6f0df;
+}
+.era-shock {
+  background: #d9d4cc;
+}
+.era-bull .ic {
+  color: var(--up);
+}
+.era-bear .ic {
+  color: var(--down);
+}
+
+/* ---------- 段位徽章 ---------- */
+.tier {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.tier .badge {
+  font-family: var(--font-fun);
+  font-size: 16px;
+  padding: 6px 18px;
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+  box-shadow: 3px 3px 0 var(--ink);
+}
+.tier.retail .badge {
+  background: #e8e0cf;
+}
+.tier.middle .badge {
+  background: #f2c8a0;
+}
+.tier.big .badge {
+  background: #c9d8f0;
+}
+.tier.hot .badge {
+  background: #e8c9f0;
+}
+.tier.master .badge {
+  background: var(--yellow);
+}
+
+/* ---------- 通用图标（SVG） ---------- */
+.ic {
+  width: 1.1em;
+  height: 1.1em;
+  display: inline-block;
+  vertical-align: -0.18em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ic-fill {
+  fill: currentColor;
+  stroke: none;
+}
+.ic-bull {
+  color: var(--up);
+}
+.ic-bear {
+  color: var(--down);
+}
+.ic-lg {
+  width: 1.5em;
+  height: 1.5em;
+  vertical-align: -0.25em;
+}
+
+/* =========================================================
+   Element Plus 主题覆盖（贴纸风）
+   ========================================================= */
+/* 卡片：墨色硬描边 + 硬阴影 */
+.el-card {
+  background: var(--card);
+  border: var(--border) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow) !important;
+}
+/* 按钮：胶囊 + 硬阴影 */
+.el-button {
+  border-radius: 999px !important;
+  border: var(--border) !important;
+  box-shadow: 2px 2px 0 var(--ink);
+  font-family: var(--font-fun);
+  transition: 0.08s;
+}
+.el-button:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--ink);
+}
+.el-button:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--ink);
+}
+/* 弹窗：墨色硬描边 + 硬阴影 */
+.el-dialog {
+  border: var(--border) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow) !important;
+}
+.el-dialog__header {
+  font-family: var(--font-fun);
+}
+/* 输入框圆角贴合 */
+.el-input__wrapper,
+.el-textarea__inner {
+  border-radius: 999px !important;
+}
