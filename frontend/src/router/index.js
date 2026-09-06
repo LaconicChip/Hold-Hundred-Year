@@ -13,6 +13,12 @@ const routes = [
     path: '/market',
     name: 'market',
     component: () => import('../views/Market.vue')
+  },
+  // 个股详情页（Task 12.3）：id 为 stockId（1..24）
+  {
+    path: '/stock/:id',
+    name: 'stock-detail',
+    component: () => import('../views/StockDetail.vue')
   }
 ]
 
