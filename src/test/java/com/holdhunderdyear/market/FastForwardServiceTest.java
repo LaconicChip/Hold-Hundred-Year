@@ -2,12 +2,16 @@ package com.holdhunderdyear.market;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhunderdyear.market.entity.UserDailySnapshot;
+import com.holdhunderdyear.market.entity.UserEra;
 import com.holdhunderdyear.market.entity.UserGameState;
 import com.holdhunderdyear.market.entity.UserMessage;
+import com.holdhunderdyear.market.entity.UserScriptDay;
 import com.holdhunderdyear.market.entity.UserStockState;
 import com.holdhunderdyear.market.mapper.UserDailySnapshotMapper;
+import com.holdhunderdyear.market.mapper.UserEraMapper;
 import com.holdhunderdyear.market.mapper.UserGameStateMapper;
 import com.holdhunderdyear.market.mapper.UserMessageMapper;
+import com.holdhunderdyear.market.mapper.UserScriptDayMapper;
 import com.holdhunderdyear.market.mapper.UserStockStateMapper;
 import com.holdhunderdyear.world.WorldSeeder;
 import org.junit.jupiter.api.Test;
@@ -41,6 +45,8 @@ class FastForwardServiceTest {
     @Autowired private UserStockStateMapper userStockStateMapper;
     @Autowired private UserMessageMapper userMessageMapper;
     @Autowired private UserDailySnapshotMapper userDailySnapshotMapper;
+    @Autowired private UserEraMapper userEraMapper;
+    @Autowired private UserScriptDayMapper userScriptDayMapper;
 
     @Test
     void skipRunsIntradayDayStraightToClose() {
@@ -123,11 +129,9 @@ class FastForwardServiceTest {
 
     @Test
     void skipReproducesTheSameWorldAsManualTicking() {
-        long userIdA = worldSeeder.seedUser("ff_eqa1", "$2a$10$bcrypthash");
-        long userIdB = worldSeeder.seedUser("ff_eqb1", "$2a$10$bcrypthash");
         long fixedSeed = 20260904L;
-        setWorldSeed(userIdA, fixedSeed);
-        setWorldSeed(userIdB, fixedSeed);
+        long userIdA = seedWithFixedSeed("ff_eqa1", fixedSeed);
+        long userIdB = seedWithFixedSeed("ff_eqb1", fixedSeed);
 
         marketStateService.startDay(userIdA);
         for (int i = 0; i < 45; i++) {
@@ -163,6 +167,28 @@ class FastForwardServiceTest {
         assertEquals(messagesOf(userIdA), messagesOf(userIdB), "same seed worlds must deliver the same messages");
         assertEquals(snapshotsOf(userIdA), snapshotsOf(userIdB),
                 "same seed worlds must settle to identical daily snapshots");
+    }
+
+    /**
+     * 用固定种子重播种一个用户的完整世界：seedUser 以随机种子建号（其日程随机）；
+     * 等价性对比要求两用户的世界（含脚本日/IPO 日程）完全一致，故删除该用户的随机种子
+     * 游戏数据后从固定种子重建（复用生产播种器 seedWorld），再同步 game_state.world_seed。
+     */
+    private long seedWithFixedSeed(String username, long worldSeed) {
+        long userId = worldSeeder.seedUser(username, "$2a$10$bcrypthash");
+        userStockStateMapper.delete(new LambdaQueryWrapper<UserStockState>()
+                .eq(UserStockState::getUserId, userId));
+        userEraMapper.delete(new LambdaQueryWrapper<UserEra>()
+                .eq(UserEra::getUserId, userId));
+        userScriptDayMapper.delete(new LambdaQueryWrapper<UserScriptDay>()
+                .eq(UserScriptDay::getUserId, userId));
+        userDailySnapshotMapper.delete(new LambdaQueryWrapper<UserDailySnapshot>()
+                .eq(UserDailySnapshot::getUserId, userId));
+        worldSeeder.seedWorld(userId, worldSeed);
+        UserGameState gs = gameState(userId);
+        gs.setWorldSeed(worldSeed);
+        userGameStateMapper.updateById(gs);
+        return userId;
     }
 
     private UserGameState gameState(long userId) {

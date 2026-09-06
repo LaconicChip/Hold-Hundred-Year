@@ -28,6 +28,7 @@ import com.holdhunderdyear.market.mapper.UserScriptDayMapper;
 import com.holdhunderdyear.market.mapper.UserStockStateMapper;
 import com.holdhunderdyear.market.quote.Quote;
 import com.holdhunderdyear.market.quote.QuoteBoard;
+import com.holdhunderdyear.trade.IpoService;
 import com.holdhunderdyear.world.EraScheduler;
 import com.holdhunderdyear.world.WorldRandom;
 import org.springframework.stereotype.Service;
@@ -60,6 +61,8 @@ import java.util.stream.Collectors;
  * <p>开盘还依次完成（spec §4.3/§4.4）：当日上下文写入（纪元/体制/熔断标记）、
  * 停牌复牌补跌、反向意外日掷点、剧本日强制行为（千股涨停/跌停钉板、救市全市场冲击、
  * 制裁闪崩钉跌停、黑7月按板块钉板；熔断日开盘补强 −6%~−8% 跳空；IPO 开盘无行为）。
+ * 此外在 setCurrentEra 之后、状态落库前调用 {@link IpoService#onDayOpen} 处理打新时序
+ * （申购通知/中签缴款/上市结算，盐独立于行情）。
  * 全部随机性经 WorldRandom.of(worldSeed, salt)，盐与消费顺序固定（同 seed 同日必得同结果）：
  * <ul>
  *   <li>"gap"+day：隔夜跳空（每股按 stockId 升序经 SealMachine，一字板时消费封板时长 int）；</li>
@@ -94,6 +97,7 @@ public class MarketStateService {
     private final UserScriptDayMapper userScriptDayMapper;
     private final QuoteBoardRegistry quoteBoardRegistry;
     private final HaltService haltService;
+    private final IpoService ipoService;
     private final SealMachine sealMachine = new SealMachine();
     private final IndexCalculator indexCalculator = new IndexCalculator();
     private final TransactionTemplate transactionTemplate;
@@ -105,6 +109,7 @@ public class MarketStateService {
                               UserScriptDayMapper userScriptDayMapper,
                               QuoteBoardRegistry quoteBoardRegistry,
                               HaltService haltService,
+                              IpoService ipoService,
                               PlatformTransactionManager transactionManager) {
         this.userGameStateMapper = userGameStateMapper;
         this.userStockStateMapper = userStockStateMapper;
@@ -113,6 +118,7 @@ public class MarketStateService {
         this.userScriptDayMapper = userScriptDayMapper;
         this.quoteBoardRegistry = quoteBoardRegistry;
         this.haltService = haltService;
+        this.ipoService = ipoService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
@@ -233,6 +239,7 @@ public class MarketStateService {
             resumeHaltedStocks(userId, board, newDay, worldSeed);
             board.setReverseDay(WorldRandom.of(worldSeed, "reverse" + newDay).nextDouble() < 0.08);
             applyScriptDayBehaviors(userId, board, scriptDays, newDay, worldSeed);
+            ipoService.onDayOpen(userId, gameState, board, newDay);
         } finally {
             board.getLock().unlock();
         }
