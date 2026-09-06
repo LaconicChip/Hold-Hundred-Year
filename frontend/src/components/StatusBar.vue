@@ -185,20 +185,18 @@ async function onSkip() {
   }
   try {
     const summary = await market.skip() // DailySummaryDTO
-    emit('skipped', summary) // 由 Market.vue 弹简版晚报窗（Task 12.5 替换为正式晚报组件）
+    emit('skipped', summary) // 由 Market.vue 跳转收盘晚报页
   } catch (e) {
     ElMessage.error(e?.message || '跳过失败')
   }
 }
 
 function onBell() {
-  // 消息中心路由 Task 12.5 建立，路由不存在时静默忽略
-  router.push('/messages').catch(() => {})
+  router.push('/messages')
 }
 
 function onViewResult() {
-  // 终局结算路由 Task 12.5 建立，路由不存在时静默忽略
-  router.push('/result').catch(() => {})
+  router.push('/result')
 }
 </script>
 

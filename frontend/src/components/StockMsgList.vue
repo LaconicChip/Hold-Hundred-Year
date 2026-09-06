@@ -23,6 +23,16 @@
 <script setup>
 import { computed } from 'vue'
 import { useMessagesStore } from '@/stores/messages'
+import {
+  SRC_LABEL,
+  SRC_CLS,
+  srcLabel,
+  srcCls,
+  TRUTH_LABEL,
+  TRUTH_CLS,
+  truthLabel,
+  truthCls
+} from '@/constants/messageMeta'
 
 const props = defineProps({
   stockId: { type: Number, required: true }
@@ -35,50 +45,7 @@ const messages = computed(() =>
   messagesStore.list.filter((m) => m.stockId === props.stockId)
 )
 
-// 来源枚举 -> 中文标签
-const SRC_LABEL = {
-  AUTHORITY: '权威公告',
-  MEDIA: '财经媒体',
-  RUMOR: '股吧传闻',
-  INSIDER: '神秘内幕',
-  FUN: '玩梗',
-  NPC: '营业部',
-  SYSTEM: '系统'
-}
-// 来源枚举 -> 样式类（令牌色：红/黄/灰/紫/绿/蓝）
-const SRC_CLS = {
-  AUTHORITY: 'src-auth',
-  MEDIA: 'src-media',
-  RUMOR: 'src-rumor',
-  INSIDER: 'src-insider',
-  FUN: 'src-fun',
-  NPC: 'src-npc',
-  SYSTEM: 'src-system'
-}
-function srcLabel(s) {
-  return SRC_LABEL[s] || s || '消息'
-}
-function srcCls(s) {
-  return SRC_CLS[s] || 'src-system'
-}
-
-// 三态枚举 -> 中文标签
-const TRUTH_LABEL = {
-  PENDING: '未证实',
-  CONFIRMED: '已证实',
-  DENIED: '已辟谣'
-}
-const TRUTH_CLS = {
-  PENDING: 'tr-pending',
-  CONFIRMED: 'tr-confirmed',
-  DENIED: 'tr-denied'
-}
-function truthLabel(t) {
-  return TRUTH_LABEL[t] || t || ''
-}
-function truthCls(t) {
-  return TRUTH_CLS[t] || 'tr-pending'
-}
+// 来源标签 / 三态徽章定义统一来自 messageMeta.js（与消息中心保持一致）
 </script>
 
 <style scoped>

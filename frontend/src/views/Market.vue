@@ -9,7 +9,7 @@
       </div>
     </header>
 
-    <!-- 终局横幅（BANKRUPT / FINISHED 区分文案；/result 路由 Task 12.5 建立，先不跳） -->
+    <!-- 终局横幅（BANKRUPT / FINISHED 区分文案） -->
     <div v-if="market.isEnded" class="card end-banner">
       <div class="end-title">
         {{ market.marketState === 'BANKRUPT' ? '本局已爆仓' : '本局已通关' }}
@@ -28,27 +28,6 @@
 
     <!-- 打新弹窗（监听通知自动弹出） -->
     <IpoDialog />
-
-    <!-- 简版收盘晚报（Task 12.5 替换为正式晚报组件） -->
-    <el-dialog v-model="summaryVisible" title="收盘晚报" width="420px">
-      <div v-if="summary" class="summary-body">
-        <div class="summary-row">
-          <span class="lab">你的日收益</span>
-          <span class="num" :class="pctCls(summary.dayReturnPct)">{{ fmtPct(summary.dayReturnPct) }}</span>
-        </div>
-        <div class="summary-row">
-          <span class="lab">百年指数</span>
-          <span class="num" :class="pctCls(summary.indexDayPct)">{{ fmtPct(summary.indexDayPct) }}</span>
-        </div>
-        <div class="summary-comment">
-          <span class="lab">今日点评</span>
-          <p>{{ summary.comment }}</p>
-        </div>
-      </div>
-      <template #footer>
-        <button class="btn btn-primary" @click="summaryVisible = false">收下</button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -72,8 +51,6 @@ const market = useMarketStore()
 const quotes = useQuotesStore()
 const messages = useMessagesStore()
 
-const summaryVisible = ref(false)
-const summary = ref(null)
 let pollTimer = null
 
 function onLogout() {
@@ -81,24 +58,15 @@ function onLogout() {
   router.push('/login')
 }
 
-// 跳过成功后由 StatusBar 抛出 DailySummaryDTO，弹简版晚报窗
+// 跳过成功后由 StatusBar 抛出 DailySummaryDTO，跳转正式收盘晚报页
 function onSkipped(s) {
-  summary.value = s
-  summaryVisible.value = true
+  const gameDay = s && s.gameDay
+  router.push({ path: '/summary', query: gameDay ? { gameDay } : {} })
 }
 
-// 终局结算路由 Task 12.5 建立，先不跳（占位）
+// 终局横幅 -> 终局结算页
 function viewResult() {
-  // router.push('/result').catch(() => {})
-}
-
-function pctCls(v) {
-  return v > 0 ? 'up' : v < 0 ? 'down' : 'flat'
-}
-function fmtPct(v) {
-  const n = +v
-  if (!n) return '0.00%'
-  return (n > 0 ? '+' : '') + n.toFixed(2) + '%'
+  router.push('/result')
 }
 
 onMounted(async () => {
@@ -160,30 +128,5 @@ onUnmounted(() => {
 .end-title {
   font-family: var(--font-fun);
   font-size: 22px;
-}
-.summary-body {
-  font-size: 15px;
-}
-.summary-row {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  margin: 6px 0;
-}
-.summary-row .lab,
-.summary-comment .lab {
-  color: var(--ink-2);
-  font-weight: 700;
-  white-space: nowrap;
-}
-.summary-comment {
-  margin-top: 12px;
-}
-.summary-comment p {
-  margin-top: 4px;
-  line-height: 1.7;
-}
-.flat {
-  color: var(--ink);
 }
 </style>

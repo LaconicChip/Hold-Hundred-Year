@@ -25,6 +25,30 @@ const routes = [
     path: '/assets',
     name: 'assets',
     component: () => import('../views/Assets.vue')
+  },
+  // 消息中心（Task 12.5）
+  {
+    path: '/messages',
+    name: 'messages',
+    component: () => import('../views/Messages.vue')
+  },
+  // 营业部排行榜（Task 12.5）
+  {
+    path: '/leaderboard',
+    name: 'leaderboard',
+    component: () => import('../views/Leaderboard.vue')
+  },
+  // 收盘晚报（Task 12.5），支持 ?gameDay=N
+  {
+    path: '/summary',
+    name: 'summary',
+    component: () => import('../views/DailySummary.vue')
+  },
+  // 终局结算（Task 12.5）
+  {
+    path: '/result',
+    name: 'result',
+    component: () => import('../views/GameResult.vue')
   }
 ]
 

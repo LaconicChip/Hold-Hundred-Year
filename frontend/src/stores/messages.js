@@ -21,10 +21,20 @@ export const useMessagesStore = defineStore('messages', {
 
   actions: {
     // 拉取消息列表（支持过滤条件透传）
+    // append=true 时仅追加 records（分页“加载更多”），不覆盖已有 list
     async fetchMessages(filters = {}) {
       const page = await fetchMessages(filters)
-      this.list = page.records || []
-      this.total = page.total || this.list.length
+      const records = page.records || []
+      if (filters.append) {
+        // 去重（按 id）后追加，避免重复条目
+        const seen = new Set(this.list.map((m) => m.id))
+        for (const m of records) {
+          if (!seen.has(m.id)) this.list.push(m)
+        }
+      } else {
+        this.list = records
+      }
+      this.total = page.total != null ? page.total : this.list.length
       return page
     },
 
