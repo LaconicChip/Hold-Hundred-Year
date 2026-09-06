@@ -62,7 +62,8 @@ export const useQuotesStore = defineStore('quotes', {
           // 记录旧值供闪烁动画
           prevCurrent: prev ? prev.current : q.current,
           current: q.current,
-          changePct: q.changePct
+          // 后端 changePct 为小数比率（0.0998 表示 +9.98%），此处统一转百分数
+          changePct: q.changePct * 100
         }
       })
     },
