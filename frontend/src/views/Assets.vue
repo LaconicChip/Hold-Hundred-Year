@@ -89,7 +89,10 @@
     <!-- 持仓表 -->
     <section class="card pos-card">
       <div class="card-title">我的持仓</div>
-      <div v-if="!positions.length" class="pos-empty">空仓中，牛小牛在吃草</div>
+      <div v-if="!positions.length" class="pos-empty">
+        <img :src="bullImg" class="empty-art" alt="牛小牛吉祥物" />
+        空仓中，牛小牛在吃草
+      </div>
       <table v-else class="pos-table">
         <thead>
           <tr>
@@ -166,7 +169,10 @@
     <!-- 108 天资产 vs 指数曲线 -->
     <section class="card curve-card">
       <div class="card-title">108 天资产 vs 百年指数</div>
-      <div v-if="!curveHasData" class="curve-empty">完成首个交易日后生成曲线</div>
+      <div v-if="!curveHasData" class="curve-empty">
+        <img :src="pandaImg" class="empty-art" alt="熊猫吉祥物" />
+        完成首个交易日后生成曲线
+      </div>
       <VChart v-else class="curve" :option="curveOption" :autoresize="true" />
     </section>
 
@@ -202,6 +208,8 @@ import TierBadge from '@/components/TierBadge.vue'
 import StickerTag from '@/components/StickerTag.vue'
 import SvgIcon from '@/components/SvgIcon.vue'
 import { ElMessage } from 'element-plus'
+import bullImg from '@/assets/img/bull.png'
+import pandaImg from '@/assets/img/panda.png'
 
 // 按需注册 ECharts 模块（与 StockChart 一致）
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent])
@@ -648,6 +656,16 @@ onMounted(loadAll)
   font-size: 14px;
   padding: 16px 4px;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.empty-art {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  display: block;
 }
 .pos-table {
   width: 100%;
@@ -757,8 +775,10 @@ onMounted(loadAll)
 .curve-empty {
   height: 340px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 10px;
   color: var(--ink-3);
   font-size: 15px;
 }

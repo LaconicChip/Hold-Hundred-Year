@@ -22,8 +22,9 @@
         </div>
       </section>
 
-      <!-- 爆仓：黑白漫画分镜 -->
+      <!-- 爆仓：黑白漫画分镜（页头上方加天台横幅） -->
       <section v-else class="comic">
+        <img :src="rooftopImg" class="comic-banner" alt="天台黑白漫画背景" />
         <div class="comic-head">
           <h1 class="comic-title">天台见</h1>
           <p class="comic-sub">
@@ -118,6 +119,8 @@ import NpcAvatar from '@/components/NpcAvatar.vue'
 import SealStamp from '@/components/SealStamp.vue'
 import SvgIcon from '@/components/SvgIcon.vue'
 import { resolveNpcCode } from '@/constants/messageMeta'
+import certBg from '@/assets/img/certificate.png'
+import rooftopImg from '@/assets/img/rooftop.png'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart } from 'echarts/charts'
@@ -309,20 +312,22 @@ onMounted(load)
   padding: 40px 10px;
   text-align: center;
 }
-/* ---------- 通关奖状 ---------- */
+/* ---------- 通关奖状（Task 12.6：AI 奖状底图，红框与装饰章已在图内） ---------- */
 .cert {
-  background: #fbf3dd;
-  border: 4px double var(--seal);
+  background-image: v-bind('`url(${certBg})`');
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
   border-radius: 10px;
   box-shadow: var(--shadow);
-  padding: 14px;
+  padding: 26px;
 }
 .cert-inner {
   position: relative;
-  border: 2px solid var(--seal);
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 30px 26px 26px;
   text-align: center;
+  /* 半透明米白底，保证文字落在奖状留白区仍清晰可读 */
+  background: rgba(255, 253, 247, 0.72);
 }
 .cert-title {
   font-family: var(--font-fun);
@@ -371,6 +376,17 @@ onMounted(load)
   60% { transform: translate(-4px, -2px) rotate(-0.6deg); }
   80% { transform: translate(3px, 2px) rotate(0.6deg); }
   100% { transform: translate(0, 0) rotate(0deg); }
+}
+/* 天台横幅：整页 grayscale 已生效，无需额外滤镜 */
+.comic-banner {
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+  display: block;
+  border: 3px solid var(--ink);
+  border-radius: 8px;
+  box-shadow: 3px 3px 0 var(--ink);
+  margin-bottom: 14px;
 }
 .comic-head {
   background: var(--card);

@@ -1,12 +1,9 @@
 <template>
   <div class="login-page">
     <div class="card login-scene">
-      <!-- 大门视觉区：当前用 SVG 图标 bank 占位（约 110px，同 style-tile 的 i-bank）
-           替换点（Task 12.6）：将下方 SvgIcon 换成 AI 生成的营业部大门 PNG，例如：
-           <img class="bank-art" src="@/assets/bank-door.png" alt="百年证券营业部大门" />
-           保留 SvgIcon 作为兜底，避免图片缺失时空白。 -->
+      <!-- 大门视觉区：Task 12.6 已替换为 AI 生成的营业部大门 PNG（贴纸风描边阴影） -->
       <div class="bank-art">
-        <SvgIcon name="bank" :size="110" />
+        <img :src="bankDoor" class="bank-art-img" alt="百年证券营业部大门" />
       </div>
       <h1 class="title">百年证券营业部</h1>
       <p class="slogan">“你持有一百年看看，涨跌都算我的。”—— 门口大爷</p>
@@ -75,7 +72,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
-import SvgIcon from '@/components/SvgIcon.vue'
+import bankDoor from '@/assets/img/bank-door.png'
 
 const router = useRouter()
 const user = useUserStore()
@@ -149,16 +146,16 @@ async function onSubmit() {
   overflow: hidden;
 }
 
-/* 大门插画容器（SvgIcon 占位，未来替换为 bank-door.png） */
+/* 大门插画：约 200px 宽，墨色描边 + 12px 圆角 + 3px 硬阴影（贴纸风） */
 .bank-art {
-  width: 110px;
-  height: 110px;
   margin: 4px auto 14px;
-  color: var(--ink);
 }
-.bank-art :deep(svg) {
-  width: 110px;
-  height: 110px;
+.bank-art-img {
+  width: 200px;
+  display: block;
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+  box-shadow: 3px 3px 0 var(--ink);
 }
 
 .title {
