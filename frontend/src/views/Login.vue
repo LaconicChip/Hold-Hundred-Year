@@ -1,186 +1,236 @@
 <template>
-  <div class="login-wrap">
+  <div class="login-page">
     <div class="card login-scene">
-      <!-- 银行大门插画占位（AI 生成 PNG 位，先用 SVG 印章风格） -->
-      <div class="bank-art seal" style="border-color: var(--brand); color: var(--brand);">百年</div>
+      <!-- 大门视觉区：当前用 SVG 图标 bank 占位（约 110px，同 style-tile 的 i-bank）
+           替换点（Task 12.6）：将下方 SvgIcon 换成 AI 生成的营业部大门 PNG，例如：
+           <img class="bank-art" src="@/assets/bank-door.png" alt="百年证券营业部大门" />
+           保留 SvgIcon 作为兜底，避免图片缺失时空白。 -->
+      <div class="bank-art">
+        <SvgIcon name="bank" :size="110" />
+      </div>
       <h1 class="title">百年证券营业部</h1>
       <p class="slogan">“你持有一百年看看，涨跌都算我的。”—— 门口大爷</p>
-      <p class="dev-tip">登录页开发中</p>
-      <!-- 用设计令牌验证色块与字体 -->
-      <div class="flag-row">
-        <span class="era-flag era-bull">牛市</span>
-        <span class="era-flag era-bear">股灾</span>
-        <span class="sticker st-st">ST</span>
-        <span class="sticker st-halt">停牌</span>
+
+      <!-- 登录 / 注册 贴纸风分段切换，避免 el-tabs 默认样式违和 -->
+      <div class="tab-switch">
+        <button
+          type="button"
+          class="tab-btn"
+          :class="{ active: mode === 'login' }"
+          @click="mode = 'login'"
+        >
+          登录
+        </button>
+        <button
+          type="button"
+          class="tab-btn"
+          :class="{ active: mode === 'register' }"
+          @click="mode = 'register'"
+        >
+          注册
+        </button>
       </div>
-      <div class="num-row">
-        <span class="num up">88.48 +9.98%</span>
-        <span class="num down">7.52 -10.00%</span>
-        <span class="num">123,456.78</span>
-      </div>
-    </div>
 
-    <!-- 组件验收区：截图验收自制组件渲染（不新增页面） -->
-    <div class="card accept-area">
-      <h2 class="accept-title">组件验收区</h2>
+      <form class="login-form" @submit.prevent="onSubmit">
+        <input
+          v-model.trim="username"
+          class="input"
+          type="text"
+          autocomplete="username"
+          placeholder="用户名（老股民代号）"
+        />
+        <input
+          v-model="password"
+          class="input"
+          type="password"
+          autocomplete="current-password"
+          placeholder="密码"
+        />
+        <input
+          v-if="mode === 'register'"
+          v-model="confirmPwd"
+          class="input"
+          type="password"
+          autocomplete="new-password"
+          placeholder="确认密码"
+        />
 
-      <section class="accept-sec">
-        <h3>SvgIcon 全 10 个</h3>
-        <div class="row">
-          <span v-for="n in icons" :key="n" class="cell">
-            <SvgIcon :name="n" :size="30" />
-            <small>{{ n }}</small>
-          </span>
-        </div>
-      </section>
+        <!-- 页内红色提示（与 ElMessage 并存，便于快速反馈） -->
+        <p v-if="errText" class="err-text">{{ errText }}</p>
 
-      <section class="accept-sec">
-        <h3>StickerTag 三种</h3>
-        <div class="row">
-          <StickerTag type="st" text="ST 5%涨跌停" />
-          <StickerTag type="halt" text="小黑屋停牌" />
-          <StickerTag type="plain" text="普通标签" />
-        </div>
-      </section>
-
-      <section class="accept-sec">
-        <h3>SealStamp 正常 / 炸板 / mini</h3>
-        <div class="row">
-          <SealStamp text="封板" />
-          <SealStamp text="炸板" broken />
-          <SealStamp text="封板" mini />
-        </div>
-      </section>
-
-      <section class="accept-sec">
-        <h3>TierBadge 五档（横排）</h3>
-        <div class="row">
-          <TierBadge tier="RETAIL" />
-          <TierBadge tier="MIDDLE" />
-          <TierBadge tier="BIG" />
-          <TierBadge tier="HOTSHOT" />
-          <TierBadge tier="MASTER" />
-        </div>
-        <h4>竖排示例</h4>
-        <div class="row">
-          <TierBadge tier="MASTER" vertical sub="100万" />
-        </div>
-      </section>
-
-      <section class="accept-sec">
-        <h3>NpcAvatar 八位 NPC（当前缺图，走姓氏色块兜底）</h3>
-        <div class="row">
-          <div v-for="npc in npcs" :key="npc" class="cell">
-            <NpcAvatar :npc="npc" :size="44" />
-            <small>{{ npc }}</small>
-          </div>
-        </div>
-      </section>
+        <button
+          type="submit"
+          class="btn btn-primary btn-lg submit-btn"
+          :disabled="loading"
+        >
+          {{ loading ? '推门中…' : '推门进场' }}
+        </button>
+      </form>
     </div>
   </div>
 </template>
 
 <script setup>
-// 登录页占位组件：验收设计令牌 + 自制基础组件（Task 12.1 正式实现）
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { useUserStore } from '@/stores/user'
 import SvgIcon from '@/components/SvgIcon.vue'
-import StickerTag from '@/components/StickerTag.vue'
-import SealStamp from '@/components/SealStamp.vue'
-import TierBadge from '@/components/TierBadge.vue'
-import NpcAvatar from '@/components/NpcAvatar.vue'
 
-const icons = ['chart', 'play', 'skip', 'alert', 'bell', 'door', 'flame', 'bull', 'bear', 'bank']
-const npcs = ['DAMA', 'LAOWANG', 'LAOLI', 'CHIEF', 'JUSHI', 'LAOQIAN', 'XINJIMIN', 'CHENGXUYUAN']
+const router = useRouter()
+const user = useUserStore()
+
+const mode = ref('login')
+const username = ref('')
+const password = ref('')
+const confirmPwd = ref('')
+const loading = ref(false)
+const errText = ref('')
+
+// 已登录直达：进入登录页即跳大盘
+onMounted(() => {
+  if (user.isLoggedIn) {
+    router.replace('/market')
+  }
+})
+
+async function onSubmit() {
+  errText.value = ''
+
+  // 简单校验：用户名 / 密码非空、密码不少于 4 位
+  if (!username.value || !password.value) {
+    errText.value = '用户名和密码不能为空'
+    return
+  }
+  if (password.value.length < 4) {
+    errText.value = '密码至少需要 4 位'
+    return
+  }
+  if (mode.value === 'register' && password.value !== confirmPwd.value) {
+    errText.value = '两次输入的密码不一致'
+    return
+  }
+
+  loading.value = true
+  try {
+    if (mode.value === 'login') {
+      await user.login(username.value, password.value)
+    } else {
+      await user.register(username.value, password.value)
+    }
+    router.push('/market')
+  } catch (e) {
+    // 后端 400 业务错误（如“用户名已存在”“用户名或密码错误”）透传 msg
+    const msg = e && e.message ? e.message : '操作失败，请稍后再试'
+    errText.value = msg
+    ElMessage.error(msg)
+  } finally {
+    loading.value = false
+  }
+}
 </script>
 
 <style scoped>
-.login-wrap {
+.login-page {
   min-height: 100vh;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 20px;
   padding: 24px;
 }
+
+/* 营业部大门卡片：米白渐变底 + 墨色描边 + 硬阴影 + 14px 圆角（沿用 style-tile .login-scene） */
 .login-scene {
-  max-width: 520px;
+  max-width: 420px;
   width: 100%;
   text-align: center;
   background: linear-gradient(#fdf3dd, #f6ecd4);
   position: relative;
   overflow: hidden;
 }
+
+/* 大门插画容器（SvgIcon 占位，未来替换为 bank-door.png） */
 .bank-art {
-  width: 88px;
-  height: 88px;
-  font-size: 22px;
-  margin: 6px auto 14px;
+  width: 110px;
+  height: 110px;
+  margin: 4px auto 14px;
+  color: var(--ink);
 }
+.bank-art :deep(svg) {
+  width: 110px;
+  height: 110px;
+}
+
 .title {
   font-family: var(--font-fun);
+  font-size: 28px;
+  margin-bottom: 6px;
 }
 .slogan {
   color: var(--ink-2);
-  margin-top: 6px;
-}
-.dev-tip {
-  font-family: var(--font-fun);
-  font-size: 20px;
-  color: var(--brand);
-  margin: 18px 0;
-}
-.flag-row {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  justify-content: center;
-  margin-bottom: 14px;
-}
-.num-row {
-  display: flex;
-  gap: 18px;
-  flex-wrap: wrap;
-  justify-content: center;
-  font-size: 16px;
+  font-size: 13px;
+  margin-bottom: 18px;
 }
 
-/* 验收区 */
-.accept-area {
-  max-width: 720px;
-  width: 100%;
+/* 登录 / 注册 分段切换：贴纸风胶囊 */
+.tab-switch {
+  display: inline-flex;
+  border: var(--border);
+  border-radius: 999px;
+  background: #fffdf7;
+  box-shadow: 2px 2px 0 var(--ink);
+  padding: 3px;
+  margin: 0 auto 16px;
 }
-.accept-title {
-  font-family: var(--font-fun);
-  font-size: 22px;
-  margin: 0 0 6px;
-}
-.accept-sec {
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px dashed var(--ink-3);
-}
-.accept-sec h3 {
+.tab-btn {
   font-family: var(--font-fun);
   font-size: 16px;
-  margin-bottom: 8px;
+  border: none;
+  background: transparent;
+  color: var(--ink-2);
+  padding: 6px 22px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: 0.1s;
 }
-.accept-sec h4 {
+.tab-btn.active {
+  background: var(--brand);
+  color: #fff;
+  box-shadow: 2px 2px 0 var(--ink);
+}
+
+/* 表单：胶囊输入框（抄自 style-tile .input，墨色描边 + 白底） */
+.login-form {
+  margin: 0 auto;
+  max-width: 280px;
+  display: grid;
+  gap: 12px;
+}
+.input {
+  border: var(--border);
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-size: 14px;
+  background: #fff;
+  font-family: var(--font-body);
+  color: var(--ink);
+  outline: none;
+  width: 100%;
+}
+.input:focus {
+  box-shadow: 2px 2px 0 var(--ink);
+}
+
+.err-text {
+  color: var(--up);
   font-size: 13px;
-  color: var(--ink-2);
-  margin: 12px 0 6px;
+  text-align: left;
+  margin: -2px 4px 0;
 }
-.row {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-.cell {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--ink-2);
+
+.submit-btn {
+  justify-content: center;
+  margin-top: 4px;
+  width: 100%;
 }
 </style>

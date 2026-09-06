@@ -7,6 +7,12 @@ const routes = [
     path: '/login',
     name: 'login',
     component: () => import('../views/Login.vue')
+  },
+  // 占位路由：供登录后跳转验收（Task 12.2 正式实现大盘页）
+  {
+    path: '/market',
+    name: 'market',
+    component: () => import('../views/Market.vue')
   }
 ]
 
