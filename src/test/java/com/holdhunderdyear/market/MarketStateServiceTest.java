@@ -217,9 +217,12 @@ class MarketStateServiceTest {
 
         marketStateService.startDay(userId);
 
-        List<UserMessage> msgs = messages(userId);
-        assertEquals(1, msgs.size());
-        UserMessage msg = msgs.get(0);
+        // 第 1 日开盘必然推纪元叙事消息；此外若随机种子的打新申购日恰逢 day1，会多推一条
+        // "新股申购"通知（onDayOpen）。故按纪元消息查找断言其属性，而非断言消息总数。
+        UserMessage msg = messages(userId).stream()
+                .filter(m -> m.getTitle().contains("BULL_START"))
+                .findFirst().orElse(null);
+        assertNotNull(msg, "day-1 open must push the era-start notify message");
         assertEquals("SYSTEM", msg.getSource());
         assertEquals("NOTIFY", msg.getType());
         assertEquals(1, msg.getGameDay());

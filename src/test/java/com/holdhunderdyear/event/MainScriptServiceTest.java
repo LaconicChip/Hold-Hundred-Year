@@ -6,11 +6,17 @@ import com.holdhunderdyear.market.FastForwardService;
 import com.holdhunderdyear.market.MarketStateService;
 import com.holdhunderdyear.market.QuoteBoardRegistry;
 import com.holdhunderdyear.market.WorldTickService;
+import com.holdhunderdyear.market.entity.UserDailySnapshot;
+import com.holdhunderdyear.market.entity.UserEra;
 import com.holdhunderdyear.market.entity.UserGameState;
 import com.holdhunderdyear.market.entity.UserMessage;
+import com.holdhunderdyear.market.entity.UserScriptDay;
 import com.holdhunderdyear.market.entity.UserStockState;
+import com.holdhunderdyear.market.mapper.UserDailySnapshotMapper;
+import com.holdhunderdyear.market.mapper.UserEraMapper;
 import com.holdhunderdyear.market.mapper.UserGameStateMapper;
 import com.holdhunderdyear.market.mapper.UserMessageMapper;
+import com.holdhunderdyear.market.mapper.UserScriptDayMapper;
 import com.holdhunderdyear.market.mapper.UserStockStateMapper;
 import com.holdhunderdyear.market.quote.Quote;
 import com.holdhunderdyear.market.quote.QuoteBoard;
@@ -47,6 +53,9 @@ class MainScriptServiceTest {
     @Autowired private UserGameStateMapper userGameStateMapper;
     @Autowired private UserMessageMapper userMessageMapper;
     @Autowired private UserStockStateMapper userStockStateMapper;
+    @Autowired private UserEraMapper userEraMapper;
+    @Autowired private UserScriptDayMapper userScriptDayMapper;
+    @Autowired private UserDailySnapshotMapper userDailySnapshotMapper;
 
     @Test
     void shakeoutCompletesToNewHigh() {
@@ -142,11 +151,9 @@ class MainScriptServiceTest {
 
     @Test
     void fastForwardReproducesSameScriptWorldAsManualTicking() {
-        long userIdA = worldSeeder.seedUser("ms_ffa1", "$2a$10$bcrypthash");
-        long userIdB = worldSeeder.seedUser("ms_ffb1", "$2a$10$bcrypthash");
         long fixedSeed = 20260905L;
-        setWorldSeed(userIdA, fixedSeed);
-        setWorldSeed(userIdB, fixedSeed);
+        long userIdA = seedWithFixedSeed("ms_ffa1", fixedSeed);
+        long userIdB = seedWithFixedSeed("ms_ffb1", fixedSeed);
         marketStateService.startDay(userIdA);
         marketStateService.startDay(userIdB);
 
@@ -208,6 +215,25 @@ class MainScriptServiceTest {
         UserGameState state = gameState(userId);
         state.setWorldSeed(worldSeed);
         userGameStateMapper.updateById(state);
+    }
+
+    /**
+     * 用固定种子重播种一个用户的完整世界（删除 seedUser 随机种子生成的游戏数据后从固定
+     * 种子重建）：快进等价性要求两用户世界（含脚本日/IPO 日程）完全一致，复用生产播种器。
+     */
+    private long seedWithFixedSeed(String username, long worldSeed) {
+        long userId = worldSeeder.seedUser(username, "$2a$10$bcrypthash");
+        userStockStateMapper.delete(new LambdaQueryWrapper<UserStockState>()
+                .eq(UserStockState::getUserId, userId));
+        userEraMapper.delete(new LambdaQueryWrapper<UserEra>()
+                .eq(UserEra::getUserId, userId));
+        userScriptDayMapper.delete(new LambdaQueryWrapper<UserScriptDay>()
+                .eq(UserScriptDay::getUserId, userId));
+        userDailySnapshotMapper.delete(new LambdaQueryWrapper<UserDailySnapshot>()
+                .eq(UserDailySnapshot::getUserId, userId));
+        worldSeeder.seedWorld(userId, worldSeed);
+        setWorldSeed(userId, worldSeed);
+        return userId;
     }
 
     private UserStockState stockState(long userId, long stockId) {

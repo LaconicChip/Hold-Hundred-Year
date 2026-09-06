@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhunderdyear.common.BizException;
 import com.holdhunderdyear.common.ErrorCode;
 import com.holdhunderdyear.event.NpcService;
+import com.holdhunderdyear.event.ProgressService;
 import com.holdhunderdyear.game.constants.GameConstants;
 import com.holdhunderdyear.game.constants.StockDefs;
 import com.holdhunderdyear.game.model.enums.MarketState;
@@ -36,7 +37,7 @@ import java.util.Map;
 /**
  * 收盘结算器（spec §3 结算 12 步）：由 WorldTickService 在世界锁+事务内调用，自身不加锁。
  * 落地范围：prev_close 双写、T+1 解冻、连板统计与三连板停牌核查、融资计息、
- * 日收益评价与每日快照、段位评定、OHL 重置、状态落位。
+ * 日收益评价与每日快照、段位评定、新手引导与成就徽章、OHL 重置、状态落位。
  * <p>边界：步骤①当前价快照由 WorldTickService.persistSnapshot 完成；追保/强平/爆仓
  * 委托 MarginService 执行（settleCheck，爆仓时快照留痕后短路）；5 日 4 板与异动公告
  * （Phase 8）、打新/除权（Phase 9）均不做；步骤⑩不掷盘后消息，
@@ -62,6 +63,7 @@ public class SettlementService {
     private final QuoteBoardRegistry quoteBoardRegistry;
     private final MarginService marginService;
     private final NpcService npcService;
+    private final ProgressService progressService;
 
     public SettlementService(UserGameStateMapper userGameStateMapper,
                              UserStockStateMapper userStockStateMapper,
@@ -72,7 +74,8 @@ public class SettlementService {
                              UserMessageMapper userMessageMapper,
                              QuoteBoardRegistry quoteBoardRegistry,
                              MarginService marginService,
-                             NpcService npcService) {
+                             NpcService npcService,
+                             ProgressService progressService) {
         this.userGameStateMapper = userGameStateMapper;
         this.userStockStateMapper = userStockStateMapper;
         this.userPositionMapper = userPositionMapper;
@@ -83,6 +86,7 @@ public class SettlementService {
         this.quoteBoardRegistry = quoteBoardRegistry;
         this.marginService = marginService;
         this.npcService = npcService;
+        this.progressService = progressService;
     }
 
     /**
@@ -137,6 +141,8 @@ public class SettlementService {
         double dayReturnPct = notifyDailyReview(userId, day, gs, netAsset, indexDayPct);
         // 步骤⑦：段位评定（升档递烟、降档慰问、持平沉默）
         assessTier(userId, day, gs, netAsset);
+        // 步骤⑦续：新手引导与成就徽章（Task 10.1，非破产路径才评）
+        progressService.onSettle(userId, day, gs, board);
         // 步骤⑧：每日快照
         insertSnapshot(userId, day, gs, cash, marketValue, debt, netAsset, dayReturnPct, indexDayPct, npcJson);
         // 步骤⑫：状态落位
