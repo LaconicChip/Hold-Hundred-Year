@@ -22,11 +22,14 @@ import com.holdhunderdyear.market.quote.Quote;
 import com.holdhunderdyear.market.quote.QuoteBoard;
 import com.holdhunderdyear.trade.MarginService;
 import com.holdhunderdyear.world.WorldRandom;
+import com.holdhunderdyear.ws.MarketSnapshot;
+import com.holdhunderdyear.ws.PushService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -65,6 +68,7 @@ public class WorldTickService {
     private final EventFactory eventFactory;
     private final DanmuService danmuService;
     private final MainScriptService mainScriptService;
+    private final PushService pushService;
     private final TransactionTemplate transactionTemplate;
 
     private final VolatilityEngine volEngine = new VolatilityEngine();
@@ -80,6 +84,7 @@ public class WorldTickService {
                             EventFactory eventFactory,
                             DanmuService danmuService,
                             MainScriptService mainScriptService,
+                            PushService pushService,
                             PlatformTransactionManager transactionManager) {
         this.quoteBoardRegistry = quoteBoardRegistry;
         this.marketStateService = marketStateService;
@@ -90,6 +95,7 @@ public class WorldTickService {
         this.eventFactory = eventFactory;
         this.danmuService = danmuService;
         this.mainScriptService = mainScriptService;
+        this.pushService = pushService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
@@ -187,6 +193,10 @@ public class WorldTickService {
             danmuService.maybePush(userId, board);
             mainScriptService.tick(userId, gs, board);
 
+            // 每跳行情推送（Task 10.2）：本跳已完成实际推进（非早退分支）即下发快照；
+            // pushQuotes 内部再按「在线 + 非快进悬挂」过滤，离线/快进期间天然静默
+            pushService.pushQuotes(userId, buildSnapshot(tick, board));
+
             // 盘中担保检查（追保/强平/爆仓，spec §6.4）：爆仓立即返回，不再推进 45/90 边界
             if (marginService.intradayCheck(userId, gs, board)) {
                 return;
@@ -228,5 +238,15 @@ public class WorldTickService {
         gs.setTickIndex(board.getTickIndex());
         gs.setIndexValue(board.getIndexValue());
         userGameStateMapper.updateById(gs);
+    }
+
+    /** 组装每跳行情推送快照（Task 10.2）：tickIndex、等权指数与 24 只个股的 current/涨跌幅。 */
+    private MarketSnapshot buildSnapshot(int tick, QuoteBoard board) {
+        List<MarketSnapshot.Row> rows = new ArrayList<>();
+        for (Quote q : board.getQuotes().values()) {
+            double changePct = q.getPrevClose() > 0 ? (q.getCurrent() - q.getPrevClose()) / q.getPrevClose() : 0.0;
+            rows.add(new MarketSnapshot.Row(q.getStockId(), q.getCurrent(), changePct));
+        }
+        return new MarketSnapshot(tick, board.getIndexValue(), rows);
     }
 }

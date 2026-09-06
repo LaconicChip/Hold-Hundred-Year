@@ -2,6 +2,7 @@ package com.holdhunderdyear.market;
 
 import com.holdhunderdyear.game.model.enums.MarketState;
 import com.holdhunderdyear.market.entity.UserGameState;
+import com.holdhunderdyear.ws.PushService;
 import org.springframework.stereotype.Service;
 
 /**
@@ -25,18 +26,22 @@ public class FastForwardService {
     private final QuoteBoardRegistry quoteBoardRegistry;
     private final MarketStateService marketStateService;
     private final WorldTickService worldTickService;
+    private final PushService pushService;
 
     public FastForwardService(QuoteBoardRegistry quoteBoardRegistry,
                               MarketStateService marketStateService,
-                              WorldTickService worldTickService) {
+                              WorldTickService worldTickService,
+                              PushService pushService) {
         this.quoteBoardRegistry = quoteBoardRegistry;
         this.marketStateService = marketStateService;
         this.worldTickService = worldTickService;
+        this.pushService = pushService;
     }
 
     /** 快进到当日收官：盘中逐跳、午休立即恢复、未开盘先开日；收官即返回。 */
     public void skip(long userId) {
         quoteBoardRegistry.worldLock(userId).lock();
+        pushService.suspendQuotes(userId); // 快进全程行情静默（Task 10.2）
         try {
             boolean openedThisSkip = false;
             boolean enteredTrading = false;
@@ -66,6 +71,7 @@ public class FastForwardService {
                 }
             }
         } finally {
+            pushService.resumeQuotes(userId); // 快进结束恢复行情推送
             quoteBoardRegistry.worldLock(userId).unlock();
         }
     }

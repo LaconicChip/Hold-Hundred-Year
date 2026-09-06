@@ -97,7 +97,9 @@ class MarketStateServiceTest {
     void startDayInMorningOpenIsIdempotentNoOp() {
         long userId = worldSeeder.seedUser("mkt_idle1", "$2a$10$bcrypthash");
         QuoteBoard first = marketStateService.startDay(userId);
-        assertEquals(1, messages(userId).size(), "era-1 start message expected");
+        // 第 1 日开盘必然推纪元叙事；若随机种子的打新申购日恰逢 day1 还会多推一条新股申购
+        // 通知（onDayOpen），故只对纪元消息计数（幂等检查关心的是纪元消息不重复）。
+        assertEquals(1, eraStartMessageCount(userId), "era-1 start message expected");
 
         UserGameState state = gameState(userId);
         state.setTickIndex(5);
@@ -110,7 +112,7 @@ class MarketStateServiceTest {
         assertEquals("MORNING_OPEN", after.getMarketState());
         assertEquals(1, after.getCurrentDay(), "currentDay must not advance");
         assertEquals(5, after.getTickIndex(), "tickIndex must not be reset");
-        assertEquals(1, messages(userId).size(), "no duplicate era message");
+        assertEquals(1, eraStartMessageCount(userId), "no duplicate era message");
     }
 
     @Test
@@ -181,7 +183,7 @@ class MarketStateServiceTest {
         assertEquals(0, board.getTickIndex(), "board tickIndex must reset on re-open");
         assertEquals(0, board.getShocks().activeCount(), "stale shocks must be cleared on re-open");
         assertSame(board, quoteBoardRegistry.getOrLoad(userId), "registry must cache the opened board");
-        assertEquals(1, messages(userId).size(), "day 2 stays in era 1, no new era message");
+        assertEquals(1, eraStartMessageCount(userId), "day 2 stays in era 1, no new era message");
 
         Quote gapped = board.quote(1L);
         double expected = Quote.round2(gapped.getPrevClose() * 1.05);
@@ -512,6 +514,13 @@ class MarketStateServiceTest {
     private List<UserMessage> messages(long userId) {
         return userMessageMapper.selectList(new LambdaQueryWrapper<UserMessage>()
                 .eq(UserMessage::getUserId, userId));
+    }
+
+    /** 第 1 日纪元叙事消息数（title 含 BULL_START；不计打新申购等其它通知）。 */
+    private long eraStartMessageCount(long userId) {
+        return messages(userId).stream()
+                .filter(m -> m.getTitle() != null && m.getTitle().contains("BULL_START"))
+                .count();
     }
 
     /** 与实现保持同一掷点协议：WorldRandom.of(seed, "volregime"+day)，p<0.2 CALM、p<0.8 NORMAL、否则 WILD。 */
