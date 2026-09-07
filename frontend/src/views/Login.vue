@@ -1,14 +1,18 @@
 <template>
   <div class="login-page">
+    <!-- 左右两尊吉祥物：屏宽够时才现身 -->
+    <img v-if="showMascots" :src="bullImg" class="side-mascot side-bull" alt="" />
+    <img v-if="showMascots" :src="pandaImg" class="side-mascot side-panda" alt="" />
+
     <div class="card login-scene">
-      <!-- 大门视觉区：Task 12.6 已替换为 AI 生成的营业部大门 PNG（贴纸风描边阴影） -->
+      <!-- 大门视觉区：AI 生成的营业部大门 PNG（贴纸风描边阴影） -->
       <div class="bank-art">
         <img :src="bankDoor" class="bank-art-img" alt="百年证券营业部大门" />
       </div>
       <h1 class="title">百年证券营业部</h1>
       <p class="slogan">“你持有一百年看看，涨跌都算我的。”—— 门口大爷</p>
 
-      <!-- 登录 / 注册 贴纸风分段切换，避免 el-tabs 默认样式违和 -->
+      <!-- 登录 / 注册 贴纸风分段切换 -->
       <div class="tab-switch">
         <button
           type="button"
@@ -36,13 +40,7 @@
           autocomplete="username"
           placeholder="用户名（老股民代号）"
         />
-        <input
-          v-model="password"
-          class="input"
-          type="password"
-          autocomplete="current-password"
-          placeholder="密码"
-        />
+        <input v-model="password" class="input" type="password" autocomplete="current-password" placeholder="密码" />
         <input
           v-if="mode === 'register'"
           v-model="confirmPwd"
@@ -52,15 +50,19 @@
           placeholder="确认密码"
         />
 
-        <!-- 页内红色提示（与 ElMessage 并存，便于快速反馈） -->
-        <p v-if="errText" class="err-text">{{ errText }}</p>
+        <!-- 注册态的规则提示 -->
+        <p v-if="mode === 'register'" class="hint muted-2">
+          注册即开局：<b class="num">¥100,000</b> 本金 + 一个全新百年世界
+        </p>
 
-        <button
-          type="submit"
-          class="btn btn-primary btn-lg submit-btn"
-          :disabled="loading"
-        >
-          {{ loading ? '推门中…' : '推门进场' }}
+        <!-- 页内红色提示（与 ElMessage 并存，便于快速反馈） -->
+        <p v-if="errText" class="err-text">
+          <SvgIcon name="alert" class="err-ic" />{{ errText }}
+        </p>
+
+        <button type="submit" class="btn btn-primary btn-lg submit-btn" :disabled="loading">
+          <SvgIcon :name="mode === 'login' ? 'door' : 'plus'" class="submit-ic" />
+          {{ loading ? '推门中…' : mode === 'login' ? '推门进场' : '开户进场' }}
         </button>
       </form>
     </div>
@@ -68,11 +70,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
+import SvgIcon from '@/components/SvgIcon.vue'
 import bankDoor from '@/assets/img/bank-door.png'
+import bullImg from '@/assets/img/bull.png'
+import pandaImg from '@/assets/img/panda.png'
 
 const router = useRouter()
 const user = useUserStore()
@@ -84,12 +89,21 @@ const confirmPwd = ref('')
 const loading = ref(false)
 const errText = ref('')
 
+// 左右吉祥物仅宽屏展示
+const showMascots = ref(false)
+function syncMascots() {
+  showMascots.value = window.innerWidth >= 1100
+}
+
 // 已登录直达：进入登录页即跳大盘
 onMounted(() => {
+  syncMascots()
+  window.addEventListener('resize', syncMascots)
   if (user.isLoggedIn) {
     router.replace('/market')
   }
 })
+onUnmounted(() => window.removeEventListener('resize', syncMascots))
 
 async function onSubmit() {
   errText.value = ''
@@ -133,10 +147,24 @@ async function onSubmit() {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: var(--sp-6);
+  position: relative;
+  overflow: hidden;
 }
 
-/* 营业部大门卡片：米白渐变底 + 墨色描边 + 硬阴影 + 14px 圆角（沿用 style-tile .login-scene） */
+/* 左右吉祥物：贴纸感倾斜 */
+.side-mascot {
+  width: 150px;
+  height: 150px;
+  object-fit: contain;
+  position: absolute;
+  bottom: 8%;
+  filter: drop-shadow(3px 3px 0 rgba(43, 38, 32, 0.18));
+}
+.side-bull { left: 8%; transform: rotate(-5deg); }
+.side-panda { right: 8%; transform: rotate(4deg); }
+
+/* 营业部大门卡片：米白渐变底 + 墨色描边 + 硬阴影（沿用 style-tile .login-scene） */
 .login-scene {
   max-width: 420px;
   width: 100%;
@@ -144,56 +172,55 @@ async function onSubmit() {
   background: linear-gradient(#fdf3dd, #f6ecd4);
   position: relative;
   overflow: hidden;
+  padding: var(--sp-8) var(--sp-7);
 }
 
-/* 大门插画：约 200px 宽，墨色描边 + 12px 圆角 + 3px 硬阴影（贴纸风） */
-.bank-art {
-  margin: 4px auto 14px;
-}
+/* 大门插画：墨色描边 + 圆角 + 硬阴影（贴纸风） */
+.bank-art { margin: 4px auto var(--sp-4); }
 .bank-art-img {
   width: 200px;
   display: block;
-  border: 2px solid var(--ink);
-  border-radius: 12px;
-  box-shadow: 3px 3px 0 var(--ink);
+  border: var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow);
 }
 
 .title {
   font-family: var(--font-fun);
-  font-size: 28px;
+  font-size: var(--fs-2xl);
   margin-bottom: 6px;
 }
 .slogan {
   color: var(--ink-2);
-  font-size: 13px;
-  margin-bottom: 18px;
+  font-size: var(--fs-sm);
+  margin-bottom: var(--sp-5);
 }
 
 /* 登录 / 注册 分段切换：贴纸风胶囊 */
 .tab-switch {
   display: inline-flex;
   border: var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--card);
-  box-shadow: 2px 2px 0 var(--ink);
+  box-shadow: var(--shadow-sm);
   padding: 3px;
-  margin: 0 auto 16px;
+  margin: 0 auto var(--sp-4);
 }
 .tab-btn {
   font-family: var(--font-fun);
-  font-size: 16px;
+  font-size: var(--fs-md);
   border: none;
   background: transparent;
   color: var(--ink-2);
   padding: 6px 22px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   cursor: pointer;
   transition: 0.1s;
 }
 .tab-btn.active {
   background: var(--brand);
   color: #fff;
-  box-shadow: 2px 2px 0 var(--ink);
+  box-shadow: var(--shadow-sm);
 }
 
 /* 表单：胶囊输入框（抄自 style-tile .input，墨色描边 + 白底） */
@@ -201,33 +228,42 @@ async function onSubmit() {
   margin: 0 auto;
   max-width: 280px;
   display: grid;
-  gap: 12px;
+  gap: var(--sp-3);
 }
 .input {
   border: var(--border);
-  border-radius: 999px;
-  padding: 10px 16px;
-  font-size: 14px;
-  background: #fff;
+  border-radius: var(--radius-pill);
+  padding: 10px var(--sp-4);
+  font-size: var(--fs-base);
+  background: var(--card);
   font-family: var(--font-body);
   color: var(--ink);
   outline: none;
   width: 100%;
 }
-.input:focus {
-  box-shadow: 2px 2px 0 var(--ink);
-}
+.input:focus { box-shadow: var(--shadow-sm); }
 
+.hint {
+  font-size: var(--fs-sm);
+  text-align: left;
+  margin: -4px 4px 0;
+}
 .err-text {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   color: var(--up);
-  font-size: 13px;
+  font-size: var(--fs-sm);
+  font-weight: 700;
   text-align: left;
   margin: -2px 4px 0;
 }
+.err-ic { width: 1em; height: 1em; flex: none; }
 
-.submit-btn {
-  justify-content: center;
-  margin-top: 4px;
-  width: 100%;
+.submit-btn { justify-content: center; margin-top: var(--sp-1); width: 100%; }
+.submit-ic { width: 1.1em; height: 1.1em; }
+
+@media (max-width: 700px) {
+  .login-scene { padding: var(--sp-6) var(--sp-4); }
 }
 </style>
