@@ -37,7 +37,9 @@ class WsClient {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
     this.client = new Client({
       // 浏览器实际连到 vite dev server（/ws 由 vite proxy 转发到后端 8080）
-      brokerURL: `${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`,
+      brokerURL: `${proto}://${location.host}/ws`,
+      // 后端 JwtHandshakeInterceptor 在 STOMP CONNECT 帧的 native header "token" 上鉴权
+      connectHeaders: { token },
       reconnectDelay: 5000,
       // STOMP debug 全部静默，避免控制台噪音
       debug: () => {}

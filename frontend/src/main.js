@@ -9,6 +9,7 @@ import './styles/tokens.css'
 
 import App from './App.vue'
 import router from './router'
+import { useUserStore } from './stores/user'
 
 const app = createApp(App)
 
@@ -20,5 +21,8 @@ for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
 app.use(createPinia())
 app.use(router)
 app.use(ElementPlus)
+
+// 刷新恢复：已有 token 时补连 WebSocket（调度器只推进 WS 在线用户的世界）
+useUserStore().ensureWsConnected()
 
 app.mount('#app')

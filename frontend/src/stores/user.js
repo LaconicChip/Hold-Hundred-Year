@@ -83,6 +83,14 @@ export const useUserStore = defineStore('user', {
       }
     },
 
+    // 已登录时确保 WS 在线（页面刷新后 token 从 localStorage 恢复，但连接不会
+    // 自行建立——开盘推进依赖调度器只服务 WS 在线用户，必须补连）
+    ensureWsConnected() {
+      if (!this.token || (ws.client && ws.connected)) return
+      bindWsToStores()
+      ws.connect(this.token)
+    },
+
     // 登出：清 token、断 WS、重置所有 store
     logout() {
       setToken('')
