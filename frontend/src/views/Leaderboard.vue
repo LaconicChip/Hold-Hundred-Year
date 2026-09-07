@@ -1,18 +1,20 @@
 <template>
-  <div class="lb-page">
-    <!-- 页头：返回大盘 + 标题 + 日期切换 -->
-    <header class="page-head card">
-      <button class="back-btn" @click="goBack">
-        <SvgIcon name="bank" class="back-ic" />返回大盘
-      </button>
-      <h1 class="page-title">营业部排行榜</h1>
+  <div class="page">
+    <!-- 页头：标题 + 日期切换 -->
+    <header class="page-head">
+      <div>
+        <h1 class="page-title">
+          <SvgIcon name="trophy" class="title-ic" />营业部排行榜
+        </h1>
+        <p class="page-desc">按当日净资产降序 · 本金 100,000.00</p>
+      </div>
       <div class="day-switch">
-        <button class="day-btn" :disabled="!day || day <= 1 || loading" @click="shift(-1)">
-          前一日
+        <button class="chip" :disabled="!day || day <= 1 || loading" @click="shift(-1)">
+          <SvgIcon name="chevron-left" class="chip-ic" />前一日
         </button>
-        <span class="day-text">第 {{ day || '—' }} 天</span>
-        <button class="day-btn" :disabled="!day || loading" @click="shift(1)">
-          后一日
+        <span class="day-text num">第 {{ day || '—' }} 天</span>
+        <button class="chip" :disabled="!day || loading" @click="shift(1)">
+          后一日<SvgIcon name="chevron-right" class="chip-ic" />
         </button>
       </div>
     </header>
@@ -22,18 +24,28 @@
       <div class="plaque">百年证券营业部 · 英雄榜</div>
 
       <div v-if="loading" class="lb-empty">加载中…</div>
-      <div v-else-if="rows.length === 0" class="lb-empty">尚无排行数据</div>
+      <div v-else-if="rows.length === 0" class="empty lb-empty">
+        <SvgIcon name="bear" class="lb-mascot" />
+        <span class="empty-title">尚无排行数据</span>
+        <span class="empty-desc">收盘结算后才会生成当日榜单</span>
+      </div>
 
       <div v-else class="lb-body">
         <div
           v-for="(r, i) in rows"
           :key="r.name + i"
           class="rank-row"
-          :class="{ player: r.isPlayer }"
+          :class="{ player: r.isPlayer, gone: isGone(r) }"
         >
+          <!-- 名次：前三带奖牌贴纸 -->
           <span class="rank-no" :class="{ top: i < 3 && !isGone(r) }">
-            {{ isGone(r) ? '—' : i + 1 }}
+            <template v-if="isGone(r)">—</template>
+            <template v-else-if="i === 0">冠</template>
+            <template v-else-if="i === 1">亚</template>
+            <template v-else-if="i === 2">季</template>
+            <template v-else>{{ i + 1 }}</template>
           </span>
+
           <span class="rank-name">
             <!-- 玩家行固定红底“您”，NPC 按中文名映射 NpcAvatar -->
             <span v-if="r.isPlayer" class="avatar you">您</span>
@@ -43,12 +55,20 @@
               :size="32"
               :class="{ dimmed: isGone(r) }"
             />
-            <span :class="{ 'player-name': r.isPlayer }">{{ r.isPlayer ? '您（持有一百年）' : r.name }}</span>
-            <span v-if="r.status && !isGone(r)" class="tag-style">{{ r.status }}</span>
+            <span class="rank-label" :class="{ 'player-name': r.isPlayer }">
+              {{ r.isPlayer ? '您（持有一百年）' : r.name }}
+            </span>
+            <span v-if="statusText(r)" class="tag" :class="{ 'tag-danger': isGone(r) }">
+              {{ statusText(r) }}
+            </span>
           </span>
-          <!-- 天台/销户：行尾灰字；否则资产数字 -->
+
+          <!-- 天台/销户：行尾灰字；否则资产 + 收益率 -->
           <span v-if="isGone(r)" class="gone">{{ r.status }}</span>
-          <b v-else class="num asset">{{ fmtMoney(r.asset) }}</b>
+          <template v-else>
+            <b class="num asset">{{ fmtMoney(r.asset) }}</b>
+            <span class="num ret" :class="pctCls(retPct(r))">{{ fmtPct(retPct(r)) }}</span>
+          </template>
         </div>
       </div>
     </section>
@@ -57,14 +77,15 @@
 
 <script setup>
 import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import { useMarketStore } from '@/stores/market'
 import NpcAvatar from '@/components/NpcAvatar.vue'
 import SvgIcon from '@/components/SvgIcon.vue'
 import { resolveNpcCode } from '@/constants/messageMeta'
 
-const router = useRouter()
 const market = useMarketStore()
+
+// 基期本金（NPC 与玩家同为 100000，用于计算收益率）
+const BASE_CAPITAL = 100000
 
 const day = ref(0) // 0 = 尚未确定，首次请求缺省取最近
 const rows = ref([])
@@ -80,6 +101,26 @@ function isGone(r) {
   return /天台|销户|爆仓/.test(r.status || '')
 }
 
+// 状态本地化：ACTIVE 是在市常态，不展示；其余给出中文
+function statusText(r) {
+  const s = r.status || ''
+  if (/天台|销户|爆仓/.test(s)) return s
+  if (/^ACTIVE$/i.test(s)) return ''
+  return s || ''
+}
+
+function retPct(r) {
+  return (r.asset / BASE_CAPITAL - 1) * 100
+}
+function pctCls(v) {
+  const n = +v
+  return n > 0 ? 'up' : n < 0 ? 'down' : 'flat'
+}
+function fmtPct(v) {
+  const n = +v
+  if (!isFinite(n)) return '0.00%'
+  return (n > 0 ? '+' : '') + n.toFixed(2) + '%'
+}
 function fmtMoney(v) {
   const n = +v
   if (!isFinite(n)) return '--'
@@ -106,193 +147,153 @@ function shift(delta) {
   load(target)
 }
 
-function goBack() {
-  if (window.history.length > 1) router.back()
-  else router.push('/market')
-}
-
 onMounted(() => load(0))
 </script>
 
 <style scoped>
-.lb-page {
-  max-width: 720px;
-  margin: 0 auto;
-}
-/* 页头 */
-.page-head {
+.page {
   display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 16px 18px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: var(--sp-4);
+  max-width: 860px;
 }
-.back-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--font-fun);
-  font-size: 15px;
-  border: 2px solid var(--ink);
-  background: var(--card);
-  border-radius: 999px;
-  padding: 6px 16px;
-  box-shadow: 2px 2px 0 var(--ink);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.back-btn:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: 3px 3px 0 var(--ink);
-}
-.back-btn:active {
-  transform: translate(2px, 2px);
-  box-shadow: 1px 1px 0 var(--ink);
-}
-.back-ic {
-  width: 16px;
-  height: 16px;
-}
-.page-title {
-  flex: 1;
-  font-family: var(--font-fun);
-  font-size: 30px;
-  white-space: nowrap;
-}
+.title-ic { width: 0.85em; height: 0.85em; color: var(--brand); }
+
+/* ---------- 日期切换 ---------- */
 .day-switch {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
 }
-.day-btn {
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   font-family: var(--font-fun);
-  font-size: 13px;
-  border: 2px solid var(--ink);
+  font-size: var(--fs-sm);
+  border: var(--border);
   background: var(--card);
-  border-radius: 999px;
-  padding: 4px 12px;
-  box-shadow: 2px 2px 0 var(--ink);
+  border-radius: var(--radius-pill);
+  padding: 3px var(--sp-3);
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
+  transition: 0.08s;
 }
-.day-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.day-btn:not(:disabled):hover {
+.chip:hover:not(:disabled) {
+  background: var(--hover);
   transform: translate(-1px, -1px);
-  box-shadow: 3px 3px 0 var(--ink);
+  box-shadow: var(--shadow);
 }
+.chip:disabled { opacity: 0.45; cursor: not-allowed; }
+.chip-ic { width: 12px; height: 12px; }
 .day-text {
   font-family: var(--font-fun);
-  font-size: 16px;
+  font-size: var(--fs-lg);
   white-space: nowrap;
+  min-width: 62px;
+  text-align: center;
 }
-/* 木质榜单 */
+
+/* ---------- 木质榜单 ---------- */
 .wood-card {
-  margin-top: 16px;
-  background: #e8d9b8;
-  border: 2px solid var(--ink);
+  background: var(--wood-pale);
+  border: var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  padding: 14px;
+  padding: var(--sp-3);
 }
 .plaque {
   font-family: var(--font-fun);
-  font-size: 22px;
+  font-size: var(--fs-2xl);
   text-align: center;
-  color: #f3e6c8;
-  background: #6b4a2a;
-  border: 2px solid var(--ink);
-  border-radius: 10px;
-  box-shadow: 2px 2px 0 var(--ink);
-  padding: 8px 12px;
+  color: var(--wood-text);
+  background: var(--wood-deep);
+  border: var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: var(--sp-2) var(--sp-3);
   letter-spacing: 2px;
-  margin-bottom: 10px;
+  margin-bottom: var(--sp-3);
 }
 .lb-body {
   background: var(--card);
-  border: 2px solid var(--ink);
-  border-radius: 10px;
-  padding: 4px 10px;
+  border: var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--sp-1) var(--sp-2);
 }
 .lb-empty {
   background: var(--card);
-  border: 2px solid var(--ink);
-  border-radius: 10px;
+  border: var(--border);
+  border-radius: var(--radius-md);
   color: var(--ink-3);
-  font-size: 14px;
-  padding: 30px 10px;
+  font-size: var(--fs-base);
+  padding: var(--sp-8) var(--sp-3);
   text-align: center;
 }
+.lb-mascot { width: 44px; height: 44px; opacity: 0.8; }
+
 /* 行（style-tile 第八节） */
 .rank-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-bottom: 1px dashed #d8cfbc;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-2);
+  border-bottom: 1px dashed var(--dash);
+  border-left: 3px solid transparent;
 }
-.rank-row:last-child {
-  border-bottom: none;
-}
+.rank-row:last-child { border-bottom: none; }
 .rank-row.player {
-  background: #ffedb0;
-  border-radius: 8px;
+  background: var(--player-row);
+  border-left-color: var(--brand);
+  border-radius: var(--radius-sm);
   font-weight: 700;
 }
+.rank-row.gone { opacity: 0.55; }
 .rank-no {
   font-family: var(--font-fun);
-  font-size: 18px;
+  font-size: var(--fs-lg);
   width: 34px;
   text-align: center;
+  flex: none;
 }
-.rank-no.top {
-  color: var(--brand);
-}
+.rank-no.top { color: var(--brand); }
 .rank-name {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   min-width: 0;
 }
-.player-name {
-  font-weight: 700;
-}
+.rank-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player-name { font-weight: 700; }
 .avatar {
   width: 32px;
   height: 32px;
   min-width: 32px;
-  border: 2px solid var(--ink);
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-fun);
-  font-size: 14px;
-  color: #fff;
+  flex: none;
 }
-.avatar.you {
-  background: var(--brand);
-}
-.dimmed {
-  opacity: 0.45;
-}
-.tag-style {
-  font-size: 11px;
-  color: var(--ink-2);
-  border: 1px dashed var(--ink-3);
-  border-radius: 6px;
-  padding: 0 6px;
-  white-space: nowrap;
+.avatar.you { background: var(--brand); }
+.dimmed { opacity: 0.45; }
+.tag-danger {
+  color: var(--up);
+  border-color: var(--up);
 }
 .gone {
   color: var(--ink-3);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   white-space: nowrap;
 }
-.asset {
-  font-size: 14px;
+.asset { font-size: var(--fs-base); white-space: nowrap; }
+.ret {
+  font-size: var(--fs-sm);
   white-space: nowrap;
+  width: 76px;
+  text-align: right;
+  flex: none;
+}
+
+@media (max-width: 700px) {
+  .page-head { flex-direction: column; align-items: flex-start; }
+  .ret { width: 66px; }
 }
 </style>

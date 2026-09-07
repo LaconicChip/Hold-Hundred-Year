@@ -1,15 +1,24 @@
 <template>
-  <div class="summary-page">
-    <!-- 页头：返回大盘 + 标题 -->
-    <header class="page-head card">
-      <button class="back-btn" @click="goBack">
-        <SvgIcon name="bank" class="back-ic" />返回大盘
+  <div class="page">
+    <!-- 页头（返回由侧栏承担） -->
+    <header class="page-head">
+      <div>
+        <h1 class="page-title">
+          <SvgIcon name="newspaper" class="title-ic" />收盘晚报
+        </h1>
+        <p class="page-desc">当日收官结算 · 明日开盘前必读</p>
+      </div>
+      <button v-if="data" class="btn btn-sm" @click="goRank">
+        <SvgIcon name="trophy" class="btn-ic" />看看排名
       </button>
-      <h1 class="page-title">收盘晚报</h1>
     </header>
 
     <div v-if="loading" class="card state-card">加载中…</div>
-    <div v-else-if="!data" class="card state-card">暂无晚报数据</div>
+    <div v-else-if="!data" class="empty state-card">
+      <SvgIcon name="bear" class="state-mascot" />
+      <span class="empty-title">暂无晚报数据</span>
+      <span class="empty-desc">跳过或收盘后，这里会印出当天的报纸</span>
+    </div>
 
     <!-- 晚报报纸（style-tile 第九节） -->
     <section v-else class="newspaper">
@@ -21,52 +30,59 @@
       <h3>营业部晚报 · 第 {{ data.gameDay }} 期</h3>
 
       <!-- 三格数据 -->
-      <div class="stats">
-        <div>
-          <span class="stat-lab">你的日收益</span><br />
-          <span class="num stat-num" :class="pctCls(data.dayReturnPct)">
-            {{ fmtPct(data.dayReturnPct) }}
-          </span>
+      <div class="grid g3 stats">
+        <div class="stat">
+          <span class="lab">你的日收益</span>
+          <span class="val" :class="pctCls(data.dayReturnPct)">{{ fmtPct(data.dayReturnPct) }}</span>
         </div>
-        <div>
-          <span class="stat-lab">百年指数</span><br />
-          <span class="num stat-num" :class="pctCls(data.indexDayPct)">
-            {{ fmtPct(data.indexDayPct) }}
-          </span>
+        <div class="stat">
+          <span class="lab">百年指数</span>
+          <span class="val" :class="pctCls(data.indexDayPct)">{{ fmtPct(data.indexDayPct) }}</span>
         </div>
-        <div>
-          <span class="stat-lab">净资产</span><br />
-          <span class="num stat-num">{{ fmtMoney(data.netAsset) }}</span>
+        <div class="stat">
+          <span class="lab">净资产</span>
+          <span class="val">{{ fmtMoney(data.netAsset) }}</span>
         </div>
       </div>
 
       <!-- 今日要闻 -->
       <div v-if="newsList.length" class="news-block">
+        <h4 class="block-title">
+          <SvgIcon name="note" class="block-ic" />今日要闻
+        </h4>
         <p v-for="(n, i) in newsList" :key="i" class="news-line">
-          <span class="lab">今日要闻：</span>{{ n }}
+          <span class="news-idx num">{{ i + 1 }}</span>{{ n }}
         </p>
       </div>
 
-      <!-- 结算提示 -->
+      <!-- 结算提示（按类型配图标，取代裸枚举文本） -->
       <div v-if="noticeList.length" class="news-block">
+        <h4 class="block-title">
+          <SvgIcon name="bell" class="block-ic" />结算提示
+        </h4>
         <p v-for="(n, i) in noticeList" :key="i" class="news-line">
-          <span class="lab">结算提示：</span>{{ n }}
+          <SvgIcon :name="noticeIcon(n)" class="notice-ic" :class="noticeCls(n)" />{{ n }}
         </p>
       </div>
 
       <!-- 营业部点评 -->
-      <p v-if="data.comment" class="news-line">
-        <span class="lab">营业部点评：</span>{{ data.comment }}
-      </p>
+      <div v-if="data.comment" class="comment">
+        <SvgIcon name="bull" class="comment-mascot" />
+        <p class="comment-text">{{ data.comment }}</p>
+      </div>
 
       <!-- 明日提示 -->
-      <p class="news-line">
-        <span class="lab warn-lab"><SvgIcon name="alert" class="warn-ic" />明日提示：</span>
-        当前纪元：{{ data.eraName || '平稳年代' }}
-        <template v-if="guardRisk">
-          ；融资担保比例 {{ (data.guardRatio * 100).toFixed(0) }}%，低于 140% 追保线，请注意追保风险。
-        </template>
-      </p>
+      <div class="tomorrow">
+        <span class="lab">
+          <SvgIcon name="alert" class="lab-ic" />明日提示
+        </span>
+        <p class="tomorrow-text">
+          当前纪元：<b>{{ data.eraName || '平稳年代' }}</b>
+          <template v-if="guardRisk">
+            ；融资担保比例 {{ (data.guardRatio * 100).toFixed(0) }}%，低于 140% 追保线，请注意追保风险。
+          </template>
+        </p>
+      </div>
 
       <!-- 底部按钮 -->
       <div class="paper-actions">
@@ -107,6 +123,24 @@ const noticeList = computed(() => (data.value && data.value.notices) || [])
 const guardRisk = computed(
   () => data.value && data.value.guardRatio > 0 && data.value.guardRatio < 1.4
 )
+
+// 结算提示按关键字配图标（避免裸枚举文本）
+function noticeIcon(n) {
+  const t = String(n || '')
+  if (/追保/.test(t)) return 'alert'
+  if (/强平|平仓/.test(t)) return 'alert'
+  if (/中签|打新|申购/.test(t)) return 'ticket'
+  if (/停牌/.test(t)) return 'door'
+  if (/结算|收盘/.test(t)) return 'check'
+  return 'info'
+}
+function noticeCls(n) {
+  const t = String(n || '')
+  if (/强平|平仓/.test(t)) return 'ic-danger'
+  if (/追保/.test(t)) return 'ic-warn'
+  if (/中签|打新|申购/.test(t)) return 'ic-blue'
+  return ''
+}
 
 function pctCls(v) {
   const n = +v
@@ -153,143 +187,160 @@ async function onNextDay() {
 function goMarket() {
   router.push('/market')
 }
-function goBack() {
-  if (window.history.length > 1) router.back()
-  else router.push('/market')
+function goRank() {
+  router.push({ path: '/leaderboard', query: data.value ? { gameDay: data.value.gameDay } : {} })
 }
 
 onMounted(load)
 </script>
 
 <style scoped>
-.summary-page {
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 24px 20px 80px;
-}
-/* 页头 */
-.page-head {
+.page {
   display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 16px 18px;
+  flex-direction: column;
+  gap: var(--sp-4);
+  max-width: 860px;
 }
-.back-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--font-fun);
-  font-size: 15px;
-  border: 2px solid var(--ink);
-  background: var(--card);
-  border-radius: 999px;
-  padding: 6px 16px;
-  box-shadow: 2px 2px 0 var(--ink);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.back-btn:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: 3px 3px 0 var(--ink);
-}
-.back-btn:active {
-  transform: translate(2px, 2px);
-  box-shadow: 1px 1px 0 var(--ink);
-}
-.back-ic {
-  width: 16px;
-  height: 16px;
-}
-.page-title {
-  flex: 1;
-  font-family: var(--font-fun);
-  font-size: 30px;
-}
-.state-card {
-  margin-top: 16px;
-  color: var(--ink-3);
-  font-size: 14px;
-  padding: 40px 10px;
-  text-align: center;
-}
-/* 报纸（style-tile 第九节原样气质） */
+.title-ic { width: 0.85em; height: 0.85em; color: var(--brand); }
+.btn-ic { width: 1em; height: 1em; }
+
+.state-card { padding: var(--sp-8) var(--sp-4); }
+.state-mascot { width: 44px; height: 44px; opacity: 0.8; }
+
+/* ---------- 报纸 ---------- */
 .newspaper {
-  margin-top: 16px;
-  background: #fbf6ea;
-  border: 2px solid var(--ink);
-  border-radius: 6px;
+  background: var(--paper-warm);
+  border: var(--border);
+  border-radius: var(--radius-sm);
   box-shadow: var(--shadow);
-  padding: 22px 26px;
+  padding: var(--sp-6) var(--sp-7);
   position: relative;
 }
 .newspaper h3 {
   font-family: var(--font-fun);
-  font-size: 26px;
+  font-size: var(--fs-2xl);
   text-align: center;
   border-bottom: 3px double var(--ink);
-  padding-bottom: 10px;
+  padding-bottom: var(--sp-3);
 }
 .news-stamp {
   position: absolute;
-  right: 18px;
-  top: 16px;
+  right: var(--sp-4);
+  top: var(--sp-3);
   transform: rotate(10deg);
 }
 /* 印章放大一号（style-tile 示意 64px） */
 .news-stamp :deep(.seal) {
   width: 64px;
   height: 64px;
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
+
 /* 三格数据 */
-.stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
-  margin-top: 14px;
+.stats { margin-top: var(--sp-4); }
+.stats .stat { align-items: center; text-align: center; }
+
+/* 分区标题 */
+.news-block { margin-top: var(--sp-5); }
+.block-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-fun);
+  font-size: var(--fs-lg);
+  font-weight: 400;
+  padding-bottom: var(--sp-1);
+  border-bottom: 2px solid var(--ink);
+  margin-bottom: var(--sp-2);
 }
-.stat-lab {
-  color: var(--ink-2);
-}
-.stat-num {
-  font-size: 24px;
-}
+.block-ic { width: 1em; height: 1em; color: var(--brand); }
+
 /* 行 */
-.news-block {
-  margin-top: 2px;
-}
 .news-line {
   display: flex;
-  align-items: baseline;
-  gap: 6px;
-  margin-top: 10px;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
   line-height: 1.7;
 }
-.news-line .lab {
+.news-idx {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-xs);
   color: var(--ink-2);
-  font-weight: 700;
-  white-space: nowrap;
+  border: var(--border-thin);
+  border-color: var(--ink-3);
+  border-radius: 50%;
 }
-.warn-lab {
+.notice-ic {
+  flex: none;
+  width: 1.1em;
+  height: 1.1em;
+  margin-top: 5px;
+  color: var(--ink-3);
+}
+.notice-ic.ic-danger { color: var(--up); }
+.notice-ic.ic-warn { color: var(--orange); }
+.notice-ic.ic-blue { color: var(--blue); }
+
+/* 营业部点评 */
+.comment {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  margin-top: var(--sp-5);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--card);
+  border: var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+.comment-mascot { width: 40px; height: 40px; flex: none; }
+.comment-text {
+  font-size: var(--fs-base);
+  line-height: 1.7;
+}
+
+/* 明日提示 */
+.tomorrow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--border);
+  border-radius: var(--radius-md);
+  background: var(--yellow-soft);
+}
+.tomorrow .lab {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: var(--orange) !important;
+  font-family: var(--font-fun);
+  color: var(--orange);
+  white-space: nowrap;
 }
-.warn-ic {
-  width: 15px;
-  height: 15px;
-}
+.lab-ic { width: 1em; height: 1em; }
+.tomorrow-text { line-height: 1.7; }
+
 /* 底部按钮 */
 .paper-actions {
-  margin-top: 20px;
-  padding-top: 14px;
-  border-top: 1px dashed #d8cfbc;
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-4);
+  border-top: 1px dashed var(--dash);
   display: flex;
-  gap: 14px;
+  gap: var(--sp-4);
   flex-wrap: wrap;
 }
-.flat {
-  color: var(--ink);
+
+@media (max-width: 700px) {
+  .newspaper { padding: var(--sp-4); }
+  .news-stamp { right: var(--sp-2); top: var(--sp-2); }
+  .news-stamp :deep(.seal) { width: 52px; height: 52px; }
 }
 </style>

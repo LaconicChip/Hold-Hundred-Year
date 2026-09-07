@@ -1,13 +1,28 @@
 <template>
-  <div class="result-page" :class="{ bankrupt: isBankrupt }">
+  <div class="page" :class="{ bankrupt: isBankrupt }">
+    <!-- 页头 -->
+    <header class="page-head">
+      <div>
+        <h1 class="page-title">
+          <SvgIcon name="cert" class="title-ic" />终局结算
+        </h1>
+        <p class="page-desc">一百年过去了，这是你的成绩单</p>
+      </div>
+    </header>
+
     <div v-if="loading" class="card state-card">结算数据生成中…</div>
-    <div v-else-if="!result" class="card state-card">终局数据尚未生成</div>
+    <div v-else-if="!result" class="empty state-card">
+      <SvgIcon name="bear" class="state-mascot" />
+      <span class="empty-title">终局数据尚未生成</span>
+      <span class="empty-desc">爆仓或走完 108 天，这里才会出结果</span>
+      <button class="btn btn-sm" @click="goMarket">回大盘</button>
+    </div>
 
     <template v-else>
       <!-- 通关：大红奖状 -->
       <section v-if="isFinished" class="cert">
         <div class="cert-inner">
-          <h1 class="cert-title">通关奖状</h1>
+          <h2 class="cert-title">通关奖状</h2>
           <p class="cert-body">
             兹证明 股民<b>{{ user.username || '无名氏' }}</b>
             历时 <span class="num">{{ result.endDay || 108 }}</span> 个交易日，
@@ -22,11 +37,11 @@
         </div>
       </section>
 
-      <!-- 爆仓：黑白漫画分镜（页头上方加天台横幅） -->
+      <!-- 爆仓：黑白漫画分镜 -->
       <section v-else class="comic">
         <img :src="rooftopImg" class="comic-banner" alt="天台黑白漫画背景" />
         <div class="comic-head">
-          <h1 class="comic-title">天台见</h1>
+          <h2 class="comic-title">天台见</h2>
           <p class="comic-sub">
             负债 <span class="num">{{ fmtMoney(debtOf) }}</span>
             ｜ 存活 <span class="num">{{ result.endDay || '—' }}</span> 个交易日
@@ -50,24 +65,40 @@
 
       <!-- 108 天净资产 vs 指数曲线 -->
       <section class="card block-card">
-        <div class="card-title">全程战绩：净资产 vs 百年指数</div>
-        <div v-if="!curve.length" class="block-empty">暂无曲线数据</div>
+        <div class="sec-head">
+          <span class="card-title">
+            <SvgIcon name="chart" class="title-ic-sm" />全程战绩：净资产 vs 百年指数
+          </span>
+        </div>
+        <div v-if="!curve.length" class="empty block-empty">
+          <span class="empty-title">暂无曲线数据</span>
+        </div>
         <VChart v-else class="curve" :option="curveOption" :autoresize="true" />
       </section>
 
       <!-- 最终排行榜 -->
       <section class="card block-card">
-        <div class="card-title">最终排行榜</div>
-        <div v-if="!rankings.length" class="block-empty">尚无排行数据</div>
+        <div class="sec-head">
+          <span class="card-title">
+            <SvgIcon name="trophy" class="title-ic-sm" />最终排行榜
+          </span>
+        </div>
+        <div v-if="!rankings.length" class="empty block-empty">
+          <span class="empty-title">尚无排行数据</span>
+        </div>
         <template v-else>
           <div
             v-for="(r, i) in rankings"
             :key="r.name + i"
             class="rank-row"
-            :class="{ player: r.isPlayer }"
+            :class="{ player: r.isPlayer, gone: isGone(r) }"
           >
             <span class="rank-no" :class="{ top: i < 3 && !isGone(r) }">
-              {{ isGone(r) ? '—' : i + 1 }}
+              <template v-if="isGone(r)">—</template>
+              <template v-else-if="i === 0">冠</template>
+              <template v-else-if="i === 1">亚</template>
+              <template v-else-if="i === 2">季</template>
+              <template v-else>{{ i + 1 }}</template>
             </span>
             <span class="rank-name">
               <span v-if="r.isPlayer" class="avatar you">您</span>
@@ -77,34 +108,41 @@
                 :size="32"
                 :class="{ dimmed: isGone(r) }"
               />
-              <span :class="{ 'player-name': r.isPlayer }">{{ r.name }}</span>
-              <span v-if="r.status && !isGone(r)" class="tag-style">{{ r.status }}</span>
+              <span class="rank-label" :class="{ 'player-name': r.isPlayer }">{{ r.name }}</span>
+              <span v-if="statusText(r)" class="tag" :class="{ 'tag-danger': isGone(r) }">
+                {{ statusText(r) }}
+              </span>
             </span>
             <span v-if="isGone(r)" class="gone">{{ r.status }}</span>
-            <b v-else class="num">{{ fmtMoney(r.asset) }}</b>
+            <b v-else class="num asset">{{ fmtMoney(r.asset) }}</b>
           </div>
         </template>
       </section>
 
       <!-- 强平记录（非空才显示） -->
       <section v-if="liquidations.length" class="card block-card">
-        <div class="card-title">强平记录</div>
+        <div class="sec-head">
+          <span class="card-title">
+            <SvgIcon name="alert" class="title-ic-sm" />强平记录
+          </span>
+          <span class="tag">{{ liquidations.length }} 次</span>
+        </div>
         <div v-for="(l, i) in liquidations" :key="i" class="liq-row">
-          {{ liqText(l) }}
+          <SvgIcon name="alert" class="liq-ic" />
+          <span>{{ liqText(l) }}</span>
         </div>
       </section>
 
       <!-- 种子号 + 再来一局 -->
       <section class="card block-card seed-card">
-        <span class="seed-lab">本局种子号</span>
-        <span class="num seed-val">{{ result.worldSeed || '—' }}</span>
-      </section>
-
-      <div class="actions">
+        <div class="seed-block">
+          <span class="seed-lab">本局种子号</span>
+          <span class="num seed-val">{{ result.worldSeed || '—' }}</span>
+        </div>
         <button class="btn btn-primary btn-lg" :disabled="restarting" @click="onRestart">
           <SvgIcon name="play" />{{ restarting ? '播种中…' : '再来一局' }}
         </button>
-      </div>
+      </section>
     </template>
   </div>
 </template>
@@ -115,6 +153,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { fetchGameResult, restartGame } from '@/api/game'
 import { useUserStore } from '@/stores/user'
+import { token } from '@/styles/theme'
 import NpcAvatar from '@/components/NpcAvatar.vue'
 import SealStamp from '@/components/SealStamp.vue'
 import SvgIcon from '@/components/SvgIcon.vue'
@@ -164,48 +203,59 @@ const debtOf = computed(() => {
   return 0
 })
 
-// 曲线配置（仿 Assets 页：净资产红实线左轴 / 指数墨灰虚线右轴，仅令牌色）
+// 曲线配置（净资产红实线左轴 / 指数墨灰虚线右轴，配色取令牌）
 const curveOption = computed(() => {
+  const cBrand = token('--brand')
+  const cInk2 = token('--ink-2')
+  const cInk = token('--ink')
+  const cCard = token('--card')
+  const cDash = token('--dash')
+
   const days = curve.value.map((p) => p.gameDay)
   const net = curve.value.map((p) => +(+p.netAsset).toFixed(2))
   const idx = curve.value.map((p) => +(+p.indexValue).toFixed(2))
   return {
-    color: ['#ff2436', '#6f675c'],
-    grid: { left: 56, right: 56, top: 40, bottom: 32 },
+    color: [cBrand, cInk2],
+    grid: { left: 62, right: 58, top: 16, bottom: 30 },
     tooltip: {
       trigger: 'axis',
-      backgroundColor: '#fffdf7',
-      borderColor: '#2b2620',
+      backgroundColor: cCard,
+      borderColor: cInk,
       borderWidth: 2,
-      textStyle: { color: '#2b2620', fontSize: 12 }
+      padding: [6, 10],
+      textStyle: { color: cInk, fontSize: 12 }
     },
     legend: {
       data: ['净资产', '百年指数'],
-      top: 6,
+      top: 0,
+      right: 0,
       itemWidth: 18,
       itemHeight: 8,
-      textStyle: { color: '#2b2620', fontSize: 12, fontWeight: 700 }
+      textStyle: { color: cInk, fontSize: 12, fontWeight: 700 }
     },
     xAxis: {
       type: 'category',
       data: days,
       boundaryGap: false,
-      axisLine: { lineStyle: { color: '#2b2620' } },
-      axisLabel: { color: '#6f675c', fontSize: 11 }
+      axisLine: { lineStyle: { color: cInk, width: 1.5 } },
+      axisTick: { show: false },
+      axisLabel: { color: cInk2, fontSize: 11 }
     },
     yAxis: [
       {
         type: 'value',
         name: '净资产',
+        nameTextStyle: { color: cInk2, fontSize: 11 },
         scale: true,
-        axisLabel: { color: '#6f675c', fontSize: 11 },
-        splitLine: { lineStyle: { color: '#e6dcc8', type: 'dashed' } }
+        axisLabel: { color: cInk2, fontSize: 11 },
+        splitLine: { lineStyle: { color: cDash, type: 'dashed' } }
       },
       {
         type: 'value',
         name: '指数',
+        nameTextStyle: { color: cInk2, fontSize: 11 },
         scale: true,
-        axisLabel: { color: '#6f675c', fontSize: 11 },
+        axisLabel: { color: cInk2, fontSize: 11 },
         splitLine: { show: false }
       }
     ],
@@ -217,7 +267,8 @@ const curveOption = computed(() => {
         data: net,
         smooth: false,
         showSymbol: false,
-        lineStyle: { width: 2.5, color: '#ff2436' }
+        lineStyle: { width: 2.6, color: cBrand },
+        areaStyle: { color: cBrand, opacity: 0.08 }
       },
       {
         name: '百年指数',
@@ -226,7 +277,7 @@ const curveOption = computed(() => {
         data: idx,
         smooth: false,
         showSymbol: false,
-        lineStyle: { width: 2, color: '#6f675c', type: 'dashed' }
+        lineStyle: { width: 2, color: cInk2, type: 'dashed' }
       }
     ]
   }
@@ -237,6 +288,13 @@ function npcCodeOf(name) {
 }
 function isGone(r) {
   return /天台|销户|爆仓/.test(r.status || '')
+}
+// 状态本地化：ACTIVE 是常态不展示
+function statusText(r) {
+  const s = r.status || ''
+  if (/天台|销户|爆仓/.test(s)) return s
+  if (/^ACTIVE$/i.test(s)) return ''
+  return s || ''
 }
 function pctCls(v) {
   const n = +v
@@ -274,6 +332,10 @@ async function load() {
   }
 }
 
+function goMarket() {
+  router.push('/market')
+}
+
 async function onRestart() {
   if (restarting.value) return
   try {
@@ -301,30 +363,45 @@ onMounted(load)
 </script>
 
 <style scoped>
-.result-page {
-  max-width: 820px;
-  margin: 0 auto;
-  padding: 24px 20px 80px;
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  max-width: 860px;
 }
-.state-card {
-  color: var(--ink-3);
-  font-size: 14px;
-  padding: 40px 10px;
-  text-align: center;
+.title-ic { width: 0.85em; height: 0.85em; color: var(--brand); }
+.title-ic-sm { width: 1em; height: 1em; color: var(--brand); }
+.sec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
 }
-/* ---------- 通关奖状（Task 12.6：AI 奖状底图，红框与装饰章已在图内） ---------- */
+.card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-fun);
+  font-size: var(--fs-xl);
+  margin-bottom: 0;
+}
+.state-card { padding: var(--sp-8) var(--sp-4); }
+.state-mascot { width: 44px; height: 44px; opacity: 0.8; }
+
+/* ---------- 通关奖状 ---------- */
 .cert {
   background-image: v-bind('`url(${certBg})`');
   background-size: 100% 100%;
   background-repeat: no-repeat;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow);
-  padding: 26px;
+  padding: var(--sp-6);
 }
 .cert-inner {
   position: relative;
-  border-radius: 8px;
-  padding: 30px 26px 26px;
+  border-radius: var(--radius-sm);
+  padding: var(--sp-7) var(--sp-6) var(--sp-6);
   text-align: center;
   /* 半透明米白底，保证文字落在奖状留白区仍清晰可读 */
   background: rgba(255, 253, 247, 0.72);
@@ -334,41 +411,29 @@ onMounted(load)
   font-size: 40px;
   color: var(--seal);
   letter-spacing: 8px;
+  margin: 0;
 }
+.cert-title::before { display: none; }
 .cert-body {
-  margin-top: 18px;
-  font-size: 17px;
+  margin-top: var(--sp-5);
+  font-size: var(--fs-lg);
   line-height: 2;
   text-align: left;
 }
-.cert-body b {
-  color: var(--seal);
-  padding: 0 2px;
-}
+.cert-body b { color: var(--seal); padding: 0 2px; }
 .cert-sign {
-  margin-top: 16px;
+  margin-top: var(--sp-4);
   text-align: right;
   font-family: var(--font-fun);
-  font-size: 16px;
+  font-size: var(--fs-md);
   color: var(--ink-2);
 }
-.cert-seal {
-  position: absolute;
-  right: 18px;
-  bottom: 14px;
-}
-.cert-seal :deep(.seal) {
-  width: 72px;
-  height: 72px;
-  font-size: 14px;
-}
+.cert-seal { position: absolute; right: var(--sp-4); bottom: var(--sp-3); }
+.cert-seal :deep(.seal) { width: 72px; height: 72px; font-size: var(--fs-base); }
+
 /* ---------- 爆仓黑白漫画 ---------- */
-.bankrupt {
-  filter: grayscale(1);
-}
-.comic {
-  animation: shake 0.4s ease-out 1;
-}
+.bankrupt { filter: grayscale(1); }
+.comic { animation: shake 0.4s ease-out 1; }
 @keyframes shake {
   0% { transform: translate(0, 0) rotate(0deg); }
   20% { transform: translate(-6px, 3px) rotate(-1deg); }
@@ -377,66 +442,67 @@ onMounted(load)
   80% { transform: translate(3px, 2px) rotate(0.6deg); }
   100% { transform: translate(0, 0) rotate(0deg); }
 }
-/* 天台横幅：整页 grayscale 已生效，无需额外滤镜 */
 .comic-banner {
   width: 100%;
   height: 180px;
   object-fit: cover;
   display: block;
   border: 3px solid var(--ink);
-  border-radius: 8px;
-  box-shadow: 3px 3px 0 var(--ink);
-  margin-bottom: 14px;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  margin-bottom: var(--sp-3);
 }
 .comic-head {
   background: var(--card);
   border: 4px solid var(--ink);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   box-shadow: 4px 4px 0 var(--ink);
-  padding: 22px;
+  padding: var(--sp-5);
   text-align: center;
 }
 .comic-title {
   font-family: var(--font-fun);
   font-size: 52px;
   letter-spacing: 10px;
+  margin: 0;
 }
+.comic-title::before { display: none; }
 .comic-sub {
-  margin-top: 8px;
+  margin-top: var(--sp-2);
   color: var(--ink-2);
-  font-size: 16px;
+  font-size: var(--fs-md);
 }
 .panels {
-  margin-top: 14px;
+  margin-top: var(--sp-3);
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  gap: var(--sp-3);
 }
 .panel {
   position: relative;
   background: var(--card);
   border: 3px solid var(--ink);
   border-radius: 4px;
-  box-shadow: 3px 3px 0 var(--ink);
+  box-shadow: var(--shadow);
   min-height: 110px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px 10px;
+  padding: var(--sp-4) var(--sp-3);
 }
 .panel p {
   font-family: var(--font-fun);
-  font-size: 20px;
+  font-size: var(--fs-xl);
   text-align: center;
 }
 .panel-no {
   position: absolute;
   top: 6px;
-  left: 8px;
+  left: var(--sp-2);
   font-family: var(--font-fun);
-  font-size: 13px;
+  font-size: var(--fs-sm);
   color: var(--ink-2);
-  border: 1.5px solid var(--ink);
+  border: var(--border-thin);
   border-radius: 50%;
   width: 22px;
   height: 22px;
@@ -444,121 +510,79 @@ onMounted(load)
   align-items: center;
   justify-content: center;
 }
+
 /* ---------- 通用区块 ---------- */
-.block-card {
-  margin-top: 16px;
-}
-.card-title {
-  font-family: var(--font-fun);
-  font-size: 19px;
-  margin-bottom: 10px;
-}
-.block-empty {
-  color: var(--ink-3);
-  font-size: 14px;
-  padding: 18px 4px;
-  text-align: center;
-}
-.curve {
-  width: 100%;
-  height: 340px;
-}
-/* 排行榜行（与 Leaderboard 页一致） */
+.block-card { padding: var(--sp-3) var(--sp-4); }
+.block-empty { padding: var(--sp-6) var(--sp-4); }
+.curve { width: 100%; height: 320px; }
+
+/* 排行榜行 */
 .rank-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-bottom: 1px dashed #d8cfbc;
+  gap: var(--sp-3);
+  padding: var(--sp-2);
+  border-bottom: 1px dashed var(--dash);
+  border-left: 3px solid transparent;
 }
-.rank-row:last-child {
-  border-bottom: none;
-}
+.rank-row:last-child { border-bottom: none; }
 .rank-row.player {
-  background: #ffedb0;
-  border-radius: 8px;
+  background: var(--player-row);
+  border-left-color: var(--brand);
+  border-radius: var(--radius-sm);
   font-weight: 700;
 }
+.rank-row.gone { opacity: 0.55; }
 .rank-no {
   font-family: var(--font-fun);
-  font-size: 18px;
+  font-size: var(--fs-lg);
   width: 34px;
   text-align: center;
+  flex: none;
 }
-.rank-no.top {
-  color: var(--brand);
-}
+.rank-no.top { color: var(--brand); }
 .rank-name {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   min-width: 0;
 }
-.player-name {
-  font-weight: 700;
-}
-.avatar {
-  width: 32px;
-  height: 32px;
-  min-width: 32px;
-  border: 2px solid var(--ink);
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-fun);
-  font-size: 14px;
-  color: #fff;
-}
-.avatar.you {
-  background: var(--brand);
-}
-.dimmed {
-  opacity: 0.45;
-}
-.tag-style {
-  font-size: 11px;
-  color: var(--ink-2);
-  border: 1px dashed var(--ink-3);
-  border-radius: 6px;
-  padding: 0 6px;
-  white-space: nowrap;
-}
-.gone {
-  color: var(--ink-3);
-  font-size: 12px;
-  white-space: nowrap;
-}
+.rank-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player-name { font-weight: 700; }
+.avatar { width: 32px; height: 32px; min-width: 32px; flex: none; }
+.avatar.you { background: var(--brand); }
+.dimmed { opacity: 0.45; }
+.tag-danger { color: var(--up); border-color: var(--up); }
+.gone { color: var(--ink-3); font-size: var(--fs-sm); white-space: nowrap; }
+.asset { font-size: var(--fs-base); white-space: nowrap; }
+
 /* 强平记录 */
 .liq-row {
-  padding: 7px 4px;
-  border-bottom: 1px dashed #d8cfbc;
-  font-size: 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-1);
+  border-bottom: 1px dashed var(--dash);
+  font-size: var(--fs-base);
   line-height: 1.6;
 }
-.liq-row:last-child {
-  border-bottom: none;
-}
-/* 种子号 */
+.liq-row:last-child { border-bottom: none; }
+.liq-ic { width: 1.1em; height: 1.1em; margin-top: 4px; color: var(--up); flex: none; }
+
+/* 种子号 + 再来一局 */
 .seed-card {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
 }
+.seed-block { display: flex; align-items: baseline; gap: var(--sp-3); }
 .seed-lab {
   font-family: var(--font-fun);
-  font-size: 15px;
+  font-size: var(--fs-md);
   color: var(--ink-2);
 }
-.seed-val {
-  font-size: 16px;
-  word-break: break-all;
-}
-/* 再来一局 */
-.actions {
-  margin-top: 20px;
-  display: flex;
-  justify-content: center;
-}
+.seed-val { font-size: var(--fs-md); word-break: break-all; }
 </style>
