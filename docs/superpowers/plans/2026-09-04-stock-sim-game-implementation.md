@@ -725,15 +725,15 @@ public record EventSkeleton(String code, Scope scope, Source source, Set<EraCode
 
 ### Task 13.1: 后端全量测试
 
-- [ ] `mvn test` 全绿；重点：EraScheduler/ScriptDayScheduler/VolatilityEngine/SealMachine 统计测试、种子复现、快进等价性、100 线程并发守恒、108 天快进通关、爆仓结局、三局排期不同。
+- [x] `mvn test` 全绿；重点：EraScheduler/ScriptDayScheduler/VolatilityEngine/SealMachine 统计测试、种子复现、快进等价性、100 线程并发守恒、108 天快进通关、爆仓结局、三局排期不同。（验收：337 tests 全绿，含 TradeConcurrencyTest/FastForwardServiceTest/VolatilityEngineTest）
 
 ### Task 13.2: 手工联调清单（规格 §13）
 
-- [ ] 登录→引导→开盘→板块齐涨齐跌/券商领涨→买卖→封板买不进/炸板→张大妈反向指标→洗盘→打新→跳过看晚报→隔夜一字板→停牌→ST/除权→融资→千股跌停（重开二号验证排期/事件不同）→爆仓/通关→再来一局。
+- [x] 登录→引导→开盘→板块齐涨齐跌/券商领涨→买卖→封板买不进/炸板→张大妈反向指标→洗盘→打新→跳过看晚报→隔夜一字板→停牌→ST/除权→融资→千股跌停（重开二号验证排期/事件不同）→爆仓/通关→再来一局。（验收：浏览器 E2E 走查通过——注册/登录/实时行情/买卖费用/T+1 冻结解冻/涨停禁买/封板印章/停牌核查/融资借还/担保标尺/消息三态/排行榜/快进晚报/打新弹窗链路；千股跌停/双结局等长周期剧本由后端集成测试覆盖）
 
 ### Task 13.3: 无 emoji 与视觉回归
 
-- [ ] 前后端全仓 grep emoji 零匹配；前端页面截图对照 style-tile.html 令牌一致（纸底/描边/硬阴影/字体/红涨绿跌）。
+- [x] 前后端全仓 grep emoji 零匹配；前端页面截图对照 style-tile.html 令牌一致（纸底/描边/硬阴影/字体/红涨绿跌）。（验收：emoji 零匹配、色值全令牌化仅 theme.js 镜像、docs/design/shots/ 8 页实拍归档）
 
 ***
 
