@@ -1,30 +1,36 @@
 <template>
-  <div class="msg-page">
-    <!-- 页头：返回大盘 + 标题 + 全部已读 -->
-    <header class="page-head card">
-      <button class="back-btn" @click="goBack">
-        <SvgIcon name="bank" class="back-ic" />返回大盘
-      </button>
-      <h1 class="page-title">消息中心</h1>
-      <button class="btn btn-sm mark-all" :disabled="!hasUnread" @click="onMarkAll">
-        全部已读
+  <div class="page">
+    <!-- 页头（返回由侧栏承担）：标题 + 未读数 + 全部已读 -->
+    <header class="page-head">
+      <div>
+        <h1 class="page-title">
+          <SvgIcon name="bell" class="title-ic" />消息中心
+        </h1>
+        <p class="page-desc">
+          传闻、公告与追报都在这儿 · 未读
+          <b class="num">{{ unreadCount }}</b>
+          条
+        </p>
+      </div>
+      <button class="btn btn-sm" :disabled="!hasUnread" @click="onMarkAll">
+        <SvgIcon name="check" class="btn-ic" />全部已读
       </button>
     </header>
 
-    <!-- 筛选条：来源分段 + 仅未读开关 -->
+    <!-- 筛选条：来源芯片 + 仅未读开关 -->
     <section class="card filter-card">
-      <div class="seg">
+      <div class="chips">
         <button
           v-for="f in SRC_FILTERS"
           :key="f.value"
-          class="seg-btn"
+          class="chip"
           :class="{ on: filters.source === f.value }"
           @click="onSource(f.value)"
         >
           {{ f.label }}
         </button>
       </div>
-      <label class="unread-toggle">
+      <label class="unread-toggle" :class="{ on: filters.unreadOnly }">
         <input type="checkbox" v-model="filters.unreadOnly" @change="reload" />
         <span>仅未读</span>
       </label>
@@ -32,8 +38,14 @@
 
     <!-- 消息流 -->
     <section class="card list-card">
-      <div v-if="loading && items.length === 0" class="list-empty">加载中…</div>
-      <div v-else-if="items.length === 0" class="list-empty">暂无消息</div>
+      <div v-if="loading && items.length === 0" class="empty">
+        <span class="empty-title">加载中…</span>
+      </div>
+      <div v-else-if="items.length === 0" class="empty">
+        <SvgIcon name="bear" class="list-mascot" />
+        <span class="empty-title">暂无消息</span>
+        <span class="empty-desc">换个来源筛选，或者等下一条传闻</span>
+      </div>
 
       <template v-else>
         <div
@@ -61,6 +73,7 @@
               <span v-if="m.truthStatus" class="truth" :class="truthCls(m.truthStatus)">
                 {{ truthLabel(m.truthStatus) }}
               </span>
+              <span v-if="!m.isRead" class="unread-dot"></span>
             </div>
 
             <!-- 标题 / 正文 -->
@@ -71,7 +84,7 @@
             <button
               v-if="m.followupOf != null"
               class="followup-link"
-              @click="gotoOriginal(m.followupOf)"
+              @click.stop="gotoOriginal(m.followupOf)"
             >
               查看原消息
             </button>
@@ -79,9 +92,7 @@
             <!-- 原消息下的追报子行 -->
             <div v-if="followupsOf(m.id).length" class="followups">
               <div v-for="c in followupsOf(m.id)" :key="c.id" class="followup-row">
-                <span class="followup-tag" :class="followupTagCls(c)">
-                  {{ followupTag(c) }}
-                </span>
+                <span class="truth" :class="followupTagCls(c)">{{ followupTag(c) }}</span>
                 <span class="followup-text">{{ c.content }}</span>
               </div>
             </div>
@@ -89,12 +100,7 @@
         </div>
 
         <!-- 加载更多 -->
-        <button
-          v-if="hasMore"
-          class="btn load-more"
-          :disabled="loading"
-          @click="loadMore"
-        >
+        <button v-if="hasMore" class="btn load-more" :disabled="loading" @click="loadMore">
           {{ loading ? '加载中…' : '加载更多' }}
         </button>
       </template>
@@ -104,7 +110,6 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import { useMessagesStore } from '@/stores/messages'
 import { ElMessage } from 'element-plus'
 import NpcAvatar from '@/components/NpcAvatar.vue'
@@ -119,7 +124,6 @@ import {
   resolveNpcCode
 } from '@/constants/messageMeta'
 
-const router = useRouter()
 const messages = useMessagesStore()
 
 const SIZE = 20
@@ -135,6 +139,7 @@ const total = ref(0)
 const hasMore = computed(() => items.value.length < total.value)
 
 const hasUnread = computed(() => items.value.some((m) => !m.isRead))
+const unreadCount = computed(() => items.value.filter((m) => !m.isRead).length)
 
 // ---- 头像 / NPC 解析 ----
 function isNpc(m) {
@@ -159,7 +164,7 @@ function npcName(m) {
   return code ? NPC_NAME_BY_CODE[code] || '' : ''
 }
 function avatarFor(source) {
-  return SRC_AVATAR[source] || { ch: '?', bg: '#888', fg: '#fff' }
+  return SRC_AVATAR[source] || { ch: '消', bg: 'var(--ink-3)', fg: '#fff' }
 }
 
 // ---- 追报关联 ----
@@ -181,9 +186,9 @@ function followupTag(c) {
   return '更新'
 }
 function followupTagCls(c) {
-  if (c.truthStatus === 'DENIED') return 'ft-denied'
-  if (c.truthStatus === 'CONFIRMED') return 'ft-confirmed'
-  return 'ft-pending'
+  if (c.truthStatus === 'DENIED') return 'tr-denied'
+  if (c.truthStatus === 'CONFIRMED') return 'tr-confirmed'
+  return 'tr-pending'
 }
 function setMsgRef(id, el) {
   if (el) msgRefs.set(id, el)
@@ -277,247 +282,144 @@ async function onMarkAll() {
   }
 }
 
-function goBack() {
-  if (window.history.length > 1) router.back()
-  else router.push('/market')
-}
-
 onMounted(reload)
 </script>
 
 <style scoped>
-.msg-page {
-  max-width: 820px;
-  margin: 0 auto;
-}
-/* 页头 */
-.page-head {
+.page {
   display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 16px 18px;
+  flex-direction: column;
+  gap: var(--sp-4);
 }
-.back-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--font-fun);
-  font-size: 15px;
-  border: 2px solid var(--ink);
-  background: var(--card);
-  border-radius: 999px;
-  padding: 6px 16px;
-  box-shadow: 2px 2px 0 var(--ink);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.back-btn:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: 3px 3px 0 var(--ink);
-}
-.back-btn:active {
-  transform: translate(2px, 2px);
-  box-shadow: 1px 1px 0 var(--ink);
-}
-.back-ic {
-  width: 16px;
-  height: 16px;
-}
-.page-title {
-  flex: 1;
-  font-family: var(--font-fun);
-  font-size: 30px;
-}
-.btn-sm {
-  font-size: 14px;
-  padding: 5px 16px;
-  box-shadow: 2px 2px 0 var(--ink);
-}
-.mark-all:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-/* 筛选条 */
+.title-ic { width: 0.85em; height: 0.85em; color: var(--brand); }
+.btn-ic { width: 1em; height: 1em; }
+
+/* ---------- 筛选条 ---------- */
 .filter-card {
-  margin-top: 16px;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--sp-3);
   flex-wrap: wrap;
+  padding: var(--sp-3) var(--sp-4);
 }
-.seg {
+.chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--sp-2);
+  flex: 1;
+  min-width: 0;
 }
-.seg-btn {
+.chip {
   font-family: var(--font-fun);
-  font-size: 13px;
-  border: 2px solid var(--ink);
+  font-size: var(--fs-sm);
+  border: var(--border);
   background: var(--card);
-  border-radius: 999px;
-  padding: 4px 12px;
-  box-shadow: 2px 2px 0 var(--ink);
+  color: var(--ink-2);
+  border-radius: var(--radius-pill);
+  padding: 3px var(--sp-3);
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
+  transition: 0.08s;
 }
-.seg-btn.on {
+.chip:hover { background: var(--hover); color: var(--ink); transform: translate(-1px, -1px); box-shadow: var(--shadow); }
+.chip.on {
   background: var(--brand);
   color: #fff;
-}
-.seg-btn:not(.on):hover {
-  transform: translate(-1px, -1px);
-  box-shadow: 3px 3px 0 var(--ink);
+  transform: translate(1px, 1px);
+  box-shadow: var(--shadow-press);
 }
 .unread-toggle {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 14px;
+  flex: none;
+  font-family: var(--font-fun);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  border: var(--border);
+  border-radius: var(--radius-pill);
+  padding: 3px var(--sp-3);
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
   white-space: nowrap;
+  transition: 0.08s;
+}
+.unread-toggle.on {
+  background: var(--yellow);
+  color: var(--ink);
 }
 .unread-toggle input {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   accent-color: var(--brand);
-}
-/* 列表 */
-.list-card {
-  margin-top: 16px;
-}
-.list-empty {
-  color: var(--ink-3);
-  font-size: 14px;
-  padding: 30px 4px;
-  text-align: center;
-}
-/* 消息行（style-tile 第七节） */
-.msg {
-  display: flex;
-  gap: 10px;
-  padding: 10px 4px;
-  border-bottom: 1px dashed #d8cfbc;
-  border-left: 3px solid transparent;
-  padding-left: 8px;
   cursor: pointer;
 }
+
+/* ---------- 消息行 ---------- */
+.list-card { padding: var(--sp-2) var(--sp-4) var(--sp-3); }
+.list-mascot { width: 44px; height: 44px; opacity: 0.8; }
+.msg {
+  display: flex;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-2);
+  border-bottom: 1px dashed var(--dash);
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.msg:hover { background: var(--hover); }
+.msg:last-of-type { border-bottom: none; }
 .msg.unread {
   border-left-color: var(--up);
+  background: var(--brand-soft);
 }
+.msg.unread:hover { background: var(--hover); }
 .msg.hl {
-  background: #fff3cd;
-  border-radius: 8px;
+  background: var(--tr-pending-bg);
+  border-radius: var(--radius-sm);
 }
-.msg-main {
-  flex: 1;
-  min-width: 0;
-}
-.avatar {
-  width: 40px;
-  height: 40px;
-  min-width: 40px;
-  border: 2px solid var(--ink);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-fun);
-  font-size: 17px;
-}
+.msg-main { flex: 1; min-width: 0; }
 .msg-line {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 2px;
 }
-.msg-name {
-  margin-left: 2px;
-  font-weight: 700;
-}
+.msg-name { margin-left: 2px; font-weight: 700; }
 .time {
   color: var(--ink-3);
-  font-size: 12px;
-  margin-left: 6px;
+  font-size: var(--fs-sm);
+  margin-left: var(--sp-2);
+}
+.unread-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--up);
+  border: 1px solid var(--ink);
+  margin-left: var(--sp-2);
+  flex: none;
 }
 .msg-title {
-  margin-top: 4px;
-  font-size: 14px;
+  margin-top: var(--sp-1);
+  font-size: var(--fs-base);
   line-height: 1.6;
   word-break: break-word;
 }
-.msg-title.bold {
-  font-weight: 700;
-}
+.msg-title.bold { font-weight: 700; }
 .msg-content {
   margin-top: 2px;
-  font-size: 14px;
+  font-size: var(--fs-base);
   line-height: 1.6;
   color: var(--ink-2);
   word-break: break-word;
 }
-/* 来源徽章 */
-.src {
-  font-size: 11px;
-  font-weight: 700;
-  border: 1.5px solid var(--ink);
-  border-radius: 6px;
-  padding: 0 6px;
-  margin-right: 6px;
-}
-.src-auth {
-  background: #ffe0de;
-  color: var(--up);
-}
-.src-media {
-  background: #fff3cd;
-  color: #8a6d00;
-}
-.src-rumor {
-  background: #eee;
-  color: var(--ink);
-}
-.src-insider {
-  background: #f0e6ff;
-  color: #7a4fb0;
-}
-.src-fun {
-  background: #e2f7da;
-  color: var(--down);
-}
-.src-npc {
-  background: #dbe8ff;
-  color: var(--blue);
-}
-.src-system {
-  background: #d9d4cc;
-  color: var(--ink);
-}
-/* 三态文字徽章 */
-.truth {
-  font-size: 11px;
-  font-weight: 700;
-  border: 1.5px solid var(--ink);
-  border-radius: 6px;
-  padding: 0 6px;
-  margin-left: 6px;
-}
-.tr-pending {
-  background: #fff3cd;
-  color: #8a6d00;
-}
-.tr-confirmed {
-  background: #d6f0df;
-  color: var(--down);
-}
-.tr-denied {
-  background: #e9e9e9;
-  color: #888;
-  text-decoration: line-through;
-}
-/* 追报 */
+
+/* ---------- 追报 ---------- */
 .followup-link {
-  margin-top: 4px;
-  font-size: 12px;
+  margin-top: var(--sp-1);
+  font-size: var(--fs-sm);
+  font-family: var(--font-fun);
   color: var(--blue);
   background: none;
   border: none;
@@ -526,43 +428,22 @@ onMounted(reload)
   text-decoration: underline;
 }
 .followups {
-  margin-top: 6px;
+  margin-top: var(--sp-2);
   border-left: 2px dashed var(--ink-3);
-  padding-left: 10px;
+  padding-left: var(--sp-3);
 }
 .followup-row {
   display: flex;
   gap: 6px;
-  margin-top: 4px;
-  font-size: 13px;
+  margin-top: var(--sp-1);
+  font-size: var(--fs-sm);
+  align-items: flex-start;
 }
-.followup-tag {
-  font-size: 11px;
-  font-weight: 700;
-  border: 1.5px solid var(--ink);
-  border-radius: 6px;
-  padding: 0 6px;
-  white-space: nowrap;
-}
-.ft-pending {
-  background: #fff3cd;
-  color: #8a6d00;
-}
-.ft-confirmed {
-  background: #d6f0df;
-  color: var(--down);
-}
-.ft-denied {
-  background: #e9e9e9;
-  color: #888;
-  text-decoration: line-through;
-}
-.followup-text {
-  color: var(--ink-2);
-  word-break: break-word;
-}
+.followup-row .truth { margin-left: 0; margin-top: 2px; }
+.followup-text { color: var(--ink-2); word-break: break-word; }
+
 .load-more {
-  display: block;
-  margin: 16px auto 0;
+  display: flex;
+  margin: var(--sp-4) auto 0;
 }
 </style>
