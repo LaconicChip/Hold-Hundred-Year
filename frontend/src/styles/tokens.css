@@ -61,10 +61,22 @@
   --src-npc-bg: #dbe8ff;
   --src-fun-bg: #e2f7da;
   --src-auth-bg: #ffe0de;
+  --src-media-bg: #fff3cd;
+  --src-media-fg: #8a6d00;
+  --src-insider-bg: #f0e6ff;
+  --src-insider-fg: #7a4fb0;
+  --src-system-bg: #d9d4cc;
+  --src-rumor-fg: #888;
   --av-dama: #e86a5e;
   --av-lao: #5e8de8;
   --av-li: #6aa872;
   --av-chief: #8a6fd8;
+  --av-jushi: #7a9e7e;
+  --av-laoqian: #b58b4a;
+  --av-xinjimin: #5eb8b0;
+  --av-chengxuyuan: #c77fa8;
+  --av-p1: #d98b5e;
+  --av-p2: #a86fd8;
   --seal-broken: #999;
   --wood: #c99a6b;         /* 木质奖牌 */
   --wood-dark: #8a5a3b;
@@ -559,6 +571,56 @@ h3 {
   line-height: 1.5;
   font-family: var(--font-body);
 }
+
+/* =========================================================
+   消息徽章（来源 7 类 / 真伪三态）
+   全局定义，StockMsgList 与 Messages 共用，杜绝配色漂移
+   ========================================================= */
+.src,
+.truth {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  border: var(--border-thin);
+  border-radius: 6px;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+.src { margin-right: 6px; }
+.truth { margin-left: 6px; }
+.src-auth { background: var(--src-auth-bg); color: var(--up); }
+.src-media { background: var(--src-media-bg); color: var(--src-media-fg); }
+.src-rumor { background: var(--src-rumor-bg); color: var(--src-rumor-fg); }
+.src-insider { background: var(--src-insider-bg); color: var(--src-insider-fg); }
+.src-fun { background: var(--src-fun-bg); color: var(--down); }
+.src-npc { background: var(--src-npc-bg); color: var(--blue); }
+.src-system { background: var(--src-system-bg); color: var(--ink); }
+.tr-pending { background: var(--tr-pending-bg); color: var(--tr-pending-fg); }
+.tr-confirmed { background: var(--tr-confirmed-bg); color: var(--down); }
+.tr-denied {
+  background: var(--tr-denied-bg);
+  color: var(--tr-denied-fg);
+  text-decoration: line-through;
+}
+
+/* 头像（单字色块 / NPC 立绘） */
+.avatar {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  border: var(--border);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-fun);
+  font-size: var(--fs-lg);
+  color: #fff;
+  overflow: hidden;
+}
+.av-dama { background: var(--av-dama); }
+.av-lao { background: var(--av-lao); }
+.av-li { background: var(--av-li); }
+.av-chief { background: var(--av-chief); }
 
 /* =========================================================
    通用表格

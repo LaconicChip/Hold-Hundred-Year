@@ -1,17 +1,26 @@
 <template>
   <div class="trade-card card">
     <div class="trade-head">
-      <span class="trade-title">买卖委托</span>
-      <span class="trade-cash">可用资金 <b class="num">{{ fmtMoney(balance) }}</b></span>
+      <span class="trade-title">
+        <SvgIcon name="banknote" class="trade-ic" />买卖委托
+      </span>
+      <span class="trade-cash stat">
+        <span class="lab">可用资金</span>
+        <b class="num val">{{ fmtMoney(balance) }}</b>
+      </span>
     </div>
 
     <!-- 休市横幅（优先级最高，覆盖买/卖两条） -->
-    <div v-if="closedReason" class="trade-banner">{{ closedReason }}</div>
+    <div v-if="closedReason" class="trade-banner">
+      <SvgIcon name="alert" class="banner-ic" />{{ closedReason }}
+    </div>
 
     <div class="trade-cols">
       <!-- 买入列 -->
       <div class="trade-col">
-        <div class="col-label up">买入</div>
+        <div class="col-label buy-label">
+          <SvgIcon name="plus" class="col-ic" />买入
+        </div>
         <el-input-number
           v-model="qty"
           :min="0"
@@ -29,18 +38,15 @@
           <button class="quick" @click="setBuyAll">全仓</button>
         </div>
         <!-- 买入费用预估（前端本地估算，与后端一致口径） -->
-        <div class="fee">
-          <div class="fee-row">
-            <span>预估金额</span><span class="num">{{ fmtMoney(buyAmount) }}</span>
-          </div>
-          <div class="fee-row">
-            <span>预估佣金</span><span class="num">{{ fmtMoney(buyCommission) }}</span>
-          </div>
-          <div class="fee-row strong">
-            <span>合计支出</span><span class="num up">{{ fmtMoney(buyTotal) }}</span>
-          </div>
-        </div>
-        <button class="btn btn-primary trade-btn" :disabled="buyDisabled" @click="submit('buy')">
+        <dl class="kv fee">
+          <dt>预估金额</dt>
+          <dd>{{ fmtMoney(buyAmount) }}</dd>
+          <dt>预估佣金</dt>
+          <dd>{{ fmtMoney(buyCommission) }}</dd>
+          <dt class="fee-total">合计支出</dt>
+          <dd class="fee-total up">{{ fmtMoney(buyTotal) }}</dd>
+        </dl>
+        <button class="btn trade-btn buy" :disabled="buyDisabled" @click="submit('buy')">
           买入
         </button>
         <div v-if="buyReason" class="reason">{{ buyReason }}</div>
@@ -48,7 +54,9 @@
 
       <!-- 卖出列 -->
       <div class="trade-col">
-        <div class="col-label down">卖出</div>
+        <div class="col-label sell-label">
+          <SvgIcon name="minus" class="col-ic" />卖出
+        </div>
         <el-input-number
           v-model="qty"
           :min="0"
@@ -66,20 +74,16 @@
           <button class="quick" @click="setSellAll">全仓</button>
         </div>
         <!-- 卖出费用预估（前端本地估算，与后端一致口径） -->
-        <div class="fee">
-          <div class="fee-row">
-            <span>预估金额</span><span class="num">{{ fmtMoney(sellAmount) }}</span>
-          </div>
-          <div class="fee-row">
-            <span>预估佣金</span><span class="num">{{ fmtMoney(sellCommission) }}</span>
-          </div>
-          <div class="fee-row">
-            <span>预估印花税</span><span class="num">{{ fmtMoney(sellTax) }}</span>
-          </div>
-          <div class="fee-row strong">
-            <span>预计到账</span><span class="num down">{{ fmtMoney(sellTotal) }}</span>
-          </div>
-        </div>
+        <dl class="kv fee">
+          <dt>预估金额</dt>
+          <dd>{{ fmtMoney(sellAmount) }}</dd>
+          <dt>预估佣金</dt>
+          <dd>{{ fmtMoney(sellCommission) }}</dd>
+          <dt>预估印花税</dt>
+          <dd>{{ fmtMoney(sellTax) }}</dd>
+          <dt class="fee-total">预计到账</dt>
+          <dd class="fee-total down">{{ fmtMoney(sellTotal) }}</dd>
+        </dl>
         <button class="btn trade-btn sell" :disabled="sellDisabled" @click="submit('sell')">
           卖出
         </button>
@@ -96,6 +100,7 @@
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { buy, sell } from '@/api/trade'
+import SvgIcon from './SvgIcon.vue'
 
 const props = defineProps({
   stockId: { type: Number, required: true },
@@ -142,9 +147,7 @@ const validQty = computed(() => qty.value > 0 && qty.value % 100 === 0)
 const notWholeLot = computed(() => qty.value > 0 && qty.value % 100 !== 0)
 
 // 禁用原因（按优先级逐条）
-const closedReason = computed(() =>
-  props.isOpen ? '' : '休市中，无法下单'
-)
+const closedReason = computed(() => (props.isOpen ? '' : '休市中，无法下单'))
 const buyReason = computed(() => {
   if (closedReason.value) return ''
   if (props.changePct >= LIMIT_UP) return '涨停封死，买单排不上'
@@ -155,12 +158,8 @@ const sellReason = computed(() => {
   if (props.changePct <= LIMIT_DOWN) return '跌停封死，卖不出去'
   return ''
 })
-const buyDisabled = computed(
-  () => !!closedReason.value || !!buyReason.value || !validQty.value
-)
-const sellDisabled = computed(
-  () => !!closedReason.value || !!sellReason.value || !validQty.value
-)
+const buyDisabled = computed(() => !!closedReason.value || !!buyReason.value || !validQty.value)
+const sellDisabled = computed(() => !!closedReason.value || !!sellReason.value || !validQty.value)
 
 // 费用预估口径：佣金万3 最低5元，卖出印花税千1（与后端 GameConstants.COMMISSION_RATE=0.0003 一致）
 function commissionOf(amount) {
@@ -173,9 +172,7 @@ const buyTotal = computed(() => +(buyAmount.value + buyCommission.value).toFixed
 const sellAmount = computed(() => +(qty.value * props.price).toFixed(2))
 const sellCommission = computed(() => +commissionOf(sellAmount.value).toFixed(2))
 const sellTax = computed(() => +(sellAmount.value * 0.001).toFixed(2))
-const sellTotal = computed(() =>
-  +(sellAmount.value - sellCommission.value - sellTax.value).toFixed(2)
-)
+const sellTotal = computed(() => +(sellAmount.value - sellCommission.value - sellTax.value).toFixed(2))
 
 function fmtMoney(v) {
   const n = +v
@@ -212,109 +209,121 @@ async function submit(side) {
 </script>
 
 <style scoped>
-.trade-card {
-  padding: 14px 16px 12px;
-  margin-top: 16px;
-}
+.trade-card { padding: var(--sp-3) var(--sp-4) var(--sp-3); }
 .trade-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
 }
 .trade-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--font-fun);
-  font-size: 19px;
+  font-size: var(--fs-xl);
 }
-.trade-cash {
-  color: var(--ink-2);
-  font-size: 13px;
-}
-.trade-cash b {
-  color: var(--ink);
-}
+.trade-ic { width: 1em; height: 1em; color: var(--brand); }
+.trade-cash { flex-direction: row; align-items: baseline; gap: var(--sp-2); padding: 2px var(--sp-3); }
+.trade-cash .val { font-size: var(--fs-lg); }
+
+/* 休市横幅 */
 .trade-banner {
-  background: #fff3d6;
-  border: 2px solid var(--ink);
-  border-radius: 8px;
-  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--yellow-soft);
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px var(--sp-3);
   font-weight: 700;
-  font-size: 14px;
-  margin-bottom: 12px;
-  text-align: center;
+  font-size: var(--fs-base);
+  margin-bottom: var(--sp-3);
 }
+.banner-ic { width: 1.1em; height: 1.1em; color: var(--orange); }
+
 .trade-cols {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: var(--sp-4);
 }
 .trade-col {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
 }
 .col-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   font-family: var(--font-fun);
-  font-size: 18px;
+  font-size: var(--fs-lg);
+  border: var(--border);
+  border-radius: var(--radius-pill);
+  padding: 2px var(--sp-4);
+  box-shadow: var(--shadow-sm);
+  align-self: flex-start;
 }
-.qty-input {
-  width: 100%;
-}
-.quick-row {
-  display: flex;
-  gap: 6px;
-}
+.col-ic { width: 0.9em; height: 0.9em; }
+.buy-label { background: var(--up); color: #fff; }
+.sell-label { background: var(--down); color: #fff; }
+
+.qty-input { width: 100%; }
+.quick-row { display: flex; gap: 6px; }
 .quick {
   flex: 1;
-  border: 1.5px solid var(--ink);
+  border: var(--border-thin);
   background: var(--card);
-  border-radius: 8px;
-  padding: 5px 0;
-  font-size: 13px;
+  color: var(--ink-2);
+  border-radius: var(--radius-sm);
+  padding: 4px 0;
+  font-size: var(--fs-sm);
   font-weight: 700;
   cursor: pointer;
   font-family: var(--font-body);
+  transition: 0.08s;
 }
-.quick:hover {
-  background: #fdf6e3;
-}
+.quick:hover { background: var(--hover); color: var(--ink); border-color: var(--ink); }
+
 .fee {
-  border-top: 1px dashed #d8cfbc;
-  padding-top: 8px;
-  font-size: 13px;
+  border-top: 1px dashed var(--dash);
+  padding-top: var(--sp-2);
+  font-size: var(--fs-sm);
 }
-.fee-row {
-  display: flex;
-  justify-content: space-between;
-  margin: 3px 0;
-  color: var(--ink-2);
-}
-.fee-row.strong {
-  font-weight: 700;
+.fee .fee-total {
+  border-top: 1px dashed var(--dash);
+  padding-top: var(--sp-1);
+  margin-top: var(--sp-1);
   color: var(--ink);
-  border-top: 1px dashed #d8cfbc;
-  margin-top: 6px;
-  padding-top: 6px;
 }
-.trade-btn {
-  width: 100%;
-  justify-content: center;
-}
-.trade-btn.sell {
-  background: var(--card);
-  color: var(--down);
-}
+
+.trade-btn { width: 100%; justify-content: center; color: #fff; }
+.trade-btn.buy { background: var(--up); }
+.trade-btn.sell { background: var(--down); }
+.trade-btn:disabled { color: var(--ink); }
+
 .reason {
   color: var(--orange);
-  font-size: 12px;
+  font-size: var(--fs-xs);
   font-weight: 700;
   text-align: center;
 }
 .lot-warn {
-  margin-top: 10px;
+  margin-top: var(--sp-2);
   color: var(--orange);
-  font-size: 13px;
+  font-size: var(--fs-sm);
   font-weight: 700;
   text-align: center;
+}
+
+@media (max-width: 760px) {
+  .trade-cols { grid-template-columns: 1fr; }
 }
 </style>

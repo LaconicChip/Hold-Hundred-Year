@@ -24,22 +24,22 @@ const imgUrl = computed(() => {
   return m ? m.default : null
 })
 
-// 已知 NPC 的姓氏与配色（与风格稿头像一致）
+// 已知 NPC 的姓氏与配色（与风格稿头像一致，颜色取令牌不硬编码）
 const FALLBACK = {
-  DAMA: { ch: '妈', bg: '#e86a5e' },
-  LAOWANG: { ch: '王', bg: '#5e8de8' },
-  LAOLI: { ch: '李', bg: '#6aa872' },
-  CHIEF: { ch: '析', bg: '#8a6fd8' },
-  JUSHI: { ch: '居', bg: '#7a9e7e' },
-  LAOQIAN: { ch: '钱', bg: '#b58b4a' },
-  XINJIMIN: { ch: '基', bg: '#5eb8b0' },
-  CHENGXUYUAN: { ch: '猿', bg: '#c77fa8' }
+  DAMA: { ch: '妈', bg: 'var(--av-dama)' },
+  LAOWANG: { ch: '王', bg: 'var(--av-lao)' },
+  LAOLI: { ch: '李', bg: 'var(--av-li)' },
+  CHIEF: { ch: '析', bg: 'var(--av-chief)' },
+  JUSHI: { ch: '居', bg: 'var(--av-jushi)' },
+  LAOQIAN: { ch: '钱', bg: 'var(--av-laoqian)' },
+  XINJIMIN: { ch: '基', bg: 'var(--av-xinjimin)' },
+  CHENGXUYUAN: { ch: '猿', bg: 'var(--av-chengxuyuan)' }
 }
 
 // 任意未知 code：稳定 hash 配色，首字作为兜底字
 const PALETTE = [
-  '#e86a5e', '#5e8de8', '#6aa872', '#8a6fd8', '#7a9e7e',
-  '#b58b4a', '#5eb8b0', '#c77fa8', '#d98b5e', '#a86fd8'
+  'var(--av-dama)', 'var(--av-lao)', 'var(--av-li)', 'var(--av-chief)', 'var(--av-jushi)',
+  'var(--av-laoqian)', 'var(--av-xinjimin)', 'var(--av-chengxuyuan)', 'var(--av-p1)', 'var(--av-p2)'
 ]
 function hashColor(code) {
   let h = 0

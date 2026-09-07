@@ -1,24 +1,26 @@
 <template>
-  <div class="stock-page">
-    <!-- 页头：返回大盘 + 名称 + 代码 + 板块 + 现价 + 涨跌幅 -->
+  <div class="page">
+    <!-- 页头：返回 + 名称/代码/板块 + 现价/涨跌幅 -->
     <header class="page-head card">
       <button class="back-btn" @click="goBack">
-        <SvgIcon name="bank" class="back-ic" />返回大盘
+        <SvgIcon name="chevron-left" class="back-ic" />返回大盘
       </button>
+
       <div class="head-main">
         <div class="name-row">
           <span class="stock-name">{{ stock.name }}</span>
           <span class="stock-code num">{{ stock.code }}</span>
           <StickerTag type="plain" :text="stock.sector" />
         </div>
-        <div class="price-row">
-          <span class="cur-price num" :class="priceCls(quote.changePct)">
-            {{ quote.current.toFixed(2) }}
-          </span>
-          <span class="cur-pct num" :class="priceCls(quote.changePct)">
-            {{ fmtPct(quote.changePct) }}
-          </span>
-        </div>
+      </div>
+
+      <div class="price-box" :class="priceCls(quote.changePct)">
+        <SvgIcon
+          :name="quote.changePct > 0 ? 'arrow-up' : quote.changePct < 0 ? 'arrow-down' : 'minus'"
+          class="price-arrow"
+        />
+        <span class="cur-price num">{{ quote.current.toFixed(2) }}</span>
+        <span class="cur-pct num">{{ fmtPct(quote.changePct) }}</span>
       </div>
     </header>
 
@@ -38,32 +40,47 @@
 
     <!-- 我的持仓卡片 -->
     <div class="pos-card card">
-      <div class="pos-title">我的持仓</div>
-      <div v-if="!position" class="pos-empty">尚未持有该股</div>
-      <table v-else class="pos-table">
-        <thead>
-          <tr>
-            <th>股数</th>
-            <th>可用</th>
-            <th>成本价</th>
-            <th>现价</th>
-            <th>市值</th>
-            <th>浮盈浮亏</th>
-            <th>盈亏率</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td class="num">{{ position.shares }}</td>
-            <td class="num">{{ position.shares }}</td>
-            <td class="num">{{ position.costPrice.toFixed(2) }}</td>
-            <td class="num" :class="priceCls(position.current - position.costPrice)">{{ position.current.toFixed(2) }}</td>
-            <td class="num">{{ position.marketValue.toFixed(2) }}</td>
-            <td class="num" :class="priceCls(position.profit)">{{ fmtMoney(position.profit) }}</td>
-            <td class="num" :class="priceCls(position.profit)">{{ fmtPct(position.profitPct) }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="pos-head">
+        <span class="pos-title">
+          <SvgIcon name="wallet" class="pos-ic" />我的持仓
+        </span>
+        <span v-if="position" class="tag">持有 {{ position.shares }} 股</span>
+      </div>
+
+      <div v-if="!position" class="empty pos-empty">
+        <SvgIcon name="bull" class="pos-mascot" />
+        <span class="empty-title">尚未持有该股</span>
+        <span class="empty-desc">在上面下个买单，就能在这儿看到浮盈浮亏</span>
+      </div>
+
+      <div v-else class="scroll-x">
+        <table class="tbl pos-table">
+          <thead>
+            <tr>
+              <th>股数</th>
+              <th>可用</th>
+              <th>成本价</th>
+              <th>现价</th>
+              <th>市值</th>
+              <th>浮盈浮亏</th>
+              <th>盈亏率</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="num">{{ position.shares }}</td>
+              <td class="num">{{ position.shares }}</td>
+              <td class="num">{{ position.costPrice.toFixed(2) }}</td>
+              <td class="num" :class="priceCls(position.current - position.costPrice)">
+                {{ position.current.toFixed(2) }}
+              </td>
+              <td class="num">{{ position.marketValue.toFixed(2) }}</td>
+              <td class="num" :class="priceCls(position.profit)">{{ fmtMoney(position.profit) }}</td>
+              <td class="num" :class="priceCls(position.profit)">{{ fmtPct(position.profitPct) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <!-- 该股消息流卡片 -->
@@ -75,7 +92,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuotesStore } from '@/stores/quotes'
 import { useMarketStore } from '@/stores/market'
@@ -103,7 +120,9 @@ const stockId = computed(() => {
   const id = parseInt(route.params.id, 10)
   return isNaN(id) ? 0 : id
 })
-const stock = computed(() => getStockById(stockId.value) || { id: 0, name: '未知', code: '', sector: '', basePrice: 0 })
+const stock = computed(
+  () => getStockById(stockId.value) || { id: 0, name: '未知', code: '', sector: '', basePrice: 0 }
+)
 
 // 实时行情：quotes store rows[stockId]
 const quote = computed(() => {
@@ -132,12 +151,12 @@ const stockPoints = ref([])
 const indexPoints = ref([])
 async function loadChartData() {
   try {
-    stockPoints.value = await fetchStockQuotes(stockId.value) // 后端补齐后自动走真实接口
+    stockPoints.value = await fetchStockQuotes(stockId.value)
   } catch {
     stockPoints.value = []
   }
   try {
-    indexPoints.value = await fetchIndexPoints() // 后端补齐后自动走真实接口
+    indexPoints.value = await fetchIndexPoints()
   } catch {
     indexPoints.value = []
   }
@@ -170,7 +189,6 @@ function fmtMoney(v) {
   if (!isFinite(n)) return '0.00'
   return n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
-// 持仓现价相对成本的着色由模板内 (current - costPrice) 直接计算，无需额外占位
 
 // 进入页面：补充拉取消息（size:100），并按当前股过滤展示
 async function loadMessages() {
@@ -181,13 +199,25 @@ async function loadMessages() {
   }
 }
 
+// 市场状态轮询（午休↔下午盘切换时交易面板随动，与 Market.vue 同款兜底）
+let statePoll = null
+
 onMounted(async () => {
   // 无行情数据时用基准价初始化，避免现价空白
   if (!quotes.rows || !Object.keys(quotes.rows).length) quotes.initFromDefs()
+  // 刷新市场状态：交易面板的可交易判定依赖 market.isOpen，缺省会导致盘中误显"休市中"
+  market.fetchState().catch(() => {})
+  statePoll = setInterval(() => {
+    market.fetchState().catch(() => {})
+  }, 10000)
   await loadChartData()
   await loadPosition()
   await user.fetchAssets().catch(() => {})
   await loadMessages()
+})
+
+onUnmounted(() => {
+  if (statePoll) clearInterval(statePoll)
 })
 
 // 路由切换股票时重新加载数据
@@ -202,111 +232,96 @@ watch(stockId, async () => {
 </script>
 
 <style scoped>
-.stock-page {
-  max-width: 980px;
-  margin: 0 auto;
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
 }
+
+/* ---------- 页头 ---------- */
 .page-head {
   display: flex;
   align-items: center;
-  gap: 18px;
-  padding: 16px 18px;
+  gap: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  margin-bottom: 0;
 }
 .back-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  flex: none;
   font-family: var(--font-fun);
-  font-size: 15px;
-  border: 2px solid var(--ink);
+  font-size: var(--fs-md);
+  border: var(--border);
   background: var(--card);
-  border-radius: 999px;
-  padding: 6px 16px;
-  box-shadow: 2px 2px 0 var(--ink);
+  border-radius: var(--radius-pill);
+  padding: 6px var(--sp-4);
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
   white-space: nowrap;
+  transition: 0.08s;
 }
-.back-btn:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: 3px 3px 0 var(--ink);
-}
-.back-btn:active {
-  transform: translate(2px, 2px);
-  box-shadow: 1px 1px 0 var(--ink);
-}
-.back-ic {
-  width: 16px;
-  height: 16px;
-}
-.head-main {
-  flex: 1;
-}
+.back-btn:hover { transform: translate(-1px, -1px); box-shadow: var(--shadow); background: var(--hover); }
+.back-btn:active { transform: translate(2px, 2px); box-shadow: var(--shadow-press); }
+.back-ic { width: 15px; height: 15px; }
+
+.head-main { flex: 1; min-width: 0; }
 .name-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
 }
 .stock-name {
   font-family: var(--font-fun);
-  font-size: 30px;
+  font-size: var(--fs-3xl);
   line-height: 1.1;
 }
 .stock-code {
   color: var(--ink-2);
-  font-size: 15px;
+  font-size: var(--fs-md);
 }
-.price-row {
+
+/* 现价块：涨红跌绿整体着色 */
+.price-box {
   display: flex;
   align-items: baseline;
-  gap: 12px;
-  margin-top: 6px;
+  gap: var(--sp-2);
+  flex: none;
+  padding: var(--sp-1) var(--sp-3);
+  border: var(--border);
+  border-radius: var(--radius-md);
+  background: var(--paper-warm);
+  box-shadow: var(--shadow-sm);
 }
-.cur-price {
-  font-size: 24px;
-}
-.cur-pct {
-  font-size: 18px;
-}
-.pos-card {
-  padding: 14px 16px;
-  margin-top: 16px;
+.price-arrow { width: 1em; height: 1em; align-self: center; }
+.cur-price { font-size: var(--fs-2xl); }
+.cur-pct { font-size: var(--fs-lg); }
+
+/* ---------- 持仓 ---------- */
+.pos-card { padding: var(--sp-3) var(--sp-4); }
+.pos-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-2);
 }
 .pos-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--font-fun);
-  font-size: 19px;
-  margin-bottom: 8px;
+  font-size: var(--fs-xl);
 }
-.pos-empty {
-  color: var(--ink-3);
-  font-size: 14px;
-  padding: 14px 4px;
-  text-align: center;
-}
-.pos-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13.5px;
-}
-.pos-table th {
-  font-family: var(--font-fun);
-  font-weight: 400;
-  font-size: 13px;
-  color: var(--ink-2);
-  border-bottom: 2px solid var(--ink);
-  padding: 6px 6px;
-  text-align: right;
-}
-.pos-table th:first-child,
-.pos-table td:first-child {
-  text-align: left;
-}
-.pos-table td {
-  padding: 8px 6px;
-  border-bottom: 1px dashed #d8cfbc;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-.flat {
-  color: var(--ink);
+.pos-ic { width: 1em; height: 1em; color: var(--brand); }
+.pos-empty { padding: var(--sp-6) var(--sp-4); }
+.pos-mascot { width: 44px; height: 44px; opacity: 0.8; }
+
+@media (max-width: 760px) {
+  .page-head { flex-wrap: wrap; }
+  .stock-name { font-size: var(--fs-2xl); }
+  .price-box { width: 100%; justify-content: flex-start; }
 }
 </style>

@@ -1,8 +1,23 @@
 <template>
   <div class="msg-card card">
-    <div class="msg-title">该股消息流</div>
-    <div v-if="messages.length === 0" class="msg-empty">该股今日风平浪静</div>
+    <div class="msg-head">
+      <span class="msg-title">
+        <SvgIcon name="note" class="msg-ic" />该股消息流
+      </span>
+      <span class="msg-count tag">{{ messages.length }} 条</span>
+    </div>
+
+    <div v-if="messages.length === 0" class="empty msg-empty">
+      <SvgIcon name="bear" class="msg-mascot" />
+      <span class="empty-title">该股今日风平浪静</span>
+      <span class="empty-desc">没有传闻，也没有公告 —— 这本身有点可疑</span>
+    </div>
+
     <div v-for="m in messages" :key="m.id" class="msg">
+      <!-- NPC 立绘优先，其余来源用单字色块头像 -->
+      <NpcAvatar v-if="npcCodeOf(m)" :npc="npcCodeOf(m)" :size="40" />
+      <span v-else class="avatar" :style="avStyle(m.source)">{{ avChar(m.source) }}</span>
+
       <div class="msg-main">
         <div class="msg-line">
           <!-- 来源徽章：7 类来源各自配色，复用 style-tile 第七节气质 -->
@@ -24,15 +39,15 @@
 import { computed } from 'vue'
 import { useMessagesStore } from '@/stores/messages'
 import {
-  SRC_LABEL,
-  SRC_CLS,
+  SRC_AVATAR,
+  resolveNpcCode,
   srcLabel,
   srcCls,
-  TRUTH_LABEL,
-  TRUTH_CLS,
   truthLabel,
   truthCls
 } from '@/constants/messageMeta'
+import NpcAvatar from './NpcAvatar.vue'
+import SvgIcon from './SvgIcon.vue'
 
 const props = defineProps({
   stockId: { type: Number, required: true }
@@ -41,115 +56,69 @@ const props = defineProps({
 const messagesStore = useMessagesStore()
 
 // 当前股相关消息：messages store list 中 stockId === 当前股
-const messages = computed(() =>
-  messagesStore.list.filter((m) => m.stockId === props.stockId)
-)
+const messages = computed(() => messagesStore.list.filter((m) => m.stockId === props.stockId))
 
-// 来源标签 / 三态徽章定义统一来自 messageMeta.js（与消息中心保持一致）
+// NPC 立绘：从文本反查（容错前缀匹配）
+function npcCodeOf(m) {
+  return resolveNpcCode(`${m.name || ''}${m.author || ''}`)
+}
+function avChar(source) {
+  return (SRC_AVATAR[source] || { ch: '消' }).ch
+}
+function avStyle(source) {
+  const a = SRC_AVATAR[source] || { bg: 'var(--ink)', fg: '#fff' }
+  return { background: a.bg, color: a.fg }
+}
 </script>
 
 <style scoped>
-.msg-card {
-  padding: 14px 16px;
-  margin-top: 16px;
+.msg-card { padding: var(--sp-3) var(--sp-4) var(--sp-2); }
+.msg-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-2);
 }
 .msg-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--font-fun);
-  font-size: 19px;
-  margin-bottom: 6px;
+  font-size: var(--fs-xl);
 }
-.msg-empty {
-  color: var(--ink-3);
-  font-size: 14px;
-  padding: 14px 4px;
-  text-align: center;
+.msg-ic { width: 1em; height: 1em; color: var(--brand); }
+.msg-count {
+  font-family: var(--font-body);
+  border-color: var(--ink-3);
+  color: var(--ink-2);
 }
+.msg-empty { padding: var(--sp-6) var(--sp-4); }
+.msg-mascot { width: 40px; height: 40px; opacity: 0.8; }
+
 .msg {
   display: flex;
-  gap: 10px;
-  padding: 10px 4px;
-  border-bottom: 1px dashed #d8cfbc;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-1);
+  border-bottom: 1px dashed var(--dash);
 }
-.msg-main {
-  flex: 1;
-}
+.msg:last-child { border-bottom: none; }
+.msg-main { flex: 1; min-width: 0; }
 .msg-line {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 2px;
 }
-.msg-name {
-  margin-left: 2px;
-  font-weight: 700;
-}
+.msg-name { margin-left: 2px; font-weight: 700; }
 .msg-content {
-  margin-top: 4px;
-  font-size: 14px;
+  margin-top: var(--sp-1);
+  font-size: var(--fs-base);
   line-height: 1.6;
 }
 .time {
   color: var(--ink-3);
-  font-size: 12px;
-  margin-left: 4px;
-}
-/* 来源徽章：墨色硬描边小标签 */
-.src {
-  font-size: 11px;
-  font-weight: 700;
-  border: 1.5px solid var(--ink);
-  border-radius: 6px;
-  padding: 0 6px;
-  margin-right: 6px;
-}
-.src-auth {
-  background: #ffe0de;
-  color: var(--up);
-}
-.src-media {
-  background: #fff3cd;
-  color: #8a6d00;
-}
-.src-rumor {
-  background: #eee;
-  color: var(--ink);
-}
-.src-insider {
-  background: #f0e6ff;
-  color: #7a4fb0;
-}
-.src-fun {
-  background: #e2f7da;
-  color: var(--down);
-}
-.src-npc {
-  background: #dbe8ff;
-  color: var(--blue);
-}
-.src-system {
-  background: #d9d4cc;
-  color: var(--ink);
-}
-/* 三态文字徽章 */
-.truth {
-  font-size: 11px;
-  font-weight: 700;
-  border: 1.5px solid var(--ink);
-  border-radius: 6px;
-  padding: 0 6px;
-  margin-left: 6px;
-}
-.tr-pending {
-  background: #fff3cd;
-  color: #8a6d00;
-}
-.tr-confirmed {
-  background: #d6f0df;
-  color: var(--down);
-}
-.tr-denied {
-  background: #e9e9e9;
-  color: #888;
-  text-decoration: line-through;
+  font-size: var(--fs-sm);
+  margin-left: var(--sp-1);
 }
 </style>
