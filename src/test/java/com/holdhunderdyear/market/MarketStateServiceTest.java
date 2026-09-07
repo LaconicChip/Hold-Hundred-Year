@@ -251,9 +251,13 @@ class MarketStateServiceTest {
         marketStateService.startDay(userId);
 
         assertEquals(era2.getStartDay(), gameState(userId).getCurrentDay());
-        List<UserMessage> msgs = messages(userId);
-        assertEquals(1, msgs.size());
-        UserMessage msg = msgs.get(0);
+        // 随机种子的打新申购/中签/上市日恰逢纪元首日时会多推一条打新通知（onDayOpen），
+        // 故按纪元消息过滤断言其属性与唯一性，而非断言消息总数（同 day-1 测试的防御模式）。
+        List<UserMessage> eraMsgs = messages(userId).stream()
+                .filter(m -> m.getTitle() != null && m.getTitle().contains(era2.getEraCode()))
+                .collect(Collectors.toList());
+        assertEquals(1, eraMsgs.size(), "exactly one era-switch notify message expected");
+        UserMessage msg = eraMsgs.get(0);
         assertEquals(era2.getStartDay(), msg.getGameDay());
         assertEquals("SYSTEM", msg.getSource());
         assertEquals("NOTIFY", msg.getType());
