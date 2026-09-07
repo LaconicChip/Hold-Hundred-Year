@@ -48,9 +48,14 @@ class WebSocketConfigTest {
         ExposedRegistry registry = new ExposedRegistry(mock(SubscribableChannel.class), mock(MessageChannel.class));
         config.configureMessageBroker(registry);
 
+        // 用户目的地 /user/{id}/queue/* 会被 DefaultUserDestinationResolver 翻译为
+        // 会话内 /queue/*——broker 必须启用 "/queue" 前缀承接；"/user/queue" 前缀会让
+        // 同一订阅既走用户翻译又走直配（双重注册、重复推送），必须禁用。
         Collection<String> prefixes = registry.brokerDestinationPrefixes();
-        assertTrue(prefixes.contains("/user/queue"),
-                "simple broker must serve /user/queue destinations, got " + prefixes);
+        assertTrue(prefixes.contains("/queue"),
+                "simple broker must serve /queue destinations (user-dest translated), got " + prefixes);
+        assertFalse(prefixes.contains("/user/queue"),
+                "broker must NOT serve /user/queue directly (double registration + duplicate pushes)");
         assertEquals("/user", registry.userDestinationPrefix(),
                 "user destination prefix must be /user for per-user queues");
     }
