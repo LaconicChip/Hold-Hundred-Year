@@ -99,7 +99,7 @@ import { useMarketStore } from '@/stores/market'
 import { useUserStore } from '@/stores/user'
 import { useMessagesStore } from '@/stores/messages'
 import { getStockById } from '@/constants/stocks'
-import { fetchStockQuotes, fetchIndexPoints } from '@/api/stocks'
+import { fetchStockList, fetchStockQuotes, fetchIndexPoints } from '@/api/stocks'
 import { fetchPositions } from '@/api/me'
 import StockChart from '@/components/StockChart.vue'
 import StockTradePanel from '@/components/StockTradePanel.vue'
@@ -205,6 +205,12 @@ let statePoll = null
 onMounted(async () => {
   // 无行情数据时用基准价初始化，避免现价空白
   if (!quotes.rows || !Object.keys(quotes.rows).length) quotes.initFromDefs()
+  // 全量行情兜底：收盘/WS 未推时展示最新落库价而非基准价（与 Market.vue 同款）
+  try {
+    quotes.applyStockList(await fetchStockList())
+  } catch {
+    // 行情接口失败时保留基准价初始化
+  }
   // 刷新市场状态：交易面板的可交易判定依赖 market.isOpen，缺省会导致盘中误显"休市中"
   market.fetchState().catch(() => {})
   statePoll = setInterval(() => {
