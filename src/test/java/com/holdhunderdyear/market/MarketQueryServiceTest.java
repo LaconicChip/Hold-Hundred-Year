@@ -5,8 +5,11 @@ import com.holdhunderdyear.common.BizException;
 import com.holdhunderdyear.common.ErrorCode;
 import com.holdhunderdyear.game.model.dto.DailySummaryDTO;
 import com.holdhunderdyear.game.model.dto.EquityCurveDTO;
+import com.holdhunderdyear.game.model.dto.IndexPointDTO;
+import com.holdhunderdyear.game.model.dto.IntradayPointDTO;
 import com.holdhunderdyear.game.model.dto.LeaderboardDTO;
 import com.holdhunderdyear.game.model.dto.MarketStateDTO;
+import com.holdhunderdyear.game.model.dto.StockQuoteDTO;
 import com.holdhunderdyear.market.entity.UserDailySnapshot;
 import com.holdhunderdyear.market.entity.UserGameState;
 import com.holdhunderdyear.market.mapper.UserDailySnapshotMapper;
@@ -53,6 +56,9 @@ class MarketQueryServiceTest {
     private MarketQueryService marketQueryService;
 
     @Autowired
+    private WorldTickService worldTickService;
+
+    @Autowired
     private UserGameStateMapper userGameStateMapper;
 
     @Autowired
@@ -88,6 +94,51 @@ class MarketQueryServiceTest {
         assertEquals(1, state.getCurrentDay());
         assertEquals(0, state.getTickIndex());
         assertEquals(90, state.getCountdownTicks(), "intraday countdown is 90 - tickIndex");
+    }
+
+    @Test
+    void stockListMirrorsBoardQuotesAndStaticDefs() {
+        long userId = worldSeeder.seedUser("mq_stocks1", BCRYPT_HASH);
+        marketStateService.startDay(userId);
+
+        List<StockQuoteDTO> rows = marketQueryService.stocksWithQuotes(userId);
+
+        assertEquals(24, rows.size(), "all 24 stocks must be listed");
+        StockQuoteDTO first = rows.get(0);
+        assertEquals(1L, first.getStockId());
+        assertEquals("600001", first.getCode());
+        assertEquals("鸱夷酒业", first.getName());
+        assertEquals("白酒", first.getSector());
+        assertEquals(168.00, first.getBasePrice(), 1e-9);
+        assertEquals(168.00, first.getPrevClose(), 1e-9);
+        assertEquals(168.00, first.getCurrent(), 1e-9, "fresh world trades at base price");
+        assertEquals(0.0, first.getChangePct(), 1e-9, "changePct is a ratio (0.04 = +4%)");
+    }
+
+    @Test
+    void stockIntradayAndIndexPointsGrowWithTicks() {
+        long userId = worldSeeder.seedUser("mq_pts1", BCRYPT_HASH);
+        marketStateService.startDay(userId);
+        worldTickService.tickOne(userId);
+        worldTickService.tickOne(userId);
+        worldTickService.tickOne(userId);
+
+        List<IntradayPointDTO> stockPoints = marketQueryService.stockIntraday(userId, 1L);
+        List<IndexPointDTO> indexPoints = marketQueryService.indexIntraday(userId);
+
+        assertEquals(3, stockPoints.size(), "one intraday point per tick");
+        assertEquals("09:30", stockPoints.get(0).getTime(), "first tick labels as morning open");
+        assertTrue(stockPoints.get(0).getPrice() > 0, "price must be positive");
+        assertEquals(3, indexPoints.size());
+        assertTrue(indexPoints.get(0).getValue() > 0, "index value must be positive");
+    }
+
+    @Test
+    void stockIntradayOfUnknownStockThrowsNotFound() {
+        long userId = worldSeeder.seedUser("mq_pts2", BCRYPT_HASH);
+        marketStateService.startDay(userId);
+
+        assertThrows(BizException.class, () -> marketQueryService.stockIntraday(userId, 999L));
     }
 
     @Test

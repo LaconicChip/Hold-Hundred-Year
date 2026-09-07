@@ -68,6 +68,27 @@ export const useQuotesStore = defineStore('quotes', {
       })
     },
 
+    // 用 REST 全量行情（GET /api/stocks）初始化/覆盖行情表：页面刷新后 WS 推送
+    // 尚未到达（或已收盘无推送）时，展示最新落库价而非基准价
+    applyStockList(list) {
+      if (!Array.isArray(list)) return
+      const next = { ...this.rows }
+      list.forEach((q) => {
+        const def = STOCK_MAP[q.stockId]
+        if (!def) return
+        const prev = this.rows[q.stockId]
+        next[q.stockId] = {
+          stockId: q.stockId,
+          name: def.name,
+          sector: def.sector,
+          prevCurrent: prev ? prev.current : q.current,
+          current: q.current,
+          changePct: q.changePct * 100
+        }
+      })
+      this.rows = next
+    },
+
     // 未开盘时用基准价初始化 24 行（防止行情表空白）
     initFromDefs() {
       const next = {}

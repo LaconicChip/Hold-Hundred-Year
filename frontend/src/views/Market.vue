@@ -72,6 +72,12 @@ function viewResult() {
 onMounted(async () => {
   // 无行情数据时用基准价初始化，避免表格空白
   if (!quotes.rows || !Object.keys(quotes.rows).length) quotes.initFromDefs()
+  // 全量行情兜底（已收盘/WS 未推时展示最新落库价），失败不阻塞大盘
+  try {
+    quotes.applyStockList(await fetchStockList())
+  } catch {
+    // 行情接口失败时保留基准价初始化
+  }
   await market.fetchState()
   try {
     await messages.fetchMessages({ size: 50 }) // 供铃铛未读 + 跑马灯

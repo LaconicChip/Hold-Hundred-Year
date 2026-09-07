@@ -5,6 +5,7 @@ import com.holdhunderdyear.common.ErrorCode;
 import com.holdhunderdyear.common.R;
 import com.holdhunderdyear.game.model.dto.DailySummaryDTO;
 import com.holdhunderdyear.game.model.dto.EquityCurveDTO;
+import com.holdhunderdyear.game.model.dto.IndexPointDTO;
 import com.holdhunderdyear.game.model.dto.LeaderboardDTO;
 import com.holdhunderdyear.game.model.dto.MarketStateDTO;
 import com.holdhunderdyear.game.model.enums.MarketState;
@@ -17,6 +18,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 /**
  * 市场接口（Task 10.3，spec §11）：状态聚合 / 开盘（幂等）/ 快进收官（终局态显式
@@ -82,5 +85,11 @@ public class MarketController {
     @GetMapping("/equity-curve")
     public R<EquityCurveDTO> equityCurve(@AuthenticationPrincipal Long userId) {
         return R.ok(marketQueryService.equityCurve(userId));
+    }
+
+    /** 百年指数当日分时（spec §11 GET /api/market/index）。 */
+    @GetMapping("/index")
+    public R<List<IndexPointDTO>> index(@AuthenticationPrincipal Long userId) {
+        return R.ok(marketQueryService.indexIntraday(userId));
     }
 }

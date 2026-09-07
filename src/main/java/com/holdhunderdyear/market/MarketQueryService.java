@@ -4,10 +4,14 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhunderdyear.common.BizException;
 import com.holdhunderdyear.common.ErrorCode;
 import com.holdhunderdyear.game.constants.GameConstants;
+import com.holdhunderdyear.game.constants.StockDefs;
 import com.holdhunderdyear.game.model.dto.DailySummaryDTO;
 import com.holdhunderdyear.game.model.dto.EquityCurveDTO;
+import com.holdhunderdyear.game.model.dto.IndexPointDTO;
+import com.holdhunderdyear.game.model.dto.IntradayPointDTO;
 import com.holdhunderdyear.game.model.dto.LeaderboardDTO;
 import com.holdhunderdyear.game.model.dto.MarketStateDTO;
+import com.holdhunderdyear.game.model.dto.StockQuoteDTO;
 import com.holdhunderdyear.game.model.enums.EraCode;
 import com.holdhunderdyear.game.model.enums.MarketState;
 import com.holdhunderdyear.market.entity.UserDailySnapshot;
@@ -18,6 +22,8 @@ import com.holdhunderdyear.market.mapper.UserDailySnapshotMapper;
 import com.holdhunderdyear.market.mapper.UserEraMapper;
 import com.holdhunderdyear.market.mapper.UserGameStateMapper;
 import com.holdhunderdyear.market.mapper.UserMessageMapper;
+import com.holdhunderdyear.market.quote.Quote;
+import com.holdhunderdyear.market.quote.QuoteBoard;
 import com.holdhunderdyear.world.WorldRandom;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
@@ -25,6 +31,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
@@ -79,15 +86,18 @@ public class MarketQueryService {
     private final UserEraMapper userEraMapper;
     private final UserDailySnapshotMapper userDailySnapshotMapper;
     private final UserMessageMapper userMessageMapper;
+    private final QuoteBoardRegistry quoteBoardRegistry;
 
     public MarketQueryService(UserGameStateMapper userGameStateMapper,
                               UserEraMapper userEraMapper,
                               UserDailySnapshotMapper userDailySnapshotMapper,
-                              UserMessageMapper userMessageMapper) {
+                              UserMessageMapper userMessageMapper,
+                              QuoteBoardRegistry quoteBoardRegistry) {
         this.userGameStateMapper = userGameStateMapper;
         this.userEraMapper = userEraMapper;
         this.userDailySnapshotMapper = userDailySnapshotMapper;
         this.userMessageMapper = userMessageMapper;
+        this.quoteBoardRegistry = quoteBoardRegistry;
     }
 
     /**
@@ -236,6 +246,98 @@ public class MarketQueryService {
             throw new BizException(ErrorCode.NOT_FOUND);
         }
         return gameState;
+    }
+
+    /**
+     * 24 只股票静态档案 + 本账户最新行情（spec §11 GET /api/stocks）：StockDefs 档案序，
+     * 价格/涨跌幅/停牌/ST/封板读自行情板（世界锁内快照读取，changePct 为比率）。
+     */
+    public List<StockQuoteDTO> stocksWithQuotes(long userId) {
+        requireGameState(userId);
+        QuoteBoard board = quoteBoardRegistry.getOrLoad(userId);
+        board.getLock().lock();
+        try {
+            List<StockQuoteDTO> rows = new ArrayList<>(board.getQuotes().size());
+            for (Quote quote : board.getQuotes().values()) {
+                StockDefs.StockDef def = StockDefs.byId(quote.getStockId());
+                StockQuoteDTO row = new StockQuoteDTO();
+                row.setStockId(quote.getStockId());
+                row.setCode(def.code());
+                row.setName(def.name());
+                row.setSector(def.sector());
+                row.setBasePrice(def.basePrice());
+                row.setPrevClose(quote.getPrevClose());
+                row.setOpen(quote.getOpen());
+                row.setCurrent(quote.getCurrent());
+                row.setHigh(quote.getHigh());
+                row.setLow(quote.getLow());
+                row.setChangePct(quote.dayChangePct());
+                row.setLimitUpStreak(quote.getLimitUpStreak());
+                row.setHalted(quote.isHalted());
+                row.setSt(quote.isSt());
+                row.setSealed(quote.getSealed().name());
+                rows.add(row);
+            }
+            return rows;
+        } finally {
+            board.getLock().unlock();
+        }
+    }
+
+    /**
+     * 单股当日分时点序列（spec §11 GET /api/stocks/{id}/quotes）：来自行情板分时缓冲
+     * （cap 90，重启后从快照价重新积累）；time 为盘中时刻标签（tick→HH:mm 压缩映射，
+     * 起点=缓冲首点所属跳，对齐 board.tickIndex）。未知 stockId 抛 NOT_FOUND。
+     */
+    public List<IntradayPointDTO> stockIntraday(long userId, long stockId) {
+        requireGameState(userId);
+        QuoteBoard board = quoteBoardRegistry.getOrLoad(userId);
+        board.getLock().lock();
+        try {
+            Quote quote = board.getQuotes().get(stockId);
+            if (quote == null) {
+                throw new BizException(ErrorCode.NOT_FOUND);
+            }
+            int firstTick = board.getTickIndex() - quote.getIntraday().size();
+            List<IntradayPointDTO> points = new ArrayList<>(quote.getIntraday().size());
+            int tick = Math.max(firstTick, 0);
+            for (Iterator<Double> it = quote.getIntraday().iterator(); it.hasNext(); tick++) {
+                points.add(new IntradayPointDTO(tickLabel(tick), it.next()));
+            }
+            return points;
+        } finally {
+            board.getLock().unlock();
+        }
+    }
+
+    /**
+     * 百年指数当日分时（spec §11 GET /api/market/index）：读行情板指数分时缓冲，
+     * time 标签同单股分时规则。
+     */
+    public List<IndexPointDTO> indexIntraday(long userId) {
+        requireGameState(userId);
+        QuoteBoard board = quoteBoardRegistry.getOrLoad(userId);
+        board.getLock().lock();
+        try {
+            int firstTick = board.getTickIndex() - board.getIndexIntraday().size();
+            List<IndexPointDTO> points = new ArrayList<>(board.getIndexIntraday().size());
+            int tick = Math.max(firstTick, 0);
+            for (Iterator<Double> it = board.getIndexIntraday().iterator(); it.hasNext(); tick++) {
+                points.add(new IndexPointDTO(tickLabel(tick), it.next()));
+            }
+            return points;
+        } finally {
+            board.getLock().unlock();
+        }
+    }
+
+    /** 跳数→盘中时刻标签：上午 09:30-11:30、下午 13:00-15:00（45 跳/半场线性压缩）。 */
+    private static String tickLabel(int tick) {
+        boolean morning = tick < GameConstants.TICKS_PER_SESSION;
+        int sessionTick = morning ? tick : tick - GameConstants.TICKS_PER_SESSION;
+        int base = morning ? 9 * 60 + 30 : 13 * 60;
+        int minutes = base + Math.round(sessionTick * 120f / GameConstants.TICKS_PER_SESSION);
+        return "%02d:%02d".formatted(minutes / 60, minutes % 60);
     }
 
     /** 玩梗评语：按超额收益分档，WorldRandom.of(seed, "comment"+day) 确定性抽取一条。 */

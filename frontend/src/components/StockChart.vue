@@ -4,7 +4,7 @@
       <span class="chart-title">分时走势</span>
       <span class="chart-sub">股价与百年指数 · 相对开盘涨跌幅</span>
     </div>
-    <!-- 空态：mock 有数据，仅在真实接口返回空数组时显示 -->
+    <!-- 空态：收盘/未开盘时真实接口返回空数组 -->
     <div v-if="!hasData" class="chart-empty">行情尚未开盘</div>
     <!-- 双线对比：股价与指数均归一化为“相对首点的涨跌幅%”，单轴可比 -->
     <VChart
@@ -38,13 +38,13 @@ use([
 ])
 
 const props = defineProps({
-  // 单股分时：[{ time, price }]，来自 api/stocks.js fetchStockQuotes（当前走 mock）
+  // 单股分时：[{ time, price }]，来自 api/stocks.js fetchStockQuotes
   stockPoints: { type: Array, default: () => [] },
-  // 指数分时：[{ time, value }]，来自 api/stocks.js fetchIndexPoints（当前走 mock）
+  // 指数分时：[{ time, value }]，来自 api/stocks.js fetchIndexPoints
   indexPoints: { type: Array, default: () => [] }
 })
 
-// 是否缺数（任一为空即判空态；真实接口补齐后自动生效）
+// 是否缺数（任一为空即判空态）
 const hasData = computed(
   () => props.stockPoints.length > 0 && props.indexPoints.length > 0
 )

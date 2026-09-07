@@ -1,0 +1,54 @@
+package com.holdhunderdyear.web;
+
+import com.holdhunderdyear.common.PageResult;
+import com.holdhunderdyear.common.R;
+import com.holdhunderdyear.game.model.dto.AssetsDTO;
+import com.holdhunderdyear.game.model.dto.PositionDTO;
+import com.holdhunderdyear.game.model.dto.TitleDTO;
+import com.holdhunderdyear.game.model.dto.TradeItemDTO;
+import com.holdhunderdyear.trade.MeQueryService;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+
+/**
+ * 个人资料接口（spec §11）：资产看板 / 持仓列表 / 交易流水分页 / 已解锁称号徽章。
+ * 只读查询委托 MeQueryService（现价 mark-to-market 与交易同源）。
+ */
+@RestController
+@RequestMapping("/api/me")
+public class MeController {
+
+    private final MeQueryService meQueryService;
+
+    public MeController(MeQueryService meQueryService) {
+        this.meQueryService = meQueryService;
+    }
+
+    /** 资产四项 + 担保比例（spec §6.2）。 */
+    @GetMapping("/assets")
+    public R<AssetsDTO> assets(@AuthenticationPrincipal Long userId) {
+        return R.ok(meQueryService.assets(userId));
+    }
+
+    /** 持仓列表（含可卖股数、成本、浮盈、停牌/ST 标识）。 */
+    @GetMapping("/positions")
+    public R<List<PositionDTO>> positions(@AuthenticationPrincipal Long userId) {
+        return R.ok(meQueryService.positions(userId));
+    }
+
+    /** 交易流水分页（最近 100 条，新在前）。 */
+    @GetMapping("/trades")
+    public R<PageResult<TradeItemDTO>> trades(@AuthenticationPrincipal Long userId) {
+        return R.ok(meQueryService.trades(userId));
+    }
+
+    /** 已解锁称号与挑战徽章（kind 区分）。 */
+    @GetMapping("/titles")
+    public R<List<TitleDTO>> titles(@AuthenticationPrincipal Long userId) {
+        return R.ok(meQueryService.titles(userId));
+    }
+}
