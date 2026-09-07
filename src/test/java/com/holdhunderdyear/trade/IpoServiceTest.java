@@ -24,6 +24,7 @@ import com.holdhunderdyear.world.WorldSeeder;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -39,6 +40,10 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.verify;
 
 /**
  * 打新服务集成测试（hold_year_test 库，方法级事务自动回滚）：覆盖 spec §6.5 / 交接 §5
@@ -72,6 +77,40 @@ class IpoServiceTest {
     @Autowired private UserStockStateMapper userStockStateMapper;
     @Autowired private SysUserMapper sysUserMapper;
     @Autowired private UserMessageMapper userMessageMapper;
+
+    @MockitoBean
+    private com.holdhunderdyear.ws.PushService pushService;
+
+    // ---- 打新通知接线（spec §9 notifications 通道 / §12.1 申购弹窗）----
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void subscribeDayPushesStructuredIpoNotification() {
+        long userId = worldSeeder.seedUser("ipo_notify1", "$2a$10$bcrypthash");
+        UserScriptDay ipoDay = userScriptDayMapper.selectList(
+                        new LambdaQueryWrapper<UserScriptDay>()
+                                .eq(UserScriptDay::getUserId, userId)
+                                .eq(UserScriptDay::getScriptType, "IPO")
+                                .orderByAsc(UserScriptDay::getGameDay))
+                .get(0);
+
+        // 前一日收盘态，开盘进入申购日触发 onDayOpen
+        UserGameState state = userGameStateMapper.selectOne(
+                new LambdaQueryWrapper<UserGameState>().eq(UserGameState::getUserId, userId));
+        state.setCurrentDay(ipoDay.getGameDay() - 1);
+        state.setMarketState("CLOSED");
+        userGameStateMapper.updateById(state);
+
+        marketStateService.startDay(userId);
+
+        verify(pushService, atLeastOnce()).pushNotification(eq(userId), argThat(n -> {
+            Map<String, Object> notice = (Map<String, Object>) n;
+            return notice != null
+                    && Long.valueOf(ipoDay.getId()).equals(notice.get("scriptDayId"))
+                    && notice.get("ipoName") != null
+                    && ((Number) notice.get("issuePrice")).doubleValue() > 0;
+        }));
+    }
 
     // ---- 纯函数带 ----
 

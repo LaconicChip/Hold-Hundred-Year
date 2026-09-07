@@ -24,6 +24,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 
@@ -69,17 +70,20 @@ public class IpoService {
     private final UserGameStateMapper userGameStateMapper;
     private final SysUserMapper sysUserMapper;
     private final UserMessageMapper userMessageMapper;
+    private final com.holdhunderdyear.ws.PushService pushService;
 
     public IpoService(UserScriptDayMapper userScriptDayMapper,
                       UserIpoRecordMapper userIpoRecordMapper,
                       UserGameStateMapper userGameStateMapper,
                       SysUserMapper sysUserMapper,
-                      UserMessageMapper userMessageMapper) {
+                      UserMessageMapper userMessageMapper,
+                      com.holdhunderdyear.ws.PushService pushService) {
         this.userScriptDayMapper = userScriptDayMapper;
         this.userIpoRecordMapper = userIpoRecordMapper;
         this.userGameStateMapper = userGameStateMapper;
         this.sysUserMapper = sysUserMapper;
         this.userMessageMapper = userMessageMapper;
+        this.pushService = pushService;
     }
 
     /** 开盘整合点（由 MarketStateService.openDay 在 setCurrentEra 之后、状态落库前调用）：
@@ -179,13 +183,20 @@ public class IpoService {
         return BEAR_ERAS.contains(e) && boards == 0;
     }
 
-    /** 申购日通知："XX 新股今日申购，发行价 Y 元"（SYSTEM/NOTIFY）。 */
+    /** 申购日通知："XX 新股今日申购，发行价 Y 元"（SYSTEM/NOTIFY），并推送结构化
+     *  打新通知到 notifications 通道（前端 IpoDialog 据 scriptDayId/ipoName/issuePrice 弹申购窗）。 */
     private void notifySubscribe(long userId, UserScriptDay sd, int newDay) {
         JsonNode params = MAPPER.readTree(sd.getParamsJson());
         String name = params.get("ipoName").asString();
         double price = params.get("issuePrice").asDouble();
         insertMessage(userId, "新股申购",
                 name + " 新股今日申购，发行价 " + String.format("%.2f", price) + " 元", newDay);
+        pushService.pushNotification(userId, Map.of(
+                "kind", "IPO_SUBSCRIBE",
+                "scriptDayId", sd.getId(),
+                "ipoName", name,
+                "issuePrice", price,
+                "gameDay", newDay));
     }
 
     /** 中签缴款日 D+2：对每个 SUBSCRIBED 记录逐个摇号。 */
@@ -257,6 +268,11 @@ public class IpoService {
             String kind = isBreak ? "破发" : ("涨停 " + boards + " 连板");
             insertMessage(userId, "打新卖出", rec.getIpoName() + " 新股开板卖出（" + kind
                     + "），中签盈利 " + profit.toPlainString() + " 元。", newDay);
+            pushService.pushNotification(userId, Map.of(
+                    "kind", "IPO_SETTLED",
+                    "ipoName", rec.getIpoName(),
+                    "profit", profit.doubleValue(),
+                    "gameDay", newDay));
         }
     }
 
