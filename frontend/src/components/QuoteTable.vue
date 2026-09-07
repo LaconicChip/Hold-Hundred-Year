@@ -146,7 +146,7 @@ table.quotes tr:hover td {
 }
 @keyframes flashUp {
   0% {
-    background: rgba(239, 59, 59, 0.35);
+    background: var(--up-flash);
   }
   100% {
     background: transparent;
@@ -154,7 +154,7 @@ table.quotes tr:hover td {
 }
 @keyframes flashDown {
   0% {
-    background: rgba(18, 161, 80, 0.35);
+    background: var(--down-flash);
   }
   100% {
     background: transparent;

@@ -174,7 +174,7 @@ async function onSubmit() {
   display: inline-flex;
   border: var(--border);
   border-radius: 999px;
-  background: #fffdf7;
+  background: var(--card);
   box-shadow: 2px 2px 0 var(--ink);
   padding: 3px;
   margin: 0 auto 16px;
