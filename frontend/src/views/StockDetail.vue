@@ -34,7 +34,7 @@
       :change-pct="quote.changePct"
       :is-open="market.isOpen"
       :balance="balance"
-      :holding-shares="position ? position.shares : 0"
+      :holding-shares="position ? position.availableShares : 0"
       @traded="onTraded"
     />
 
@@ -69,7 +69,7 @@
           <tbody>
             <tr>
               <td class="num">{{ position.shares }}</td>
-              <td class="num">{{ position.shares }}</td>
+              <td class="num">{{ position.availableShares }}</td>
               <td class="num">{{ position.costPrice.toFixed(2) }}</td>
               <td class="num" :class="priceCls(position.current - position.costPrice)">
                 {{ position.current.toFixed(2) }}

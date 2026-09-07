@@ -108,7 +108,7 @@ const props = defineProps({
   changePct: { type: Number, default: 0 }, // 已是百分数
   isOpen: { type: Boolean, default: false }, // 可交易时段
   balance: { type: Number, default: 0 }, // 可用资金（user.assets.cash）
-  holdingShares: { type: Number, default: 0 } // 当前股持仓股数
+  holdingShares: { type: Number, default: 0 } // 当前股可卖股数（T+1：available_shares）
 })
 
 const emit = defineEmits(['traded'])
