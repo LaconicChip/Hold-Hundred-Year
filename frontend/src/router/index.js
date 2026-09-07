@@ -42,20 +42,20 @@ const routes = [
         path: 'leaderboard',
         name: 'leaderboard',
         component: () => import('../views/Leaderboard.vue')
+      },
+      // 收盘晚报（规格 §12.1 主菜单「日报」），支持 ?gameDay=N
+      {
+        path: 'summary',
+        name: 'summary',
+        component: () => import('../views/DailySummary.vue')
+      },
+      // 终局结算（规格 §12.1 主菜单「结算」）
+      {
+        path: 'result',
+        name: 'result',
+        component: () => import('../views/GameResult.vue')
       }
     ]
-  },
-  // 收盘晚报（Task 12.5），支持 ?gameDay=N
-  {
-    path: '/summary',
-    name: 'summary',
-    component: () => import('../views/DailySummary.vue')
-  },
-  // 终局结算（Task 12.5）
-  {
-    path: '/result',
-    name: 'result',
-    component: () => import('../views/GameResult.vue')
   }
 ]
 
