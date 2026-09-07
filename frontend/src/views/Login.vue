@@ -169,7 +169,7 @@ async function onSubmit() {
   max-width: 420px;
   width: 100%;
   text-align: center;
-  background: linear-gradient(#fdf3dd, #f6ecd4);
+  background: linear-gradient(var(--login-grad-1), var(--login-grad-2));
   position: relative;
   overflow: hidden;
   padding: var(--sp-8) var(--sp-7);
@@ -219,7 +219,7 @@ async function onSubmit() {
 }
 .tab-btn.active {
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
   box-shadow: var(--shadow-sm);
 }
 

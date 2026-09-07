@@ -66,7 +66,7 @@ function avChar(source) {
   return (SRC_AVATAR[source] || { ch: '消' }).ch
 }
 function avStyle(source) {
-  const a = SRC_AVATAR[source] || { bg: 'var(--ink)', fg: '#fff' }
+  const a = SRC_AVATAR[source] || { bg: 'var(--ink)', fg: 'var(--on-brand)' }
   return { background: a.bg, color: a.fg }
 }
 </script>

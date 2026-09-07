@@ -272,8 +272,8 @@ async function submit(side) {
   align-self: flex-start;
 }
 .col-ic { width: 0.9em; height: 0.9em; }
-.buy-label { background: var(--up); color: #fff; }
-.sell-label { background: var(--down); color: #fff; }
+.buy-label { background: var(--up); color: var(--on-brand); }
+.sell-label { background: var(--down); color: var(--on-brand); }
 
 .qty-input { width: 100%; }
 .quick-row { display: flex; gap: 6px; }
@@ -304,7 +304,7 @@ async function submit(side) {
   color: var(--ink);
 }
 
-.trade-btn { width: 100%; justify-content: center; color: #fff; }
+.trade-btn { width: 100%; justify-content: center; color: var(--on-brand); }
 .trade-btn.buy { background: var(--up); }
 .trade-btn.sell { background: var(--down); }
 .trade-btn:disabled { color: var(--ink); }

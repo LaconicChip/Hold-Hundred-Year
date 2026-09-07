@@ -50,12 +50,12 @@ export function truthCls(t) {
 
 // 非 NPC 来源的单字色块头像：背景 + 文字色
 export const SRC_AVATAR = {
-  AUTHORITY: { ch: '公', bg: 'var(--up)', fg: '#fff' },
+  AUTHORITY: { ch: '公', bg: 'var(--up)', fg: 'var(--on-brand)' },
   MEDIA: { ch: '媒', bg: 'var(--yellow)', fg: 'var(--ink)' },
-  RUMOR: { ch: '传', bg: '#888', fg: '#fff' },
-  INSIDER: { ch: '内', bg: '#8a6fd8', fg: '#fff' },
-  FUN: { ch: '梗', bg: 'var(--down)', fg: '#fff' },
-  SYSTEM: { ch: '系', bg: 'var(--ink)', fg: '#fff' }
+  RUMOR: { ch: '传', bg: 'var(--src-rumor-fg)', fg: 'var(--on-brand)' },
+  INSIDER: { ch: '内', bg: 'var(--av-chief)', fg: 'var(--on-brand)' },
+  FUN: { ch: '梗', bg: 'var(--down)', fg: 'var(--on-brand)' },
+  SYSTEM: { ch: '系', bg: 'var(--ink)', fg: 'var(--on-brand)' }
 }
 
 // NPC 中文名 -> 代码（NpcAvatar 的 npc 参数）

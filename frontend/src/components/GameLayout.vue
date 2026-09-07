@@ -241,7 +241,7 @@ onUnmounted(() => window.removeEventListener('resize', syncCollapsed))
 /* 激活态：品牌红填充 + 白字（规格 §12.1） */
 .nav-item.active {
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
   transform: translate(1px, 1px);
   box-shadow: var(--shadow-press);
 }

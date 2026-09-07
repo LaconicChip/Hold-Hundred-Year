@@ -83,6 +83,6 @@ const avatarStyle = computed(() => ({
 }
 .npc-ch {
   font-family: var(--font-fun);
-  color: #fff;
+  color: var(--on-brand);
 }
 </style>

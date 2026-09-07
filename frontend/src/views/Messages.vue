@@ -164,7 +164,7 @@ function npcName(m) {
   return code ? NPC_NAME_BY_CODE[code] || '' : ''
 }
 function avatarFor(source) {
-  return SRC_AVATAR[source] || { ch: '消', bg: 'var(--ink-3)', fg: '#fff' }
+  return SRC_AVATAR[source] || { ch: '消', bg: 'var(--ink-3)', fg: 'var(--on-brand)' }
 }
 
 // ---- 追报关联 ----
@@ -324,7 +324,7 @@ onMounted(reload)
 .chip:hover { background: var(--hover); color: var(--ink); transform: translate(-1px, -1px); box-shadow: var(--shadow); }
 .chip.on {
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
   transform: translate(1px, 1px);
   box-shadow: var(--shadow-press);
 }
