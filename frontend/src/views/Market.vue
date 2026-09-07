@@ -92,7 +92,6 @@ onUnmounted(() => {
 .market-page {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 24px 20px 80px;
 }
 .page-head {
   display: flex;

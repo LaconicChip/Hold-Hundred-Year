@@ -205,7 +205,6 @@ watch(stockId, async () => {
 .stock-page {
   max-width: 980px;
   margin: 0 auto;
-  padding: 24px 20px 80px;
 }
 .page-head {
   display: flex;

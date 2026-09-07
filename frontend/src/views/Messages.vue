@@ -289,7 +289,6 @@ onMounted(reload)
 .msg-page {
   max-width: 820px;
   margin: 0 auto;
-  padding: 24px 20px 80px;
 }
 /* 页头 */
 .page-head {

@@ -118,7 +118,6 @@ onMounted(() => load(0))
 .lb-page {
   max-width: 720px;
   margin: 0 auto;
-  padding: 24px 20px 80px;
 }
 /* 页头 */
 .page-head {
