@@ -28,7 +28,16 @@ export const useQuotesStore = defineStore('quotes', {
             basePrice: s.basePrice,
             current: r.current != null ? r.current : s.basePrice,
             prevCurrent: r.prevCurrent != null ? r.prevCurrent : s.basePrice,
-            changePct: r.changePct != null ? r.changePct : 0
+            changePct: r.changePct != null ? r.changePct : 0,
+            // 当日开高低 / 连板 / 停牌 / ST / 封板：来自 REST 全量行情，
+            // WS 快照不下发这些字段，未加载时为 null，页面按“—”展示
+            open: r.open != null ? r.open : null,
+            high: r.high != null ? r.high : null,
+            low: r.low != null ? r.low : null,
+            limitUpStreak: r.limitUpStreak || 0,
+            halted: !!r.halted,
+            st: !!r.st,
+            sealed: r.sealed || 'NONE'
           }
         })
         .sort((a, b) => a.stockId - b.stockId)
@@ -63,7 +72,15 @@ export const useQuotesStore = defineStore('quotes', {
           prevCurrent: prev ? prev.current : q.current,
           current: q.current,
           // 后端 changePct 为小数比率（0.0998 表示 +9.98%），此处统一转百分数
-          changePct: q.changePct * 100
+          changePct: q.changePct * 100,
+          // WS 快照不带开高低/连板/停牌/ST/封板，沿用上次 REST 落库值
+          open: prev ? prev.open : null,
+          high: prev ? prev.high : null,
+          low: prev ? prev.low : null,
+          limitUpStreak: prev ? prev.limitUpStreak || 0 : 0,
+          halted: prev ? !!prev.halted : false,
+          st: prev ? !!prev.st : false,
+          sealed: prev ? prev.sealed || 'NONE' : 'NONE'
         }
       })
     },
@@ -83,7 +100,14 @@ export const useQuotesStore = defineStore('quotes', {
           sector: def.sector,
           prevCurrent: prev ? prev.current : q.current,
           current: q.current,
-          changePct: q.changePct * 100
+          changePct: q.changePct * 100,
+          open: q.open != null ? q.open : null,
+          high: q.high != null ? q.high : null,
+          low: q.low != null ? q.low : null,
+          limitUpStreak: q.limitUpStreak || 0,
+          halted: !!q.halted,
+          st: !!q.st,
+          sealed: q.sealed || 'NONE'
         }
       })
       this.rows = next
@@ -99,7 +123,14 @@ export const useQuotesStore = defineStore('quotes', {
           sector: s.sector,
           prevCurrent: s.basePrice,
           current: s.basePrice,
-          changePct: 0
+          changePct: 0,
+          open: null,
+          high: null,
+          low: null,
+          limitUpStreak: 0,
+          halted: false,
+          st: false,
+          sealed: 'NONE'
         }
       })
       this.rows = next

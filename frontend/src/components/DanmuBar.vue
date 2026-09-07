@@ -1,24 +1,31 @@
 <template>
-  <div v-if="!closed" class="danmu-box">
-    <button class="dm-close" @click="toggle" title="关闭弹幕">隐藏</button>
+  <div v-if="!closed" class="danmu-box night">
+    <button class="dm-close" title="隐藏弹幕" @click="toggle">
+      <SvgIcon name="close" class="dm-close-ic" />隐藏
+    </button>
     <template v-if="flyers.length">
-      <div
-        v-for="f in flyers"
-        :key="f.id"
-        class="danmu"
-        :style="f.style"
-      >
+      <div v-for="f in flyers" :key="f.id" class="danmu" :style="f.style">
         <b v-if="f.user" :style="{ color: f.color }">{{ f.user }}：</b>{{ f.text }}
       </div>
     </template>
-    <div v-else class="dm-empty">弹幕静悄悄，行情在酝酿</div>
+    <div v-else class="empty empty-night dm-empty">
+      <SvgIcon name="bear" class="dm-mascot" />
+      <span class="empty-title">弹幕静悄悄</span>
+      <span class="empty-desc">行情在酝酿，先喝口茶</span>
+    </div>
   </div>
-  <div v-else class="danmu-closed" @click="toggle">弹幕已关闭，点击开启</div>
+
+  <!-- 关闭态：收成一条小浮条，不再是一整块黑板 -->
+  <button v-else class="danmu-closed" @click="toggle">
+    <SvgIcon name="bell" class="dm-ic" />
+    弹幕已关闭，点击开启
+  </button>
 </template>
 
 <script setup>
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useMessagesStore } from '@/stores/messages'
+import SvgIcon from './SvgIcon.vue'
 
 const messages = useMessagesStore()
 
@@ -27,12 +34,19 @@ const STORE_KEY = 'danmu-closed'
 const closed = ref(localStorage.getItem(STORE_KEY) === '1')
 
 const flyers = ref([])
-const PALETTE = ['#ffd166', '#8be0a8', '#ffb4ab', '#9ecbff', '#f0e6ff']
+// 深色底上的弹幕配色（取令牌，避免硬编码）
+const PALETTE = [
+  'var(--yellow)',
+  'var(--on-night-down)',
+  'var(--on-night-up)',
+  'var(--blue-soft)',
+  'var(--yellow-soft)'
+]
 const seen = new Set() // 本会话已生成的弹幕 id，避免重复飘
 
 function spawn(dm) {
   const id = Date.now() + Math.random()
-  const top = 8 + Math.random() * 110
+  const top = 8 + Math.random() * 104
   const dur = 9 + Math.random() * 6
   const color = PALETTE[Math.floor(Math.random() * PALETTE.length)]
   flyers.value.push({
@@ -89,71 +103,77 @@ function toggle() {
 .danmu-box {
   position: relative;
   height: 150px;
-  background: #1d1a17;
-  border: 2px solid var(--ink);
-  border-radius: 12px;
   overflow: hidden;
   box-shadow: var(--shadow);
-  margin-top: 16px;
+  margin-top: var(--sp-4);
 }
 .danmu {
   position: absolute;
   white-space: nowrap;
-  color: #fdf6e3;
-  font-size: 13px;
+  color: var(--on-night-soft);
+  font-size: var(--fs-sm);
   animation: dm linear;
 }
-.danmu b {
-  font-weight: 700;
-}
+.danmu b { font-weight: 700; }
 @keyframes dm {
-  from {
-    left: 100%;
-  }
-  to {
-    left: -30%;
-  }
+  from { left: 100%; }
+  to { left: -30%; }
 }
+
 .dm-close {
   position: absolute;
   top: 6px;
   right: 6px;
   z-index: 5;
-  font-size: 11px;
-  border: 1.5px solid var(--ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-family: var(--font-fun);
+  font-size: var(--fs-xs);
+  border: var(--border);
   background: var(--card);
-  border-radius: 6px;
+  color: var(--ink);
+  border-radius: var(--radius-sm);
   padding: 1px 8px;
   cursor: pointer;
-  font-family: var(--font-fun);
+  box-shadow: var(--shadow-sm);
 }
+.dm-close:hover { background: var(--hover); }
+.dm-close-ic { width: 11px; height: 11px; }
+
 .dm-empty {
   position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #a89f91;
-  font-size: 13px;
+  inset: var(--sp-3);
+  border: 2px dashed rgba(255, 253, 247, 0.3);
+  padding: var(--sp-3);
 }
+.dm-mascot { width: 34px; height: 34px; opacity: 0.85; }
+
+/* 关闭态小浮条 */
 .danmu-closed {
-  height: 34px;
-  background: #1d1a17;
-  border: 2px solid var(--ink);
-  border-radius: 8px;
-  color: #fdf6e3;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  font-size: 13px;
+  gap: 6px;
+  margin-top: var(--sp-3);
+  padding: 4px var(--sp-4);
+  font-family: var(--font-fun);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  background: var(--card);
+  border: 2px dashed var(--ink-3);
+  border-radius: var(--radius-pill);
   cursor: pointer;
-  margin-top: 16px;
+  transition: 0.08s;
 }
+.danmu-closed:hover {
+  color: var(--brand);
+  border-color: var(--brand);
+  border-style: solid;
+}
+.dm-ic { width: 1.1em; height: 1.1em; }
+
 /* 尊重系统级减弱动效：关闭飘动动画 */
 @media (prefers-reduced-motion: reduce) {
-  .danmu {
-    animation: none !important;
-    display: none;
-  }
+  .danmu { animation: none !important; display: none; }
 }
 </style>

@@ -1,71 +1,83 @@
 <template>
+  <!-- 营业厅看板：左边「今天第几天」+ 中间「百年指数」+ 右边「阶段/倒计时/操作」 -->
   <div class="statusbar card">
-    <!-- 交易日提示（快乐体粗字） -->
-    <b class="day-num">{{ dayText }}</b>
-
-    <!-- 纪元旗标：bull/bear/shock 决定底色与图标 -->
-    <span class="era-flag" :class="eraCls">
-      <SvgIcon :name="eraIcon" class="era-ic" />
-      {{ market.eraName || '平稳年代' }}
-    </span>
-
-    <!-- 段位徽章（tier 可能为空，默认 RETAIL） -->
-    <TierBadge :tier="tier" />
-
-    <!-- 百年指数 + 指数涨跌 -->
-    <span class="index-box">
-      <span class="index-label">百年指数</span>
-      <span class="num index-val">{{ indexText }}</span>
-      <span v-if="indexChg !== 0" class="num index-chg" :class="indexChgCls">{{ indexChgText }}</span>
-    </span>
-
-    <!-- 阶段与倒计时 -->
-    <span class="phase">
-      <template v-if="market.isOpen">
-        {{ phaseLabel }}<span class="num countdown">{{ countdownText }}</span>
-      </template>
-      <template v-else-if="market.marketState === 'LUNCH_BREAK'">
-        午休中（不可交易）
-      </template>
-      <template v-else>{{ phaseLabel }}</template>
-    </span>
-
-    <!-- 操作区 -->
-    <span class="ops">
-      <button
-        v-if="showStart"
-        class="btn btn-primary"
-        :disabled="market.loading"
-        @click="onStart"
-      >
-        <SvgIcon name="play" />
-        {{ startText }}
-      </button>
-
-      <button
-        v-if="showSkip"
-        class="btn"
-        :disabled="market.loading"
-        @click="onSkip"
-      >
-        <SvgIcon name="skip" />
-        {{ skipText }}
-      </button>
-
-      <button
-        v-if="market.isEnded"
-        class="btn btn-primary"
-        @click="onViewResult"
-      >
-        查看终局结算
-      </button>
-
-      <!-- 铃铛：未读数角标，>0 才显示 -->
-      <span class="bell-wrap" @click="onBell">
-        <SvgIcon name="bell" class="bell-ic" />
-        <span v-if="unread > 0" class="cnt">{{ unread > 99 ? '99+' : unread }}</span>
+    <!-- 左：交易日 / 纪元 / 段位 -->
+    <div class="sb-left">
+      <div class="day-block">
+        <span class="lab">交易日</span>
+        <b class="day-num num">{{ market.currentDay || 0 }}</b>
+        <span class="day-sub">第 {{ market.year || 0 }} 年 · 年内第 {{ market.dayInYear || 0 }} 天</span>
+      </div>
+      <span class="era-flag" :class="eraCls">
+        <SvgIcon :name="eraIcon" class="era-ic" />
+        {{ market.eraName || '平稳年代' }}
       </span>
-    </span>
+      <TierBadge :tier="tier" />
+    </div>
+
+    <!-- 中：百年指数（看板主数据） -->
+    <div class="sb-index stat" :class="indexChgCls">
+      <span class="lab">
+        <SvgIcon name="chart" class="lab-ic" />
+        百年指数
+      </span>
+      <span class="val num">{{ indexText }}</span>
+      <span class="sub-val num">
+        <template v-if="indexChg !== 0">{{ indexChgText }}</template>
+        <template v-else>平盘</template>
+      </span>
+    </div>
+
+    <!-- 右：阶段 + 倒计时 + 操作 -->
+    <div class="sb-right">
+      <div class="phase-block">
+        <span class="phase-tag" :class="{ 'is-open': market.isOpen }">
+          <span class="dot" :class="market.isOpen ? 'r' : ''"></span>
+          {{ phaseLabel }}
+        </span>
+        <span v-if="market.isOpen" class="countdown num">
+          <SvgIcon name="clock" class="cd-ic" />{{ countdownText }}
+        </span>
+        <span v-else-if="market.marketState === 'LUNCH_BREAK'" class="phase-note">午休中 · 不可交易</span>
+      </div>
+
+      <div class="ops">
+        <button
+          v-if="showStart"
+          class="btn btn-primary btn-sm"
+          :disabled="market.loading"
+          @click="onStart"
+        >
+          <SvgIcon name="play" />
+          {{ startText }}
+        </button>
+
+        <button
+          v-if="showSkip"
+          class="btn btn-sm"
+          :disabled="market.loading"
+          @click="onSkip"
+        >
+          <SvgIcon name="skip" />
+          {{ skipText }}
+        </button>
+
+        <button
+          v-if="market.isEnded"
+          class="btn btn-primary btn-sm"
+          @click="onViewResult"
+        >
+          <SvgIcon name="cert" />
+          查看终局结算
+        </button>
+
+        <!-- 铃铛：未读数角标 -->
+        <span class="bell-wrap" title="消息中心" @click="onBell">
+          <SvgIcon name="bell" class="bell-ic" />
+          <span v-if="unread > 0" class="cnt">{{ unread > 99 ? '99+' : unread }}</span>
+        </span>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -97,8 +109,6 @@ const PHASE_MAP = {
   FINISHED: '已通关'
 }
 const phaseLabel = computed(() => PHASE_MAP[market.marketState] || market.marketState)
-
-const dayText = computed(() => `第 ${market.currentDay} 个交易日 · 第 ${market.year} 年`)
 
 // 纪元旗标：market.eraTone getter -> bull/bear/shock
 const ERA_TONE = {
@@ -202,76 +212,116 @@ function onViewResult() {
 
 <style scoped>
 .statusbar {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+}
+
+/* ---------- 左：交易日 ---------- */
+.sb-left {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--sp-3);
   flex-wrap: wrap;
-  padding: 14px 18px;
+}
+.day-block {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  padding: 2px var(--sp-3);
+  border: var(--border);
+  border-radius: var(--radius-md);
+  background: var(--paper-warm);
+  box-shadow: var(--shadow-sm);
+}
+.day-block .lab {
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
 }
 .day-num {
   font-family: var(--font-fun);
-  font-size: 18px;
-  font-weight: 700;
-  white-space: nowrap;
+  font-size: 32px;
+  line-height: 1;
+  color: var(--brand);
 }
-.index-box {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  white-space: nowrap;
-}
-.index-label {
-  font-size: 13px;
-  color: var(--ink-2);
-}
-.index-val {
-  font-size: 15px;
-}
-.index-chg {
-  font-size: 15px;
-}
-.phase {
+.day-sub {
+  font-size: var(--fs-xs);
   color: var(--ink-2);
   white-space: nowrap;
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
 }
+
+/* ---------- 中：百年指数 ---------- */
+.sb-index {
+  justify-self: center;
+  min-width: 168px;
+  align-items: center;
+  text-align: center;
+}
+.sb-index .lab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.lab-ic { width: 1em; height: 1em; }
+.sb-index .val { font-size: 26px; }
+.sb-index.up .val { color: var(--up); }
+.sb-index.down .val { color: var(--down); }
+.sb-index.up .sub-val { color: var(--up); }
+.sb-index.down .sub-val { color: var(--down); }
+.sb-index .sub-val {
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+}
+
+/* ---------- 右：阶段 + 操作 ---------- */
+.sb-right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.phase-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.phase-tag {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-fun);
+  font-size: var(--fs-base);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.phase-tag.is-open { color: var(--up); }
 .countdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-lg);
   color: var(--ink);
 }
+.cd-ic { width: 1em; height: 1em; color: var(--ink-2); }
+.phase-note { font-size: var(--fs-xs); color: var(--ink-3); }
+
 .ops {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  margin-left: auto;
+  gap: var(--sp-2);
 }
-/* 铃铛与角标 */
 .bell-wrap {
-  position: relative;
-  font-size: 20px;
   cursor: pointer;
-  display: inline-flex;
+  margin-left: var(--sp-1);
 }
-.bell-ic {
-  width: 22px;
-  height: 22px;
-}
-.bell-wrap .cnt {
-  position: absolute;
-  top: -6px;
-  right: -9px;
-  background: var(--brand);
-  color: #fff;
-  border: 1.5px solid var(--ink);
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 0 5px;
-  line-height: 1.5;
-  font-family: var(--font-body);
-}
-.flat {
-  color: var(--ink);
+.bell-ic { width: 22px; height: 22px; }
+
+@media (max-width: 1100px) {
+  .statusbar { grid-template-columns: 1fr auto; }
+  .sb-index { justify-self: start; }
+  .sb-right { grid-column: 1 / -1; justify-content: space-between; }
 }
 </style>
