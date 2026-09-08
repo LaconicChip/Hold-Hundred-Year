@@ -79,7 +79,9 @@ class MarketQueryServiceTest {
         assertEquals("RETAIL", state.getTier());
         assertEquals(0, state.getTickIndex());
         assertEquals(0, state.getCountdownTicks(), "not trading means no countdown");
-        assertTrue(state.getWorldSeed() > 0);
+        assertNotNull(state.getWorldSeed());
+        assertTrue(Long.parseLong(state.getWorldSeed()) > 0,
+                "seed must be delivered as a precision-safe numeric string");
     }
 
     @Test

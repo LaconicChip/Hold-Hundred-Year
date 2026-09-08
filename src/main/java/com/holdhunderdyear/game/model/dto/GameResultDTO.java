@@ -34,8 +34,8 @@ public class GameResultDTO {
     /** 最终段位中文名 */
     private String finalTierName;
 
-    /** 本局世界种子号 */
-    private Long worldSeed;
+    /** 本局世界种子号（字符串下发：long 超出 JS 安全整数范围，number 会丢精度） */
+    private String worldSeed;
 
     /** 强平流水（loan_type=LIQUIDATE，按 gameDay,id 升序） */
     private List<LoanRecord> liquidations;

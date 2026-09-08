@@ -123,7 +123,7 @@ public class MarketQueryService {
         MarketState marketState = MarketState.valueOf(gameState.getMarketState());
         boolean trading = marketState == MarketState.MORNING_OPEN || marketState == MarketState.AFTERNOON_OPEN;
         dto.setCountdownTicks(trading ? GameConstants.TOTAL_TICKS - gameState.getTickIndex() : 0);
-        dto.setWorldSeed(gameState.getWorldSeed());
+        dto.setWorldSeed(String.valueOf(gameState.getWorldSeed()));
         return dto;
     }
 

@@ -37,6 +37,6 @@ public class MarketStateDTO {
     /** 盘中倒计时（盘中 = 90 - tickIndex，其余状态固定 0） */
     private int countdownTicks;
 
-    /** 本局世界种子号 */
-    private long worldSeed;
+    /** 本局世界种子号（字符串下发：long 超出 JS 安全整数范围，number 会丢精度） */
+    private String worldSeed;
 }

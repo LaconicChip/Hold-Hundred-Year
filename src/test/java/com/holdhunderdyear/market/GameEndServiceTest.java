@@ -154,7 +154,7 @@ class GameEndServiceTest {
         assertEquals(6.0, result.getIndexGainPct(), 0.0001, "(1060 - 1000) / 1000");
         assertEquals("MASTER", result.getFinalTier());
         assertEquals("牛散", result.getFinalTierName(), "tier name must map through SettlementService.tierNameOf");
-        assertEquals(20260904L, result.getWorldSeed().longValue(), "seed must come from the terminal game state");
+        assertEquals("20260904", result.getWorldSeed(), "seed must come from the terminal game state, as a precision-safe string");
 
         List<LoanRecord> liquidations = result.getLiquidations();
         assertEquals(2, liquidations.size(), "both LIQUIDATE records belong to the payout ledger");

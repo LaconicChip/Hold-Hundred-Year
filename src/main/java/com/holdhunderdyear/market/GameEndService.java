@@ -148,7 +148,7 @@ public class GameEndService {
         result.setIndexGainPct((finalSnapshot.getIndexValue() / GameConstants.INITIAL_INDEX - 1) * 100);
         result.setFinalTier(gs.getTier());
         result.setFinalTierName(SettlementService.tierNameOf(gs.getTier()));
-        result.setWorldSeed(gs.getWorldSeed());
+        result.setWorldSeed(String.valueOf(gs.getWorldSeed()));
         result.setLiquidations(liquidations(userId));
         result.setCurve(curve(userId, gs.getEndDay()));
         result.setRankings(rankings(state, finalSnapshot));
