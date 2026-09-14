@@ -296,6 +296,35 @@ class MarketQueryServiceTest {
     }
 
     @Test
+    void stockListShowsClosedDayOhlcFromDailyBar() {
+        long userId = worldSeeder.seedUser("mq_ohlc1", BCRYPT_HASH);
+        UserGameState state = userGameStateMapper.selectOne(
+                new LambdaQueryWrapper<UserGameState>().eq(UserGameState::getUserId, userId));
+        state.setMarketState("SETTLING");
+        userGameStateMapper.updateById(state);
+        UserStockState stock = userStockStateMapper.selectOne(
+                new LambdaQueryWrapper<UserStockState>()
+                        .eq(UserStockState::getUserId, userId)
+                        .eq(UserStockState::getStockId, 1L));
+        // 当日日内 OHLC：开 169 / 高 172 / 低 167.5 / 收 170（prev_close 168）
+        stock.setCurrentPrice(new BigDecimal("170.00"));
+        stock.setOpenPrice(new BigDecimal("169.00"));
+        stock.setHighPrice(new BigDecimal("172.00"));
+        stock.setLowPrice(new BigDecimal("167.50"));
+        userStockStateMapper.updateById(stock);
+
+        settlementService.settle(userId);
+
+        StockQuoteDTO first = marketQueryService.stocksWithQuotes(userId).get(0);
+        assertEquals(169.00, first.getOpen(), 1e-9, "收盘态今开取当日 bar");
+        assertEquals(172.00, first.getHigh(), 1e-9, "收盘态最高取当日 bar（结算已重置 state 的 OHL）");
+        assertEquals(167.50, first.getLow(), 1e-9);
+        assertEquals(170.00, first.getCurrent(), 1e-9);
+        assertEquals(168.00, first.getPrevClose(), 1e-9,
+                "收盘态昨收由 bar 涨跌幅反推（prev_close 列已被双写为收盘价）");
+    }
+
+    @Test
     void klineReturnsBarsAscendingCappedByLimit() {
         long userId = worldSeeder.seedUser("mq_kline1", BCRYPT_HASH);
         settleDay(userId, 1, 1002.0);

@@ -35,7 +35,9 @@ import tools.jackson.databind.json.JsonMapper;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 
@@ -272,23 +274,28 @@ public class MarketQueryService {
     public List<StockQuoteDTO> stocksWithQuotes(long userId) {
         UserGameState gameState = requireGameState(userId);
         boolean closed = isClosedLike(gameState.getMarketState());
+        // 收盘/终局态：当日 bar 覆盖开高低与昨收——结算已把 state 的 prev_close/OHL
+        // 双写重置为收盘价（为次日准备），bar 才是当日真实行情
+        Map<Long, StockDailyBar> closedBars = closed
+                ? barsOfDay(userId, gameState.getCurrentDay()) : Map.of();
         QuoteBoard board = quoteBoardRegistry.getOrLoad(userId);
         board.getLock().lock();
         try {
             List<StockQuoteDTO> rows = new ArrayList<>(board.getQuotes().size());
             for (Quote quote : board.getQuotes().values()) {
                 StockDefs.StockDef def = StockDefs.byId(quote.getStockId());
+                StockDailyBar bar = closedBars.get(quote.getStockId());
                 StockQuoteDTO row = new StockQuoteDTO();
                 row.setStockId(quote.getStockId());
                 row.setCode(def.code());
                 row.setName(def.name());
                 row.setSector(def.sector());
                 row.setBasePrice(def.basePrice());
-                row.setPrevClose(quote.getPrevClose());
-                row.setOpen(quote.getOpen());
+                row.setPrevClose(bar != null ? prevCloseOf(bar) : quote.getPrevClose());
+                row.setOpen(bar != null ? bar.getOpen().doubleValue() : quote.getOpen());
                 row.setCurrent(quote.getCurrent());
-                row.setHigh(quote.getHigh());
-                row.setLow(quote.getLow());
+                row.setHigh(bar != null ? bar.getHigh().doubleValue() : quote.getHigh());
+                row.setLow(bar != null ? bar.getLow().doubleValue() : quote.getLow());
                 row.setChangePct(closed && quote.getLastClosePct() != null
                         ? quote.getLastClosePct() : quote.dayChangePct());
                 row.setLimitUpStreak(quote.getLimitUpStreak());
@@ -301,6 +308,26 @@ public class MarketQueryService {
         } finally {
             board.getLock().unlock();
         }
+    }
+
+    /** 当日该用户全部日K bar，键为 stockId（收盘态行情展示用）；无 bar 的股票不下发覆盖。 */
+    private Map<Long, StockDailyBar> barsOfDay(long userId, int gameDay) {
+        List<StockDailyBar> bars = stockDailyBarMapper.selectList(
+                new LambdaQueryWrapper<StockDailyBar>()
+                        .eq(StockDailyBar::getUserId, userId)
+                        .eq(StockDailyBar::getGameDay, gameDay));
+        Map<Long, StockDailyBar> byStock = new LinkedHashMap<>();
+        for (StockDailyBar bar : bars) {
+            byStock.put(bar.getStockId(), bar);
+        }
+        return byStock;
+    }
+
+    /** 当日昨收：由 bar 涨跌幅反推 close/(1+pct)——结算后 prev_close 列已是收盘价；缺涨跌幅退化收盘价。 */
+    private static double prevCloseOf(StockDailyBar bar) {
+        double close = bar.getClose().doubleValue();
+        Double pct = bar.getChangePct();
+        return pct != null && pct > -1 ? close / (1 + pct) : close;
     }
 
     /** 已收盘/结算/终局态：行情展示走当日收盘涨跌幅通道（day_change_pct）。 */
