@@ -29,13 +29,13 @@
       </div>
     </header>
 
-    <!-- 行情信息卡：开/收/高/低/涨停/跌停 + 连板/封板/停牌/ST -->
+    <!-- 行情信息卡：开/昨收/高/低/涨停/跌停 + 连板/封板/停牌/ST -->
     <div class="card info-card">
       <div class="info-grid">
-        <div class="kv-item"><span class="lab">今开</span><b class="num" :class="priceCls(row.open - row.prevClose)">{{ fmtPrice(row.open) }}</b></div>
-        <div class="kv-item"><span class="lab">昨收</span><b class="num">{{ fmtPrice(row.prevClose) }}</b></div>
-        <div class="kv-item"><span class="lab">最高</span><b class="num" :class="priceCls(row.high - row.prevClose)">{{ fmtPrice(row.high) }}</b></div>
-        <div class="kv-item"><span class="lab">最低</span><b class="num" :class="priceCls(row.low - row.prevClose)">{{ fmtPrice(row.low) }}</b></div>
+        <div class="kv-item"><span class="lab">今开</span><b class="num" :class="priceCls(infoOpen - dayPrevClose)">{{ fmtPrice(infoOpen) }}</b></div>
+        <div class="kv-item"><span class="lab">昨收</span><b class="num">{{ fmtPrice(dayPrevClose) }}</b></div>
+        <div class="kv-item"><span class="lab">最高</span><b class="num" :class="priceCls(infoHigh - dayPrevClose)">{{ fmtPrice(infoHigh) }}</b></div>
+        <div class="kv-item"><span class="lab">最低</span><b class="num" :class="priceCls(infoLow - dayPrevClose)">{{ fmtPrice(infoLow) }}</b></div>
         <div class="kv-item"><span class="lab">涨停价</span><b class="num up">{{ fmtPrice(limitUpPrice) }}</b></div>
         <div class="kv-item"><span class="lab">跌停价</span><b class="num down">{{ fmtPrice(limitDownPrice) }}</b></div>
       </div>
@@ -62,7 +62,7 @@
     <StockChart
       v-if="tab === 'intraday'"
       :points="stockPoints"
-      :prev-close="row.prevClose || stock.basePrice"
+      :prev-close="dayPrevClose"
       :limit-up="limitUpPrice"
       :limit-down="limitDownPrice"
       :closed="isClosed"
@@ -187,19 +187,26 @@ const row = computed(() => {
   }
 })
 
+// 当日行情口径（开/昨收/高/低）：盘中与收盘态都由 /api/stocks 下发——后端在收盘态
+// 已用落库日K bar 还原当日 OHLC 与昨收（结算会把 prev_close/OHL 重置为收盘价）
+const dayPrevClose = computed(() => row.value.prevClose || stock.value.basePrice)
+const infoOpen = computed(() => row.value.open)
+const infoHigh = computed(() => row.value.high)
+const infoLow = computed(() => row.value.low)
+
 // 涨跌停价：ST ±5%、普通 ±10%（与后端 Quote.limitUpPrice 同口径，HALF_UP 2 位）
 const limitUpPrice = computed(() =>
-  round2((row.value.prevClose || stock.value.basePrice) * (row.value.st ? 1.05 : 1.10))
+  round2((dayPrevClose.value || stock.value.basePrice) * (row.value.st ? 1.05 : 1.10))
 )
 const limitDownPrice = computed(() =>
-  round2((row.value.prevClose || stock.value.basePrice) * (row.value.st ? 0.95 : 0.90))
+  round2((dayPrevClose.value || stock.value.basePrice) * (row.value.st ? 0.95 : 0.90))
 )
 function round2(v) {
   return Math.round(v * 100) / 100
 }
 
 // 涨跌额（现价 - 昨收，元）
-const chgAmount = computed(() => quote.value.current - (row.value.prevClose || stock.value.basePrice))
+const chgAmount = computed(() => quote.value.current - dayPrevClose.value)
 
 // 收盘/结算/终局态：图上挂"已收盘"角标
 const isClosed = computed(() =>

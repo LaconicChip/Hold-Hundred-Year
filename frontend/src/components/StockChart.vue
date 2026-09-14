@@ -12,11 +12,15 @@
       <span class="chart-sub muted-2 push">左轴价格 · 右轴涨跌幅%</span>
     </div>
 
-    <!-- 空态：未开盘时固定轴 90 点全为 null -->
+    <!-- 空态：未开盘时固定轴 90 点全为 null；收盘态无点说明期间服务重启过（分时不落库） -->
     <div v-if="!hasData" class="empty chart-empty">
       <SvgIcon name="bull" class="chart-mascot" />
-      <span class="empty-title">行情尚未开盘</span>
-      <span class="empty-desc">开盘后这里会跑出分时曲线，3 秒一跳实时延伸</span>
+      <span class="empty-title">{{ closed ? '当日分时已过保' : '行情尚未开盘' }}</span>
+      <span class="empty-desc">
+        {{ closed
+          ? '分时曲线只活在内存里，服务重启后从快照价重新累积；收盘价与日K不受影响'
+          : '开盘后这里会跑出分时曲线，3 秒一跳实时延伸' }}
+      </span>
     </div>
 
     <VChart v-else class="chart" :option="option" :autoresize="true" />
