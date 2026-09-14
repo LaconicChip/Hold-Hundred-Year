@@ -39,4 +39,13 @@ public class MarketStateDTO {
 
     /** 本局世界种子号（字符串下发：long 超出 JS 安全整数范围，number 会丢精度） */
     private String worldSeed;
+
+    /** 百年指数当前值（盘中=实时快照，收盘=最近收盘点位；来自 game_state.index_value） */
+    private double indexValue;
+
+    /** 百年指数昨收基准（前日快照 index_value，无前日按基期 1000）：前端配实时指数算当日涨跌幅 */
+    private double prevIndex;
+
+    /** 百年指数当日涨跌幅（百分数，+0.5 = +0.5%；昨收取前日快照，无前日按基期 1000） */
+    private double indexDayPct;
 }

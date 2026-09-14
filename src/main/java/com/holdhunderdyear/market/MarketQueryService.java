@@ -130,6 +130,15 @@ public class MarketQueryService {
         boolean trading = marketState == MarketState.MORNING_OPEN || marketState == MarketState.AFTERNOON_OPEN;
         dto.setCountdownTicks(trading ? GameConstants.TOTAL_TICKS - gameState.getTickIndex() : 0);
         dto.setWorldSeed(String.valueOf(gameState.getWorldSeed()));
+        // 指数块当日涨跌幅（大盘页 StatusBar）：昨收取前日快照，无前日快照按基期 1000
+        double prevIndex = GameConstants.INITIAL_INDEX;
+        UserDailySnapshot prevSnapshot = snapshotAt(userId, currentDay - 1);
+        if (prevSnapshot != null) {
+            prevIndex = prevSnapshot.getIndexValue();
+        }
+        dto.setIndexValue(gameState.getIndexValue());
+        dto.setPrevIndex(prevIndex);
+        dto.setIndexDayPct(prevIndex > 0 ? (gameState.getIndexValue() / prevIndex - 1) * 100 : 0.0);
         return dto;
     }
 

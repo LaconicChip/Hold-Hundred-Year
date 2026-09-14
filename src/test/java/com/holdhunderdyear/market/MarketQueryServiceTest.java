@@ -322,6 +322,21 @@ class MarketQueryServiceTest {
         assertThrows(BizException.class, () -> marketQueryService.stockKline(userId, 999L, 60));
     }
 
+    @Test
+    void stateExposesIndexValueAndDayPctForStatusBar() {
+        long userId = worldSeeder.seedUser("mq_idxpct1", BCRYPT_HASH);
+        // 未开盘：指数 1000 基期，涨跌幅 0（day0 快照 indexValue=1000 为昨收）
+        MarketStateDTO fresh = marketQueryService.state(userId);
+        assertEquals(1000.0, fresh.getIndexValue(), 1e-9);
+        assertEquals(0.0, fresh.getIndexDayPct(), 1e-9);
+
+        // 结算第 1 日指数 1005 → 收盘态当日涨跌幅 +0.5%
+        settleDay(userId, 1, 1005.0);
+        MarketStateDTO closed = marketQueryService.state(userId);
+        assertEquals(1005.0, closed.getIndexValue(), 1e-9);
+        assertEquals(0.5, closed.getIndexDayPct(), 1e-9);
+    }
+
     /** 置为待结算上下文并结算该日（fixture 同 SettlementServiceTest）。 */
     private void settleDay(long userId, int day, double closeIndex) {
         UserGameState state = gameState(userId);
