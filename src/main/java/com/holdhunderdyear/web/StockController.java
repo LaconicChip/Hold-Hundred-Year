@@ -2,12 +2,14 @@ package com.holdhunderdyear.web;
 
 import com.holdhunderdyear.common.R;
 import com.holdhunderdyear.game.model.dto.IntradayPointDTO;
+import com.holdhunderdyear.game.model.dto.KlinePointDTO;
 import com.holdhunderdyear.game.model.dto.StockQuoteDTO;
 import com.holdhunderdyear.market.MarketQueryService;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -32,10 +34,18 @@ public class StockController {
         return R.ok(marketQueryService.stocksWithQuotes(userId));
     }
 
-    /** 单股当日分时点序列（重启后从快照价重新积累，spec §5 已授权）。 */
+    /** 单股当日分时点序列（固定 90 槽时间轴，未到槽位为 null）。 */
     @GetMapping("/{id}/quotes")
     public R<List<IntradayPointDTO>> quotes(@AuthenticationPrincipal Long userId,
                                             @PathVariable("id") long stockId) {
         return R.ok(marketQueryService.stockIntraday(userId, stockId));
+    }
+
+    /** 单股日K序列：按 game_day 升序，limit 截取最近 N 根（默认 60）。 */
+    @GetMapping("/{id}/kline")
+    public R<List<KlinePointDTO>> kline(@AuthenticationPrincipal Long userId,
+                                        @PathVariable("id") long stockId,
+                                        @RequestParam(defaultValue = "60") int limit) {
+        return R.ok(marketQueryService.stockKline(userId, stockId, limit));
     }
 }

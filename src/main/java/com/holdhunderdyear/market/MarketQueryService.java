@@ -9,15 +9,18 @@ import com.holdhunderdyear.game.model.dto.DailySummaryDTO;
 import com.holdhunderdyear.game.model.dto.EquityCurveDTO;
 import com.holdhunderdyear.game.model.dto.IndexPointDTO;
 import com.holdhunderdyear.game.model.dto.IntradayPointDTO;
+import com.holdhunderdyear.game.model.dto.KlinePointDTO;
 import com.holdhunderdyear.game.model.dto.LeaderboardDTO;
 import com.holdhunderdyear.game.model.dto.MarketStateDTO;
 import com.holdhunderdyear.game.model.dto.StockQuoteDTO;
 import com.holdhunderdyear.game.model.enums.EraCode;
 import com.holdhunderdyear.game.model.enums.MarketState;
+import com.holdhunderdyear.market.entity.StockDailyBar;
 import com.holdhunderdyear.market.entity.UserDailySnapshot;
 import com.holdhunderdyear.market.entity.UserEra;
 import com.holdhunderdyear.market.entity.UserGameState;
 import com.holdhunderdyear.market.entity.UserMessage;
+import com.holdhunderdyear.market.mapper.StockDailyBarMapper;
 import com.holdhunderdyear.market.mapper.UserDailySnapshotMapper;
 import com.holdhunderdyear.market.mapper.UserEraMapper;
 import com.holdhunderdyear.market.mapper.UserGameStateMapper;
@@ -30,6 +33,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
@@ -85,17 +89,20 @@ public class MarketQueryService {
     private final UserEraMapper userEraMapper;
     private final UserDailySnapshotMapper userDailySnapshotMapper;
     private final UserMessageMapper userMessageMapper;
+    private final StockDailyBarMapper stockDailyBarMapper;
     private final QuoteBoardRegistry quoteBoardRegistry;
 
     public MarketQueryService(UserGameStateMapper userGameStateMapper,
                               UserEraMapper userEraMapper,
                               UserDailySnapshotMapper userDailySnapshotMapper,
                               UserMessageMapper userMessageMapper,
+                              StockDailyBarMapper stockDailyBarMapper,
                               QuoteBoardRegistry quoteBoardRegistry) {
         this.userGameStateMapper = userGameStateMapper;
         this.userEraMapper = userEraMapper;
         this.userDailySnapshotMapper = userDailySnapshotMapper;
         this.userMessageMapper = userMessageMapper;
+        this.stockDailyBarMapper = stockDailyBarMapper;
         this.quoteBoardRegistry = quoteBoardRegistry;
     }
 
@@ -293,6 +300,34 @@ public class MarketQueryService {
                 || MarketState.SETTLING.name().equals(marketState)
                 || MarketState.FINISHED.name().equals(marketState)
                 || MarketState.BANKRUPT.name().equals(marketState);
+    }
+
+    /**
+     * 个股日K序列（GET /api/stocks/{id}/kline）：stock_daily_bar 按 game_day 升序、
+     * limit 截取最近 N 根（1..TOTAL_DAYS 夹逼）。未知 stockId 抛 NOT_FOUND；
+     * 尚无结算日的股票返回空列表（前端展示空态）。
+     */
+    public List<KlinePointDTO> stockKline(long userId, long stockId, int limit) {
+        requireGameState(userId);
+        try {
+            StockDefs.byId(stockId);
+        } catch (IllegalArgumentException unknown) {
+            throw new BizException(ErrorCode.NOT_FOUND);
+        }
+        int capped = Math.max(1, Math.min(limit, GameConstants.TOTAL_DAYS));
+        List<StockDailyBar> bars = stockDailyBarMapper.selectList(
+                new LambdaQueryWrapper<StockDailyBar>()
+                        .eq(StockDailyBar::getUserId, userId)
+                        .eq(StockDailyBar::getStockId, stockId)
+                        .orderByDesc(StockDailyBar::getGameDay)
+                        .last("LIMIT " + capped));
+        Collections.reverse(bars);
+        return bars.stream()
+                .map(bar -> new KlinePointDTO(bar.getGameDay(),
+                        bar.getOpen().doubleValue(), bar.getHigh().doubleValue(),
+                        bar.getLow().doubleValue(), bar.getClose().doubleValue(),
+                        bar.getChangePct() != null ? bar.getChangePct() : 0.0))
+                .toList();
     }
 
     /**

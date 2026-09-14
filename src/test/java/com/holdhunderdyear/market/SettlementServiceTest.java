@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhunderdyear.game.constants.StockDefs;
 import com.holdhunderdyear.market.entity.LoanRecord;
 import com.holdhunderdyear.market.entity.SysUser;
+import com.holdhunderdyear.market.entity.StockDailyBar;
 import com.holdhunderdyear.market.entity.UserDailySnapshot;
 import com.holdhunderdyear.market.entity.UserGameState;
 import com.holdhunderdyear.market.entity.UserMessage;
@@ -11,6 +12,7 @@ import com.holdhunderdyear.market.entity.UserPosition;
 import com.holdhunderdyear.market.entity.UserStockState;
 import com.holdhunderdyear.market.mapper.LoanRecordMapper;
 import com.holdhunderdyear.market.mapper.SysUserMapper;
+import com.holdhunderdyear.market.mapper.StockDailyBarMapper;
 import com.holdhunderdyear.market.mapper.UserDailySnapshotMapper;
 import com.holdhunderdyear.market.mapper.UserGameStateMapper;
 import com.holdhunderdyear.market.mapper.UserMessageMapper;
@@ -65,6 +67,9 @@ class SettlementServiceTest {
 
     @Autowired
     private UserDailySnapshotMapper userDailySnapshotMapper;
+
+    @Autowired
+    private StockDailyBarMapper stockDailyBarMapper;
 
     @Autowired
     private UserMessageMapper userMessageMapper;
@@ -379,6 +384,37 @@ class SettlementServiceTest {
                 "prev_close 双写后 dayChangePct() 恒为 0——收盘涨跌幅必须走 lastClosePct 通道");
     }
 
+    @Test
+    void settleWritesDailyBarBeforeOhlReset() {
+        long userId = worldSeeder.seedUser("st_bar1", "$2a$10$bcrypthash");
+        toSettling(userId, 3, 1000.0, null, null);
+        setStock(userId, 1L, "168.00", "170.00", null, false, "169.00", "172.00", "167.50");
+        // 停牌冻结股：价格冻结自停牌日起 prevClose==current（生产不变式），OHL 保留停牌前值
+        setStock(userId, 3L, "121.00", "121.00", null, true, "121.00", "125.00", "119.00");
+        QuoteBoard board = reloadBoard(userId);
+
+        settlementService.settle(userId);
+
+        StockDailyBar bar1 = dailyBar(userId, 1L, 3);
+        assertNotNull(bar1, "正常股必须落日K bar");
+        assertEquals(0, bar1.getOpen().compareTo(new BigDecimal("169.00")));
+        assertEquals(0, bar1.getHigh().compareTo(new BigDecimal("172.00")));
+        assertEquals(0, bar1.getLow().compareTo(new BigDecimal("167.50")));
+        assertEquals(0, bar1.getClose().compareTo(new BigDecimal("170.00")));
+        assertEquals((170.00 - 168.00) / 168.00, bar1.getChangePct(), 1e-9,
+                "bar 涨跌幅为当日日内涨跌幅（比率口径）");
+        // bar 必须在 OHL 重置之前落库：bar 保存当日日内 OHL，state 的 OHL 已重置为收盘价
+        assertEquals(0, stockState(userId, 1L).getOpenPrice().compareTo(new BigDecimal("170.00")));
+
+        StockDailyBar bar3 = dailyBar(userId, 3L, 3);
+        assertNotNull(bar3, "停牌股也要落 bar（价格冻结）");
+        assertEquals(0, bar3.getOpen().compareTo(new BigDecimal("121.00")));
+        assertEquals(0, bar3.getHigh().compareTo(new BigDecimal("125.00")));
+        assertEquals(0, bar3.getLow().compareTo(new BigDecimal("119.00")));
+        assertEquals(0, bar3.getClose().compareTo(new BigDecimal("121.00")));
+        assertEquals(0.0, bar3.getChangePct(), 1e-9, "停牌股价格冻结、涨跌幅 0");
+    }
+
     // ---- 造数 helper ----
 
     /** 置为待结算上下文：交易日、收盘指数、段位与昨日净资产（null=保持播种值）。 */
@@ -491,5 +527,12 @@ class SettlementServiceTest {
         return userDailySnapshotMapper.selectOne(new LambdaQueryWrapper<UserDailySnapshot>()
                 .eq(UserDailySnapshot::getUserId, userId)
                 .eq(UserDailySnapshot::getGameDay, gameDay));
+    }
+
+    private StockDailyBar dailyBar(long userId, long stockId, int gameDay) {
+        return stockDailyBarMapper.selectOne(new LambdaQueryWrapper<StockDailyBar>()
+                .eq(StockDailyBar::getUserId, userId)
+                .eq(StockDailyBar::getStockId, stockId)
+                .eq(StockDailyBar::getGameDay, gameDay));
     }
 }

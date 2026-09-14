@@ -10,12 +10,14 @@ import com.holdhunderdyear.game.constants.StockDefs;
 import com.holdhunderdyear.game.model.enums.MarketState;
 import com.holdhunderdyear.market.entity.LoanRecord;
 import com.holdhunderdyear.market.entity.SysUser;
+import com.holdhunderdyear.market.entity.StockDailyBar;
 import com.holdhunderdyear.market.entity.UserDailySnapshot;
 import com.holdhunderdyear.market.entity.UserGameState;
 import com.holdhunderdyear.market.entity.UserMessage;
 import com.holdhunderdyear.market.entity.UserPosition;
 import com.holdhunderdyear.market.entity.UserStockState;
 import com.holdhunderdyear.market.mapper.LoanRecordMapper;
+import com.holdhunderdyear.market.mapper.StockDailyBarMapper;
 import com.holdhunderdyear.market.mapper.SysUserMapper;
 import com.holdhunderdyear.market.mapper.UserDailySnapshotMapper;
 import com.holdhunderdyear.market.mapper.UserGameStateMapper;
@@ -55,6 +57,7 @@ public class SettlementService {
 
     private final UserGameStateMapper userGameStateMapper;
     private final UserStockStateMapper userStockStateMapper;
+    private final StockDailyBarMapper stockDailyBarMapper;
     private final UserPositionMapper userPositionMapper;
     private final SysUserMapper sysUserMapper;
     private final LoanRecordMapper loanRecordMapper;
@@ -67,6 +70,7 @@ public class SettlementService {
 
     public SettlementService(UserGameStateMapper userGameStateMapper,
                              UserStockStateMapper userStockStateMapper,
+                             StockDailyBarMapper stockDailyBarMapper,
                              UserPositionMapper userPositionMapper,
                              SysUserMapper sysUserMapper,
                              LoanRecordMapper loanRecordMapper,
@@ -78,6 +82,7 @@ public class SettlementService {
                              ProgressService progressService) {
         this.userGameStateMapper = userGameStateMapper;
         this.userStockStateMapper = userStockStateMapper;
+        this.stockDailyBarMapper = stockDailyBarMapper;
         this.userPositionMapper = userPositionMapper;
         this.sysUserMapper = sysUserMapper;
         this.loanRecordMapper = loanRecordMapper;
@@ -181,6 +186,8 @@ public class SettlementService {
             double dayChangePct = prevCloseBefore > 0 ? (close - prevCloseBefore) / prevCloseBefore : 0.0;
             state.setDayChangePct(dayChangePct);
             quote.setLastClosePct(dayChangePct);
+            // 日K落库必须在 OHL 重置之前：bar 记当日日内 OHLC，此后 state 的 OHL 才重置
+            insertDailyBar(userId, day, state, close, dayChangePct);
             state.setPrevClose(state.getCurrentPrice());
             quote.setPrevClose(close);
             if (!wasHalted) {
@@ -206,6 +213,26 @@ public class SettlementService {
             userStockStateMapper.updateById(state);
         }
         return stateByStock;
+    }
+
+    /** 日K落库（每股每日一行）：open/high/low 缺失时退化为收盘价（播种态无日内历史）；
+     *  停牌股价格冻结——close==prevClose 使 dayChangePct 自然为 0，无需特判。 */
+    private void insertDailyBar(long userId, int day, UserStockState state, double close, double dayChangePct) {
+        StockDailyBar bar = new StockDailyBar();
+        bar.setUserId(userId);
+        bar.setStockId(state.getStockId());
+        bar.setGameDay(day);
+        bar.setOpen(BigDecimal.valueOf(priceOr(state.getOpenPrice(), close)));
+        bar.setHigh(BigDecimal.valueOf(priceOr(state.getHighPrice(), close)));
+        bar.setLow(BigDecimal.valueOf(priceOr(state.getLowPrice(), close)));
+        bar.setClose(BigDecimal.valueOf(close));
+        bar.setChangePct(dayChangePct);
+        stockDailyBarMapper.insert(bar);
+    }
+
+    /** schema 中 open/high/low 可空：缺失时退化为收盘价。 */
+    private static double priceOr(BigDecimal value, double fallback) {
+        return value != null ? value.doubleValue() : fallback;
     }
 
     /** 步骤③：T+1 解冻，次日持仓全部可卖。 */

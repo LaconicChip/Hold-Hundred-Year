@@ -1,12 +1,14 @@
 package com.holdhunderdyear.market;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.holdhunderdyear.market.entity.StockDailyBar;
 import com.holdhunderdyear.market.entity.UserDailySnapshot;
 import com.holdhunderdyear.market.entity.UserEra;
 import com.holdhunderdyear.market.entity.UserGameState;
 import com.holdhunderdyear.market.entity.UserMessage;
 import com.holdhunderdyear.market.entity.UserScriptDay;
 import com.holdhunderdyear.market.entity.UserStockState;
+import com.holdhunderdyear.market.mapper.StockDailyBarMapper;
 import com.holdhunderdyear.market.mapper.UserDailySnapshotMapper;
 import com.holdhunderdyear.market.mapper.UserEraMapper;
 import com.holdhunderdyear.market.mapper.UserGameStateMapper;
@@ -45,6 +47,7 @@ class FastForwardServiceTest {
     @Autowired private UserStockStateMapper userStockStateMapper;
     @Autowired private UserMessageMapper userMessageMapper;
     @Autowired private UserDailySnapshotMapper userDailySnapshotMapper;
+    @Autowired private StockDailyBarMapper stockDailyBarMapper;
     @Autowired private UserEraMapper userEraMapper;
     @Autowired private UserScriptDayMapper userScriptDayMapper;
 
@@ -167,6 +170,44 @@ class FastForwardServiceTest {
         assertEquals(messagesOf(userIdA), messagesOf(userIdB), "same seed worlds must deliver the same messages");
         assertEquals(snapshotsOf(userIdA), snapshotsOf(userIdB),
                 "same seed worlds must settle to identical daily snapshots");
+    }
+
+    @Test
+    void skipWritesTheSameDailyBarsAsManualTicking() {
+        long fixedSeed = 20260904L;
+        long userIdA = seedWithFixedSeed("ff_bara1", fixedSeed);
+        long userIdB = seedWithFixedSeed("ff_barb1", fixedSeed);
+
+        marketStateService.startDay(userIdA);
+        for (int i = 0; i < 45; i++) {
+            worldTickService.tickOne(userIdA);
+        }
+        if ("LUNCH_BREAK".equals(gameState(userIdA).getMarketState())) {
+            marketStateService.resumeAfternoon(userIdA);
+        }
+        for (int i = 0; i < 45; i++) {
+            worldTickService.tickOne(userIdA);
+        }
+
+        marketStateService.startDay(userIdB);
+        fastForwardService.skip(userIdB);
+
+        for (long stockId = 1; stockId <= 24; stockId++) {
+            StockDailyBar barA = stockDailyBarMapper.selectOne(new LambdaQueryWrapper<StockDailyBar>()
+                    .eq(StockDailyBar::getUserId, userIdA)
+                    .eq(StockDailyBar::getStockId, stockId)
+                    .eq(StockDailyBar::getGameDay, 1));
+            StockDailyBar barB = stockDailyBarMapper.selectOne(new LambdaQueryWrapper<StockDailyBar>()
+                    .eq(StockDailyBar::getUserId, userIdB)
+                    .eq(StockDailyBar::getStockId, stockId)
+                    .eq(StockDailyBar::getGameDay, 1));
+            assertTrue(barA != null && barB != null, "stock " + stockId + " bar must exist on both paths");
+            assertEquals(0, barA.getOpen().compareTo(barB.getOpen()), "stock " + stockId + " bar open");
+            assertEquals(0, barA.getHigh().compareTo(barB.getHigh()), "stock " + stockId + " bar high");
+            assertEquals(0, barA.getLow().compareTo(barB.getLow()), "stock " + stockId + " bar low");
+            assertEquals(0, barA.getClose().compareTo(barB.getClose()), "stock " + stockId + " bar close");
+            assertEquals(barA.getChangePct(), barB.getChangePct(), "stock " + stockId + " bar changePct");
+        }
     }
 
     /**

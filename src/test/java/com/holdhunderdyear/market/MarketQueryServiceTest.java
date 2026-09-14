@@ -7,6 +7,7 @@ import com.holdhunderdyear.game.model.dto.DailySummaryDTO;
 import com.holdhunderdyear.game.model.dto.EquityCurveDTO;
 import com.holdhunderdyear.game.model.dto.IndexPointDTO;
 import com.holdhunderdyear.game.model.dto.IntradayPointDTO;
+import com.holdhunderdyear.game.model.dto.KlinePointDTO;
 import com.holdhunderdyear.game.model.dto.LeaderboardDTO;
 import com.holdhunderdyear.game.model.dto.MarketStateDTO;
 import com.holdhunderdyear.game.model.dto.StockQuoteDTO;
@@ -292,6 +293,33 @@ class MarketQueryServiceTest {
         assertEquals(1L, first.getStockId());
         assertEquals((170.00 - 168.00) / 168.00, first.getChangePct(), 1e-9,
                 "收盘态 changePct 必须来自持久化的当日涨跌幅而非恒 0 的 dayChangePct()");
+    }
+
+    @Test
+    void klineReturnsBarsAscendingCappedByLimit() {
+        long userId = worldSeeder.seedUser("mq_kline1", BCRYPT_HASH);
+        settleDay(userId, 1, 1002.0);
+        settleDay(userId, 2, 1004.0);
+        settleDay(userId, 3, 1006.0);
+
+        List<KlinePointDTO> full = marketQueryService.stockKline(userId, 1L, 60);
+        assertEquals(3, full.size(), "three settled days produce three bars");
+        assertEquals(1, full.get(0).getGameDay(), "bars must be ascending by game_day");
+        assertEquals(3, full.get(2).getGameDay());
+
+        List<KlinePointDTO> window = marketQueryService.stockKline(userId, 1L, 2);
+        assertEquals(2, window.size(), "limit caps to the latest bars");
+        assertEquals(2, window.get(0).getGameDay());
+        assertEquals(3, window.get(1).getGameDay());
+        assertEquals(168.00, window.get(0).getClose(), 1e-9,
+                "seeded world trades at base price, so close is base_price");
+        assertEquals(0.0, window.get(0).getChangePct(), 1e-9);
+    }
+
+    @Test
+    void klineOfUnknownStockThrowsNotFound() {
+        long userId = worldSeeder.seedUser("mq_kline2", BCRYPT_HASH);
+        assertThrows(BizException.class, () -> marketQueryService.stockKline(userId, 999L, 60));
     }
 
     /** 置为待结算上下文并结算该日（fixture 同 SettlementServiceTest）。 */
