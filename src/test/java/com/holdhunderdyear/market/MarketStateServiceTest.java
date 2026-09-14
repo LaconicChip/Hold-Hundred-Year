@@ -8,11 +8,13 @@ import com.holdhunderdyear.game.constants.StockDefs;
 import com.holdhunderdyear.game.model.enums.ScriptType;
 import com.holdhunderdyear.game.model.enums.SealState;
 import com.holdhunderdyear.game.model.enums.VolRegime;
+import com.holdhunderdyear.market.entity.UserDailySnapshot;
 import com.holdhunderdyear.market.entity.UserEra;
 import com.holdhunderdyear.market.entity.UserGameState;
 import com.holdhunderdyear.market.entity.UserMessage;
 import com.holdhunderdyear.market.entity.UserScriptDay;
 import com.holdhunderdyear.market.entity.UserStockState;
+import com.holdhunderdyear.market.mapper.UserDailySnapshotMapper;
 import com.holdhunderdyear.market.mapper.UserEraMapper;
 import com.holdhunderdyear.market.mapper.UserGameStateMapper;
 import com.holdhunderdyear.market.mapper.UserMessageMapper;
@@ -61,6 +63,9 @@ class MarketStateServiceTest {
     private MarketStateService marketStateService;
 
     @Autowired
+    private FastForwardService fastForwardService;
+
+    @Autowired
     private QuoteBoardRegistry quoteBoardRegistry;
 
     @Autowired
@@ -68,6 +73,9 @@ class MarketStateServiceTest {
 
     @Autowired
     private UserStockStateMapper userStockStateMapper;
+
+    @Autowired
+    private UserDailySnapshotMapper userDailySnapshotMapper;
 
     @Autowired
     private UserMessageMapper userMessageMapper;
@@ -331,6 +339,53 @@ class MarketStateServiceTest {
                 assertEquals(SealState.NONE, q.getSealed(), "survivor stock " + q.getStockId());
             }
         }
+    }
+
+    @Test
+    void startDayRecalculatesOpeningIndexFromAllOpenPriceMoves() {
+        long userId = worldSeeder.seedUser("mkt_idx1", "$2a$10$bcrypthash");
+        UserScriptDay script = firstScriptDay(userId, ScriptType.LIMIT_DOWN_ALL);
+
+        QuoteBoard board = startDayAt(userId, script.getGameDay());
+
+        // 期望：昨收 × (1 + 未停牌股等权平均开盘收益)——跳空/钉板/复牌补跌全部入指数
+        double prevIndex = 1000.0;
+        double avgOpenReturn = board.getQuotes().values().stream()
+                .filter(q -> !q.isHalted())
+                .mapToDouble(q -> (q.getCurrent() - q.getPrevClose()) / q.getPrevClose())
+                .average().orElse(0.0);
+        assertEquals(prevIndex * (1 + avgOpenReturn), board.getIndexValue(), 1e-6,
+                "开盘指数必须等于昨收×(1+等权平均开盘收益)");
+        assertTrue(board.getIndexValue() < prevIndex * 0.95,
+                "千股跌停日开盘指数必须明显下跌（spec §4.2），而非停在昨收");
+    }
+
+    @Test
+    void limitDownAllDaySettlesWithIndexDropMatchingAverageStockDrop() {
+        long userId = worldSeeder.seedUser("mkt_idx2", "$2a$10$bcrypthash");
+        UserScriptDay script = firstScriptDay(userId, ScriptType.LIMIT_DOWN_ALL);
+        // 从剧本日前一日收盘态快进整日（开盘钉板 → 盘中 → 结算）
+        UserGameState state = gameState(userId);
+        state.setCurrentDay(script.getGameDay() - 1);
+        state.setMarketState("CLOSED");
+        userGameStateMapper.updateById(state);
+        fastForwardService.skip(userId);
+
+        UserDailySnapshot snapshot = userDailySnapshotMapper.selectOne(
+                new LambdaQueryWrapper<UserDailySnapshot>()
+                        .eq(UserDailySnapshot::getUserId, userId)
+                        .eq(UserDailySnapshot::getGameDay, script.getGameDay()));
+        assertNotNull(snapshot, "skip 后必须结算出当日快照");
+        assertTrue(snapshot.getIndexDayPct() < -5.0,
+                "千股跌停日指数日跌幅必须显著（≥85% 股票 -10%），实际 " + snapshot.getIndexDayPct());
+        double avgStockPct = userStockStateMapper.selectList(new LambdaQueryWrapper<UserStockState>()
+                        .eq(UserStockState::getUserId, userId))
+                .stream()
+                .filter(s -> !Boolean.TRUE.equals(s.getHalted()))
+                .mapToDouble(s -> s.getDayChangePct() != null ? s.getDayChangePct() * 100 : 0.0)
+                .average().orElse(0.0);
+        assertEquals(avgStockPct, snapshot.getIndexDayPct(), 1.0,
+                "指数日跌幅必须与未停牌个股平均跌幅一致（等权复合，容差 1pp）");
     }
 
     @Test

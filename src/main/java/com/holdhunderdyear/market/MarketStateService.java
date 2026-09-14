@@ -240,6 +240,9 @@ public class MarketStateService {
             board.setReverseDay(WorldRandom.of(worldSeed, "reverse" + newDay).nextDouble() < 0.08);
             applyScriptDayBehaviors(userId, board, scriptDays, newDay, worldSeed);
             ipoService.onDayOpen(userId, gameState, board, newDay);
+            // 所有开盘期价格变动（隔夜跳空→复牌补跌→剧本钉板→熔断补强）落地后，
+            // 统一重算一次开盘指数（spec §4.2：指数按未停牌股票的平均涨跌幅更新）
+            recalculateOpeningIndex(board);
         } finally {
             board.getLock().unlock();
         }
@@ -355,21 +358,17 @@ public class MarketStateService {
 
     /** 熔断日开盘补强（spec §4.4 上午开盘指数即重挫）：除 circuitBreakerDay 标记外，
      *  对每只非停牌且未封板的股票再落地开盘跳空 −(0.06+0.02·u)（rng 盐 "circuit"+day
-     *  每股一个 double，覆盖原隔夜跳空落地的价格，clamp 到跌停价）并回写 stock_state；
-     *  指数同步吃进等权平均跳空收益（跳空均值 −7% 恰为熔断阈值）——保证熔断日指数
-     *  必然深跌、上午触及 −7% 提前收盘。已封板股（隔夜一字板/剧本钉板）跳过：其隔夜
-     *  跌幅已随开盘落地入指数，此处按 0 收益计权，避免钉板价被二次改写与指数开口虚高。 */
+     *  每股一个 double，覆盖原隔夜跳空落地的价格，clamp 到跌停价）并回写 stock_state。
+     *  指数不在此处更新——由 openDay 尾部的 {@link #recalculateOpeningIndex} 统一重算，
+     *  避免跳空均值 −7% 恰为熔断阈值的口径被双计。 */
     private void applyCircuitBreakerOpen(long userId, QuoteBoard board, int newDay, long worldSeed) {
         Random rng = WorldRandom.of(worldSeed, "circuit" + newDay);
-        Map<Long, Double> gapReturns = new HashMap<>();
         for (Quote quote : board.getQuotes().values()) {
             if (quote.isHalted() || quote.getSealed() != SealState.NONE) {
                 continue;
             }
-            double before = quote.getCurrent();
             double gap = -(0.06 + 0.02 * rng.nextDouble());
             sealMachine.applyOpenGap(quote, gap, rng);
-            gapReturns.put(quote.getStockId(), (quote.getCurrent() - before) / before);
             userStockStateMapper.update(null, new UpdateWrapper<UserStockState>()
                     .eq("user_id", userId)
                     .eq("stock_id", quote.getStockId())
@@ -378,11 +377,27 @@ public class MarketStateService {
                     .set("low_price", BigDecimal.valueOf(quote.getLow()))
                     .set("current_price", BigDecimal.valueOf(quote.getCurrent())));
         }
+    }
+
+    /** 统一重算开盘指数：昨收 × (1 + 未停牌股等权平均开盘收益)，开盘收益 =
+     *  (开盘价 − prevClose)/prevClose（钉板股用钉板价、停牌股剔除），复用
+     *  IndexCalculator。纯计算、不消费随机数，不破坏同 seed 同结果确定性——
+     *  隔夜跳空/复牌补跌/剧本钉板/熔断补强等所有开盘期价格变动都在此一次性入指数。 */
+    private void recalculateOpeningIndex(QuoteBoard board) {
+        Map<Long, Double> openReturns = new HashMap<>();
+        for (Quote quote : board.getQuotes().values()) {
+            if (quote.isHalted()) {
+                continue;
+            }
+            double prevClose = quote.getPrevClose();
+            openReturns.put(quote.getStockId(),
+                    prevClose > 0 ? (quote.getCurrent() - prevClose) / prevClose : 0.0);
+        }
         List<StockDef> active = board.getQuotes().values().stream()
                 .filter(q -> !q.isHalted())
                 .map(q -> StockDefs.byId(q.getStockId()))
                 .toList();
-        board.setIndexValue(indexCalculator.nextIndex(board.getIndexValue(), active, gapReturns));
+        board.setIndexValue(indexCalculator.nextIndex(board.getPrevIndex(), active, openReturns));
     }
 
     /** 千股涨停/跌停：非停牌股洗牌后取前 round(24×sealRatio) 只钉板。 */
