@@ -1,7 +1,7 @@
 // 用户 store（登录态 / 资产 / WS 接线）
 import { defineStore } from 'pinia'
 import { login as apiLogin, register as apiRegister, fetchMe } from '@/api/auth'
-import { fetchAssets } from '@/api/me'
+import { fetchAssets, fetchPositions } from '@/api/me'
 import { setToken, getToken } from '@/api/http'
 import { ws } from '@/api/ws'
 import { useQuotesStore } from './quotes'
@@ -23,12 +23,22 @@ export const useUserStore = defineStore('user', {
     token: getToken(),
     userId: 0,
     username: '',
-    assets: null // 资产对象（mock 或真实）
+    assets: null, // 资产对象（mock 或真实）
+    positions: [] // 持仓列表（GET /api/me/positions）：行情表持仓高亮与个股页共用
   }),
 
   getters: {
     isLoggedIn(state) {
       return !!state.token
+    },
+
+    // 持仓索引：stockId -> { shares, availableShares, costPrice }，供行情表一眼找出持仓股
+    heldMap(state) {
+      const map = {}
+      for (const p of state.positions) {
+        if (p && p.stockId != null) map[p.stockId] = p
+      }
+      return map
     }
   },
 
@@ -83,6 +93,17 @@ export const useUserStore = defineStore('user', {
       }
     },
 
+    // 拉取持仓（成交后调用可让行情表高亮与个股页持仓卡同步刷新）
+    async fetchPositions() {
+      try {
+        const list = await fetchPositions()
+        this.positions = Array.isArray(list) ? list : list.records || []
+      } catch {
+        this.positions = []
+      }
+      return this.positions
+    },
+
     // 已登录时确保 WS 在线（页面刷新后 token 从 localStorage 恢复，但连接不会
     // 自行建立——开盘推进依赖调度器只服务 WS 在线用户，必须补连）
     ensureWsConnected() {
@@ -98,6 +119,7 @@ export const useUserStore = defineStore('user', {
       this.userId = 0
       this.username = ''
       this.assets = null
+      this.positions = []
       ws.disconnect()
 
       // 重置其它 store

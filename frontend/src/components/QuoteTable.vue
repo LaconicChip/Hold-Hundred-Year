@@ -32,12 +32,15 @@
             :class="rowCls(q)"
             @click="onRow(q)"
           >
-            <!-- 名称：ST / 停牌贴纸 -->
+            <!-- 名称：ST / 停牌 / 持仓贴纸 -->
             <td class="name-cell">
               <b>{{ q.name }}</b>
               <span v-if="q.st" class="sticker st-st st-inline">ST</span>
               <span v-if="q.halted" class="sticker st-halt st-inline">
                 <SvgIcon name="door" class="st-ic" />停牌
+              </span>
+              <span v-if="held(q.stockId)" class="sticker st-inline st-hold">
+                <SvgIcon name="wallet" class="st-ic" />持仓 {{ held(q.stockId).shares }}
               </span>
               <span class="sec-tag">{{ q.sector }}</span>
             </td>
@@ -90,17 +93,26 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuotesStore } from '@/stores/quotes'
 import { useMarketStore } from '@/stores/market'
+import { useUserStore } from '@/stores/user'
 import SealStamp from './SealStamp.vue'
 import SvgIcon from './SvgIcon.vue'
 
 const quotes = useQuotesStore()
 const market = useMarketStore()
+const user = useUserStore()
 const router = useRouter()
 const list = computed(() => quotes.quoteList)
+
+// 持仓股：行情表给一眼可辨的标记（行高亮 + 名称后"持仓 N股"贴纸）
+const held = (stockId) => user.heldMap[stockId] || null
+onMounted(() => {
+  // 已有缓存不重复拉（个股页成交后会刷新同一份，两处共用）
+  if (!user.positions.length) user.fetchPositions()
+})
 
 // 收盘/结算/终局态：行情牌挂"已收盘"角标
 const isClosed = computed(() =>
@@ -133,11 +145,12 @@ function isLimitDown(q) {
 function onRow(q) {
   router.push(`/stock/${q.stockId}`).catch(() => {})
 }
-// 行级样式：封板高亮底色（封涨停红底/封跌停绿底）、停牌置灰
+// 行级样式：持仓行高亮（优先，一眼找出自己的票）、封板底色、停牌置灰
 function rowCls(q) {
   return {
-    'row-sealed-up': q.sealed === 'UP',
-    'row-sealed-down': q.sealed === 'DOWN',
+    'row-hold': !!held(q.stockId),
+    'row-sealed-up': !held(q.stockId) && q.sealed === 'UP',
+    'row-sealed-down': !held(q.stockId) && q.sealed === 'DOWN',
     'row-halted': q.halted
   }
 }
@@ -209,6 +222,18 @@ watch(
 .row-sealed-down:hover td { background: var(--hover) !important; }
 .row-halted td { opacity: 0.5; }
 .closed-badge { transform: rotate(-2deg); }
+
+/* 持仓行：整行高亮 + 左侧品牌色标记条（封板/停牌色不覆盖持仓，持仓优先可辨） */
+.row-hold td { background: var(--player-row) !important; }
+.row-hold:hover td { background: var(--hover) !important; }
+.row-hold td:first-child { box-shadow: inset 4px 0 0 var(--brand); }
+.st-hold {
+  background: var(--player-row);
+  color: var(--ink);
+  transform: none;
+  box-shadow: none;
+  margin-left: 4px;
+}
 
 /* 现价变动闪烁（0.6s） */
 .flash-up { animation: flashUp 0.6s ease-out; }

@@ -144,7 +144,6 @@ import { useUserStore } from '@/stores/user'
 import { useMessagesStore } from '@/stores/messages'
 import { getStockById } from '@/constants/stocks'
 import { fetchStockList, fetchStockQuotes, fetchStockKline } from '@/api/stocks'
-import { fetchPositions } from '@/api/me'
 import StockChart from '@/components/StockChart.vue'
 import KlineChart from '@/components/KlineChart.vue'
 import StockTradePanel from '@/components/StockTradePanel.vue'
@@ -216,16 +215,10 @@ const isClosed = computed(() =>
 // 资产：user.assets（mock 或真实）取可用资金
 const balance = computed(() => (user.assets ? user.assets.cash : 0))
 
-// 持仓：fetchPositions 中筛当前股
-const position = ref(null)
-async function loadPosition() {
-  try {
-    const list = await fetchPositions()
-    const arr = Array.isArray(list) ? list : list.records || []
-    position.value = arr.find((p) => p.stockId === stockId.value) || null
-  } catch {
-    position.value = null
-  }
+// 持仓：复用 user store 的持仓列表（行情表高亮同一份，成交后统一刷新）
+const position = computed(() => user.positions.find((p) => p.stockId === stockId.value) || null)
+function loadPosition() {
+  return user.fetchPositions()
 }
 
 // 分时数据（固定 90 槽，3 秒轮询实时延伸——后端一跳 GameConstants.TICK_MS=3000ms）
@@ -254,8 +247,8 @@ function switchToKline() {
 }
 
 function onTraded() {
-  // 成交后刷新持仓与资产
-  loadPosition()
+  // 成交后刷新持仓与资产（持仓同一份缓存，行情表高亮随动）
+  user.fetchPositions()
   user.fetchAssets().catch(() => {})
 }
 
@@ -333,7 +326,6 @@ onUnmounted(() => {
 
 // 路由切换股票时重新加载数据
 watch(stockId, async () => {
-  position.value = null
   stockPoints.value = []
   kline.value = []
   await loadChartData()
