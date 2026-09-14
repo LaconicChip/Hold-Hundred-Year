@@ -121,9 +121,18 @@ const eraIcon = computed(() => (ERA_TONE[market.eraTone] || ERA_TONE.shock).icon
 
 const tier = computed(() => market.tier || 'RETAIL')
 
-// 指数展示
-const indexText = computed(() => (quotes.indexValue ? quotes.indexValue.toFixed(2) : '—'))
-const indexChg = computed(() => quotes.indexChangePct)
+// 指数展示：点位优先取 WS 实时值，收盘/未推时回退 REST 状态值；
+// 当日涨跌幅 = 实时点位 / 昨收基准（market.prevIndex，来自前日快照），
+// 无实时值时用 market.indexDayPct 兜底
+const indexText = computed(() => {
+  const v = quotes.indexValue || market.indexValue
+  return v ? v.toFixed(2) : '—'
+})
+const indexChg = computed(() => {
+  const live = quotes.indexValue
+  if (live && market.prevIndex) return +(((live - market.prevIndex) / market.prevIndex) * 100).toFixed(2)
+  return market.indexDayPct || 0
+})
 const indexChgCls = computed(() => (indexChg.value > 0 ? 'up' : indexChg.value < 0 ? 'down' : 'flat'))
 const indexChgText = computed(() => {
   const v = indexChg.value

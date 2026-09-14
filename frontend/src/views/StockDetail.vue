@@ -1,6 +1,6 @@
 <template>
   <div class="page">
-    <!-- 页头：返回 + 名称/代码/板块 + 现价/涨跌幅 -->
+    <!-- 页头：返回 + 名称/代码/板块 + 现价/涨跌额/涨跌幅 -->
     <header class="page-head card">
       <button class="back-btn" @click="goBack">
         <SvgIcon name="chevron-left" class="back-ic" />返回大盘
@@ -9,6 +9,10 @@
       <div class="head-main">
         <div class="name-row">
           <span class="stock-name">{{ stock.name }}</span>
+          <span v-if="row.st" class="sticker st-st st-inline">ST</span>
+          <span v-if="row.halted" class="sticker st-halt st-inline">
+            <SvgIcon name="door" class="st-ic" />停牌
+          </span>
           <span class="stock-code num">{{ stock.code }}</span>
           <StickerTag type="plain" :text="stock.sector" />
         </div>
@@ -20,12 +24,50 @@
           class="price-arrow"
         />
         <span class="cur-price num">{{ quote.current.toFixed(2) }}</span>
+        <span class="cur-chg num">{{ fmtSigned(chgAmount) }}</span>
         <span class="cur-pct num">{{ fmtPct(quote.changePct) }}</span>
       </div>
     </header>
 
-    <!-- 分时图卡片 -->
-    <StockChart :stock-points="stockPoints" :index-points="indexPoints" />
+    <!-- 行情信息卡：开/收/高/低/涨停/跌停 + 连板/封板/停牌/ST -->
+    <div class="card info-card">
+      <div class="info-grid">
+        <div class="kv-item"><span class="lab">今开</span><b class="num" :class="priceCls(row.open - row.prevClose)">{{ fmtPrice(row.open) }}</b></div>
+        <div class="kv-item"><span class="lab">昨收</span><b class="num">{{ fmtPrice(row.prevClose) }}</b></div>
+        <div class="kv-item"><span class="lab">最高</span><b class="num" :class="priceCls(row.high - row.prevClose)">{{ fmtPrice(row.high) }}</b></div>
+        <div class="kv-item"><span class="lab">最低</span><b class="num" :class="priceCls(row.low - row.prevClose)">{{ fmtPrice(row.low) }}</b></div>
+        <div class="kv-item"><span class="lab">涨停价</span><b class="num up">{{ fmtPrice(limitUpPrice) }}</b></div>
+        <div class="kv-item"><span class="lab">跌停价</span><b class="num down">{{ fmtPrice(limitDownPrice) }}</b></div>
+      </div>
+      <div class="info-badges">
+        <span v-if="row.limitUpStreak > 0" class="streak-badge">
+          <SvgIcon v-for="n in Math.min(row.limitUpStreak, 5)" :key="n" name="flame" class="flame-ico" />
+          <b class="num">{{ row.limitUpStreak }}</b>连板
+        </span>
+        <SealStamp v-if="row.sealed === 'UP'" text="封板" />
+        <span v-else-if="row.sealed === 'DOWN'" class="limit-down">跌停封死</span>
+        <span v-if="row.halted" class="sticker st-halt">停牌核查</span>
+        <span v-if="row.st" class="sticker st-st">ST · 涨跌停 ±5%</span>
+      </div>
+    </div>
+
+    <!-- 分时 / 日K tab 切换 -->
+    <div class="chart-tabs">
+      <div class="seg">
+        <button :class="{ on: tab === 'intraday' }" @click="tab = 'intraday'">分时</button>
+        <button :class="{ on: tab === 'kline' }" @click="switchToKline">日K</button>
+      </div>
+    </div>
+
+    <StockChart
+      v-if="tab === 'intraday'"
+      :points="stockPoints"
+      :prev-close="row.prevClose || stock.basePrice"
+      :limit-up="limitUpPrice"
+      :limit-down="limitDownPrice"
+      :closed="isClosed"
+    />
+    <KlineChart v-else :kline="kline" />
 
     <!-- 买卖面板卡片 -->
     <StockTradePanel
@@ -35,6 +77,8 @@
       :is-open="market.isOpen"
       :balance="balance"
       :holding-shares="position ? position.availableShares : 0"
+      :holding-cost="position ? position.costPrice : 0"
+      :holding-value="position ? position.marketValue : 0"
       @traded="onTraded"
     />
 
@@ -99,12 +143,14 @@ import { useMarketStore } from '@/stores/market'
 import { useUserStore } from '@/stores/user'
 import { useMessagesStore } from '@/stores/messages'
 import { getStockById } from '@/constants/stocks'
-import { fetchStockList, fetchStockQuotes, fetchIndexPoints } from '@/api/stocks'
+import { fetchStockList, fetchStockQuotes, fetchStockKline } from '@/api/stocks'
 import { fetchPositions } from '@/api/me'
 import StockChart from '@/components/StockChart.vue'
+import KlineChart from '@/components/KlineChart.vue'
 import StockTradePanel from '@/components/StockTradePanel.vue'
 import StockMsgList from '@/components/StockMsgList.vue'
 import StickerTag from '@/components/StickerTag.vue'
+import SealStamp from '@/components/SealStamp.vue'
 import SvgIcon from '@/components/SvgIcon.vue'
 import DanmuBar from '@/components/DanmuBar.vue'
 
@@ -124,12 +170,41 @@ const stock = computed(
   () => getStockById(stockId.value) || { id: 0, name: '未知', code: '', sector: '', basePrice: 0 }
 )
 
-// 实时行情：quotes store rows[stockId]
+// 实时行情：quotes store rows[stockId]（WS 快照 + REST 全量兜底）
 const quote = computed(() => {
   const r = quotes.rows[stockId.value]
   if (r) return { current: r.current, changePct: r.changePct, prevCurrent: r.prevCurrent }
   return { current: stock.value.basePrice, changePct: 0, prevCurrent: stock.value.basePrice }
 })
+
+// REST 全量行情行（开高低/昨收/连板/停牌/ST/封板）：quoteList 中取当前股
+const row = computed(() => {
+  const found = quotes.quoteList.find((q) => q.stockId === stockId.value)
+  return found || {
+    open: null, high: null, low: null,
+    prevClose: stock.value.basePrice, limitUpStreak: 0,
+    halted: false, st: false, sealed: 'NONE'
+  }
+})
+
+// 涨跌停价：ST ±5%、普通 ±10%（与后端 Quote.limitUpPrice 同口径，HALF_UP 2 位）
+const limitUpPrice = computed(() =>
+  round2((row.value.prevClose || stock.value.basePrice) * (row.value.st ? 1.05 : 1.10))
+)
+const limitDownPrice = computed(() =>
+  round2((row.value.prevClose || stock.value.basePrice) * (row.value.st ? 0.95 : 0.90))
+)
+function round2(v) {
+  return Math.round(v * 100) / 100
+}
+
+// 涨跌额（现价 - 昨收，元）
+const chgAmount = computed(() => quote.value.current - (row.value.prevClose || stock.value.basePrice))
+
+// 收盘/结算/终局态：图上挂"已收盘"角标
+const isClosed = computed(() =>
+  ['CLOSED', 'SETTLING', 'BANKRUPT', 'FINISHED'].includes(market.marketState)
+)
 
 // 资产：user.assets（mock 或真实）取可用资金
 const balance = computed(() => (user.assets ? user.assets.cash : 0))
@@ -146,20 +221,29 @@ async function loadPosition() {
   }
 }
 
-// 分时 / 指数数据
+// 分时数据（固定 90 槽，3 秒轮询实时延伸——后端一跳 GameConstants.TICK_MS=3000ms）
 const stockPoints = ref([])
-const indexPoints = ref([])
 async function loadChartData() {
   try {
     stockPoints.value = await fetchStockQuotes(stockId.value)
   } catch {
     stockPoints.value = []
   }
+}
+
+// 日K数据：切到日K tab 时拉取（结算日落库的 OHLC 蜡烛）
+const tab = ref('intraday')
+const kline = ref([])
+async function loadKline() {
   try {
-    indexPoints.value = await fetchIndexPoints()
+    kline.value = await fetchStockKline(stockId.value, 60)
   } catch {
-    indexPoints.value = []
+    kline.value = []
   }
+}
+function switchToKline() {
+  tab.value = 'kline'
+  loadKline()
 }
 
 function onTraded() {
@@ -184,6 +268,14 @@ function fmtPct(v) {
   if (!n) return '0.00%'
   return (n > 0 ? '+' : '') + n.toFixed(2) + '%'
 }
+function fmtSigned(v) {
+  const n = +v
+  if (!n) return '0.00'
+  return (n > 0 ? '+' : '') + n.toFixed(2)
+}
+function fmtPrice(v) {
+  return v == null ? '—' : Number(v).toFixed(2)
+}
 function fmtMoney(v) {
   const n = +v
   if (!isFinite(n)) return '0.00'
@@ -201,6 +293,8 @@ async function loadMessages() {
 
 // 市场状态轮询（午休↔下午盘切换时交易面板随动，与 Market.vue 同款兜底）
 let statePoll = null
+// 分时轮询：3 秒一跳，与引擎节奏对齐（收盘态拉到完整 90 点，开销可忽略）
+let intradayPoll = null
 
 onMounted(async () => {
   // 无行情数据时用基准价初始化，避免现价空白
@@ -217,6 +311,9 @@ onMounted(async () => {
     market.fetchState().catch(() => {})
   }, 10000)
   await loadChartData()
+  intradayPoll = setInterval(() => {
+    loadChartData()
+  }, 3000)
   await loadPosition()
   await user.fetchAssets().catch(() => {})
   await loadMessages()
@@ -224,13 +321,14 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (statePoll) clearInterval(statePoll)
+  if (intradayPoll) clearInterval(intradayPoll)
 })
 
 // 路由切换股票时重新加载数据
 watch(stockId, async () => {
   position.value = null
   stockPoints.value = []
-  indexPoints.value = []
+  kline.value = []
   await loadChartData()
   await loadPosition()
   await loadMessages()
@@ -288,8 +386,11 @@ watch(stockId, async () => {
   color: var(--ink-2);
   font-size: var(--fs-md);
 }
+/* 名称行内贴纸：不旋转，避免破坏基线 */
+.st-inline { transform: none; box-shadow: none; }
+.st-ic { width: 12px; height: 12px; }
 
-/* 现价块：涨红跌绿整体着色 */
+/* 现价块：涨红跌绿整体着色，含涨跌额 */
 .price-box {
   display: flex;
   align-items: baseline;
@@ -303,7 +404,44 @@ watch(stockId, async () => {
 }
 .price-arrow { width: 1em; height: 1em; align-self: center; }
 .cur-price { font-size: var(--fs-2xl); }
+.cur-chg { font-size: var(--fs-lg); }
 .cur-pct { font-size: var(--fs-lg); }
+
+/* ---------- 行情信息卡 ---------- */
+.info-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+  padding: var(--sp-3) var(--sp-4);
+}
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(6, auto);
+  gap: var(--sp-2) var(--sp-5);
+}
+.kv-item { display: flex; flex-direction: column; gap: 0; }
+.kv-item .lab { font-size: var(--fs-xs); color: var(--ink-2); }
+.kv-item b { font-size: var(--fs-md); font-weight: 700; }
+.info-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+.streak-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-fun);
+  font-size: var(--fs-base);
+  color: var(--orange);
+}
+
+/* ---------- 图表 tab ---------- */
+.chart-tabs { display: flex; }
+.chart-tabs .seg { box-shadow: var(--shadow-sm); }
 
 /* ---------- 持仓 ---------- */
 .pos-card { padding: var(--sp-3) var(--sp-4); }
@@ -329,5 +467,6 @@ watch(stockId, async () => {
   .page-head { flex-wrap: wrap; }
   .stock-name { font-size: var(--fs-2xl); }
   .price-box { width: 100%; justify-content: flex-start; }
+  .info-grid { grid-template-columns: repeat(3, auto); }
 }
 </style>

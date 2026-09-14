@@ -5,6 +5,7 @@
         <SvgIcon name="candle" />
         营业部行情牌
       </h3>
+      <span v-if="isClosed" class="sticker st-halt closed-badge">已收盘</span>
       <span class="quote-tip muted-2">点一行看个股</span>
     </div>
 
@@ -18,12 +19,19 @@
             <th>今开</th>
             <th>最高</th>
             <th>最低</th>
+            <th>收</th>
             <th>连板</th>
             <th>状态</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="q in list" :key="q.stockId" class="qrow" @click="onRow(q)">
+          <tr
+            v-for="q in list"
+            :key="q.stockId"
+            class="qrow"
+            :class="rowCls(q)"
+            @click="onRow(q)"
+          >
             <!-- 名称：ST / 停牌贴纸 -->
             <td class="name-cell">
               <b>{{ q.name }}</b>
@@ -50,6 +58,8 @@
             <td class="num dim">{{ fmtPrice(q.open) }}</td>
             <td class="num dim">{{ fmtPrice(q.high) }}</td>
             <td class="num dim">{{ fmtPrice(q.low) }}</td>
+            <!-- 收盘价：收盘态即当日收盘（现价已按 day_change_pct 通道带涨跌幅语义） -->
+            <td class="num dim">{{ fmtPrice(q.current) }}</td>
 
             <!-- 连板：火苗叠加 -->
             <td class="streak-cell">
@@ -83,12 +93,19 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuotesStore } from '@/stores/quotes'
+import { useMarketStore } from '@/stores/market'
 import SealStamp from './SealStamp.vue'
 import SvgIcon from './SvgIcon.vue'
 
 const quotes = useQuotesStore()
+const market = useMarketStore()
 const router = useRouter()
 const list = computed(() => quotes.quoteList)
+
+// 收盘/结算/终局态：行情牌挂"已收盘"角标
+const isClosed = computed(() =>
+  ['CLOSED', 'SETTLING', 'BANKRUPT', 'FINISHED'].includes(market.marketState)
+)
 
 const flashMap = ref({})
 let initialized = false
@@ -115,6 +132,14 @@ function isLimitDown(q) {
 }
 function onRow(q) {
   router.push(`/stock/${q.stockId}`).catch(() => {})
+}
+// 行级样式：封板高亮底色（封涨停红底/封跌停绿底）、停牌置灰
+function rowCls(q) {
+  return {
+    'row-sealed-up': q.sealed === 'UP',
+    'row-sealed-down': q.sealed === 'DOWN',
+    'row-halted': q.halted
+  }
 }
 
 // 现价变动闪烁：快照到达（tickIndex 变化）时比较 current / prevCurrent，
@@ -176,6 +201,14 @@ watch(
 .streak-more { font-size: var(--fs-xs); color: var(--orange); }
 
 .status-cell { white-space: nowrap; }
+
+/* 封板行高亮底色 / 停牌行置灰 */
+.row-sealed-up td { background: var(--up-soft) !important; }
+.row-sealed-down td { background: var(--down-soft) !important; }
+.row-sealed-up:hover td,
+.row-sealed-down:hover td { background: var(--hover) !important; }
+.row-halted td { opacity: 0.5; }
+.closed-badge { transform: rotate(-2deg); }
 
 /* 现价变动闪烁（0.6s） */
 .flash-up { animation: flashUp 0.6s ease-out; }

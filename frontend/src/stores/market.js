@@ -22,6 +22,11 @@ export const useMarketStore = defineStore('market', {
     tickIndex: 0,
     countdownTicks: 0,
     worldSeed: '',
+    // 百年指数（StatusBar 指数块）：indexValue 当前值 / prevIndex 昨收基准 /
+    // indexDayPct 当日涨跌幅（%），来自 MarketStateDTO
+    indexValue: 0,
+    prevIndex: 0,
+    indexDayPct: 0,
     // 加载态
     loading: false
   }),

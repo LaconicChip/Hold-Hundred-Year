@@ -4,9 +4,21 @@
       <span class="trade-title">
         <SvgIcon name="banknote" class="trade-ic" />买卖委托
       </span>
+      <span class="trade-cash stat" :class="[priceCls(changePct), flashCls]">
+        <span class="lab">现价</span>
+        <b class="num val">{{ fmtMoney(price) }}</b>
+      </span>
       <span class="trade-cash stat">
         <span class="lab">可用资金</span>
         <b class="num val">{{ fmtMoney(balance) }}</b>
+      </span>
+      <span class="trade-cash stat">
+        <span class="lab">持仓成本</span>
+        <b class="num val">{{ holdingCost > 0 ? fmtMoney(holdingCost) : '—' }}</b>
+      </span>
+      <span class="trade-cash stat">
+        <span class="lab">持仓市值</span>
+        <b class="num val">{{ holdingValue > 0 ? fmtMoney(holdingValue) : '—' }}</b>
       </span>
     </div>
 
@@ -31,9 +43,8 @@
           placeholder="输入股数"
         />
         <div class="quick-row">
-          <button class="quick" @click="setQty(100)">100</button>
-          <button class="quick" @click="setQty(500)">500</button>
-          <button class="quick" @click="setQty(1000)">1000</button>
+          <button class="quick" @click="setQty(100)">1手</button>
+          <button class="quick" @click="setQty(500)">5手</button>
           <button class="quick" @click="setBuyHalf">半仓</button>
           <button class="quick" @click="setBuyAll">全仓</button>
         </div>
@@ -67,9 +78,8 @@
           placeholder="输入股数"
         />
         <div class="quick-row">
-          <button class="quick" @click="setQty(100)">100</button>
-          <button class="quick" @click="setQty(500)">500</button>
-          <button class="quick" @click="setQty(1000)">1000</button>
+          <button class="quick" @click="setQty(100)">1手</button>
+          <button class="quick" @click="setQty(500)">5手</button>
           <button class="quick" @click="setSellHalf">半仓</button>
           <button class="quick" @click="setSellAll">全仓</button>
         </div>
@@ -97,24 +107,47 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { buy, sell } from '@/api/trade'
 import SvgIcon from './SvgIcon.vue'
 
 const props = defineProps({
   stockId: { type: Number, required: true },
-  price: { type: Number, default: 0 }, // 现价（quotes store）
+  price: { type: Number, default: 0 }, // 现价（quotes store，WS 快照驱动实时跳动）
   changePct: { type: Number, default: 0 }, // 已是百分数
   isOpen: { type: Boolean, default: false }, // 可交易时段
   balance: { type: Number, default: 0 }, // 可用资金（user.assets.cash）
-  holdingShares: { type: Number, default: 0 } // 当前股可卖股数（T+1：available_shares）
+  holdingShares: { type: Number, default: 0 }, // 当前股可卖股数（T+1：available_shares）
+  holdingCost: { type: Number, default: 0 }, // 持仓成本价（avg_cost）
+  holdingValue: { type: Number, default: 0 } // 持仓市值（现价 × 持股数）
 })
 
 const emit = defineEmits(['traded'])
 
 const qty = ref(0)
 const loading = ref(false)
+
+// 现价跳动闪烁：现价变化时背景闪一次红/绿（与行情表同款动效）
+const flashCls = ref('')
+const prevPrice = ref(props.price)
+watch(
+  () => props.price,
+  (val) => {
+    if (val > prevPrice.value) flashCls.value = 'flash-up'
+    else if (val < prevPrice.value) flashCls.value = 'flash-down'
+    prevPrice.value = val
+    setTimeout(() => {
+      flashCls.value = ''
+    }, 650)
+  }
+)
+// 红涨绿跌（现价块按当日涨跌幅着色，闪烁按逐跳方向）
+function priceCls(v) {
+  if (v > 0) return 'up'
+  if (v < 0) return 'down'
+  return 'flat'
+}
 
 // 涨停/跌停阈值（按价格推断，非后端字段，与行情表展示口径一致）
 const LIMIT_UP = 9.8
@@ -314,6 +347,22 @@ async function submit(side) {
   font-size: var(--fs-xs);
   font-weight: 700;
   text-align: center;
+}
+
+/* 现价跳动闪烁（0.6s，尊重 prefers-reduced-motion） */
+.flash-up { animation: flashUp 0.6s ease-out; }
+.flash-down { animation: flashDown 0.6s ease-out; }
+@keyframes flashUp {
+  0% { background: var(--up-flash); }
+  100% { background: var(--card); }
+}
+@keyframes flashDown {
+  0% { background: var(--down-flash); }
+  100% { background: var(--card); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flash-up,
+  .flash-down { animation: none; }
 }
 .lot-warn {
   margin-top: var(--sp-2);
