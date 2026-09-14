@@ -31,7 +31,6 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
@@ -297,9 +296,10 @@ public class MarketQueryService {
     }
 
     /**
-     * 单股当日分时点序列（spec §11 GET /api/stocks/{id}/quotes）：来自行情板分时缓冲
-     * （cap 90，重启后从快照价重新积累）；time 为盘中时刻标签（tick→HH:mm 压缩映射，
-     * 起点=缓冲首点所属跳，对齐 board.tickIndex）。未知 stockId 抛 NOT_FOUND。
+     * 单股当日分时点序列（spec §11 GET /api/stocks/{id}/quotes）：固定 90 槽时间轴
+     * （上午 09:30-11:30、下午 13:00-15:00 各 45 槽），已走的槽位带价、未到的槽位
+     * price=null——前端以此画同花顺式固定时间轴分时图。缓冲来自行情板（cap 90，
+     * 重启后从快照价重新积累）；未知 stockId 抛 NOT_FOUND。
      */
     public List<IntradayPointDTO> stockIntraday(long userId, long stockId) {
         requireGameState(userId);
@@ -311,10 +311,13 @@ public class MarketQueryService {
                 throw new BizException(ErrorCode.NOT_FOUND);
             }
             int firstTick = board.getTickIndex() - quote.getIntraday().size();
-            List<IntradayPointDTO> points = new ArrayList<>(quote.getIntraday().size());
-            int tick = Math.max(firstTick, 0);
-            for (Iterator<Double> it = quote.getIntraday().iterator(); it.hasNext(); tick++) {
-                points.add(new IntradayPointDTO(tickLabel(tick), it.next()));
+            Double[] prices = quote.getIntraday().toArray(new Double[0]);
+            List<IntradayPointDTO> points = new ArrayList<>(GameConstants.TOTAL_TICKS);
+            List<String> labels = axisLabels();
+            for (int tick = 0; tick < GameConstants.TOTAL_TICKS; tick++) {
+                Double price = tick >= firstTick && tick < board.getTickIndex()
+                        ? prices[tick - firstTick] : null;
+                points.add(new IntradayPointDTO(labels.get(tick), price));
             }
             return points;
         } finally {
@@ -323,8 +326,7 @@ public class MarketQueryService {
     }
 
     /**
-     * 百年指数当日分时（spec §11 GET /api/market/index）：读行情板指数分时缓冲，
-     * time 标签同单股分时规则。
+     * 百年指数当日分时（spec §11 GET /api/market/index）：固定 90 槽时间轴，规则同单股分时。
      */
     public List<IndexPointDTO> indexIntraday(long userId) {
         requireGameState(userId);
@@ -332,10 +334,13 @@ public class MarketQueryService {
         board.getLock().lock();
         try {
             int firstTick = board.getTickIndex() - board.getIndexIntraday().size();
-            List<IndexPointDTO> points = new ArrayList<>(board.getIndexIntraday().size());
-            int tick = Math.max(firstTick, 0);
-            for (Iterator<Double> it = board.getIndexIntraday().iterator(); it.hasNext(); tick++) {
-                points.add(new IndexPointDTO(tickLabel(tick), it.next()));
+            Double[] values = board.getIndexIntraday().toArray(new Double[0]);
+            List<IndexPointDTO> points = new ArrayList<>(GameConstants.TOTAL_TICKS);
+            List<String> labels = axisLabels();
+            for (int tick = 0; tick < GameConstants.TOTAL_TICKS; tick++) {
+                Double value = tick >= firstTick && tick < board.getTickIndex()
+                        ? values[tick - firstTick] : null;
+                points.add(new IndexPointDTO(labels.get(tick), value));
             }
             return points;
         } finally {
@@ -343,12 +348,23 @@ public class MarketQueryService {
         }
     }
 
-    /** 跳数→盘中时刻标签：上午 09:30-11:30、下午 13:00-15:00（45 跳/半场线性压缩）。 */
+    /** 固定 90 槽时间轴标签（每次调用重新生成，避免共享可变状态）。 */
+    private static List<String> axisLabels() {
+        List<String> labels = new ArrayList<>(GameConstants.TOTAL_TICKS);
+        for (int tick = 0; tick < GameConstants.TOTAL_TICKS; tick++) {
+            labels.add(tickLabel(tick));
+        }
+        return labels;
+    }
+
+    /** 跳数→盘中时刻标签：上午 09:30-11:30、下午 13:00-15:00 各 45 槽，
+     *  首/末槽精确对齐 09:30/11:30/13:00/15:00（分母取 TICKS_PER_SESSION-1）。 */
     private static String tickLabel(int tick) {
         boolean morning = tick < GameConstants.TICKS_PER_SESSION;
         int sessionTick = morning ? tick : tick - GameConstants.TICKS_PER_SESSION;
+        int offset = Math.round(sessionTick * 120f / (GameConstants.TICKS_PER_SESSION - 1));
         int base = morning ? 9 * 60 + 30 : 13 * 60;
-        int minutes = base + Math.round(sessionTick * 120f / GameConstants.TICKS_PER_SESSION);
+        int minutes = base + offset;
         return "%02d:%02d".formatted(minutes / 60, minutes % 60);
     }
 

@@ -27,6 +27,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -134,11 +135,45 @@ class MarketQueryServiceTest {
         List<IntradayPointDTO> stockPoints = marketQueryService.stockIntraday(userId, 1L);
         List<IndexPointDTO> indexPoints = marketQueryService.indexIntraday(userId);
 
-        assertEquals(3, stockPoints.size(), "one intraday point per tick");
+        assertEquals(90, stockPoints.size(), "fixed 90-slot intraday axis");
         assertEquals("09:30", stockPoints.get(0).getTime(), "first tick labels as morning open");
         assertTrue(stockPoints.get(0).getPrice() > 0, "price must be positive");
-        assertEquals(3, indexPoints.size());
+        assertNull(stockPoints.get(3).getPrice(), "ticks not yet reached must be null");
+        assertNull(stockPoints.get(89).getPrice());
+        assertEquals(90, indexPoints.size());
         assertTrue(indexPoints.get(0).getValue() > 0, "index value must be positive");
+        assertNull(indexPoints.get(3).getValue());
+    }
+
+    @Test
+    void intradayAxisLabelsPinSessionBoundaries() {
+        long userId = worldSeeder.seedUser("mq_axis1", BCRYPT_HASH);
+        marketStateService.startDay(userId);
+        worldTickService.tickOne(userId);
+
+        List<IntradayPointDTO> stockPoints = marketQueryService.stockIntraday(userId, 1L);
+
+        assertEquals("09:30", stockPoints.get(0).getTime());
+        assertEquals("11:30", stockPoints.get(44).getTime(), "morning session ends 11:30");
+        assertEquals("13:00", stockPoints.get(45).getTime(), "afternoon session starts 13:00");
+        assertEquals("15:00", stockPoints.get(89).getTime(), "afternoon session ends 15:00");
+    }
+
+    @Test
+    void closedDayIntradayShowsFullNinetyPoints() {
+        long userId = worldSeeder.seedUser("mq_pts2", BCRYPT_HASH);
+        marketStateService.startDay(userId);
+        fastForwardService.skip(userId);
+
+        List<IntradayPointDTO> stockPoints = marketQueryService.stockIntraday(userId, 1L);
+        List<IndexPointDTO> indexPoints = marketQueryService.indexIntraday(userId);
+
+        assertEquals(90, stockPoints.size());
+        for (IntradayPointDTO point : stockPoints) {
+            assertNotNull(point.getPrice(), "closed day must show a complete curve, slot " + point.getTime());
+        }
+        assertEquals(90, indexPoints.size());
+        assertNotNull(indexPoints.get(89).getValue());
     }
 
     @Test
