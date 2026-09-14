@@ -34,16 +34,35 @@
         <div class="stat">
           <span class="lab">你的日收益</span>
           <span class="val" :class="pctCls(data.dayReturnPct)">{{ fmtPct(data.dayReturnPct) }}</span>
+          <span v-if="leveraged" class="sub-val">{{ leverageText }} 杠杆下的净资产收益</span>
         </div>
         <div class="stat">
           <span class="lab">百年指数</span>
           <span class="val" :class="pctCls(data.indexDayPct)">{{ fmtPct(data.indexDayPct) }}</span>
+          <span v-if="leveraged" class="sub-val">无杠杆基准</span>
         </div>
         <div class="stat">
           <span class="lab">净资产</span>
           <span class="val">{{ fmtMoney(data.netAsset) }}</span>
+          <span v-if="data.debt > 0" class="sub-val">总资产 {{ fmtMoney(grossAsset) }}</span>
         </div>
       </div>
+
+      <!-- 仓位结构：把日收益的放大倍数讲清楚（净资产收益率 = 持仓涨跌 × 总资产/净资产） -->
+      <div class="position-row">
+        <span class="pos-item"><span class="lab">持仓市值</span><b class="num">{{ fmtMoney(data.marketValue) }}</b></span>
+        <span class="pos-item"><span class="lab">可用现金</span><b class="num">{{ fmtMoney(data.cash) }}</b></span>
+        <span class="pos-item"><span class="lab">融资负债</span><b class="num" :class="{ 'down': data.debt > 0 }">{{ fmtMoney(data.debt) }}</b></span>
+        <span class="pos-item"><span class="lab">杠杆倍数</span><b class="num">{{ leverageText }}</b></span>
+        <span v-if="data.guardRatio > 0" class="pos-item">
+          <span class="lab">担保比例</span>
+          <b class="num" :class="{ 'down': data.guardRatio < 1.4 }">{{ (data.guardRatio * 100).toFixed(0) }}%</b>
+        </span>
+      </div>
+      <p v-if="leveraged" class="leverage-note">
+        <SvgIcon name="alert" class="note-ic" />
+        日收益按净资产计算：持仓涨跌被杠杆放大到资产端，赚钱翻倍、亏钱同样翻倍。
+      </p>
 
       <!-- 今日要闻 -->
       <div v-if="newsList.length" class="news-block">
@@ -123,6 +142,17 @@ const noticeList = computed(() => (data.value && data.value.notices) || [])
 const guardRisk = computed(
   () => data.value && data.value.guardRatio > 0 && data.value.guardRatio < 1.4
 )
+
+// 总资产（含融资买入部分）= 现金 + 持仓市值 = 净资产 + 负债
+const grossAsset = computed(() =>
+  data.value ? data.value.cash + data.value.marketValue : 0
+)
+// 杠杆倍数 = 总资产 ÷ 净资产（>1 即说明当日涨跌被放大，需向玩家点明）
+const leverage = computed(() =>
+  data.value && data.value.netAsset > 0 ? grossAsset.value / data.value.netAsset : 1
+)
+const leveraged = computed(() => leverage.value > 1.05)
+const leverageText = computed(() => leverage.value.toFixed(2) + '×')
 
 // 结算提示按关键字配图标（避免裸枚举文本）
 function noticeIcon(n) {
@@ -239,6 +269,36 @@ onMounted(load)
 /* 三格数据 */
 .stats { margin-top: var(--sp-4); }
 .stats .stat { align-items: center; text-align: center; }
+
+/* 仓位结构（杠杆解释） */
+.position-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-5);
+  align-items: center;
+  justify-content: center;
+  margin-top: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px dashed var(--dash);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+.pos-item { display: inline-flex; align-items: baseline; gap: 6px; }
+.pos-item .lab { font-size: var(--fs-xs); color: var(--ink-2); }
+.pos-item b { font-size: var(--fs-base); font-weight: 700; }
+.leverage-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--border-thin);
+  border-radius: var(--radius-md);
+  background: var(--yellow-soft);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+}
+.note-ic { flex: none; width: 1.1em; height: 1.1em; margin-top: 4px; color: var(--orange); }
 
 /* 分区标题 */
 .news-block { margin-top: var(--sp-5); }
