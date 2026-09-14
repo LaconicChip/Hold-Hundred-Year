@@ -38,6 +38,20 @@ CREATE TABLE IF NOT EXISTS user_stock_state (
     UNIQUE KEY uk_user_stock (user_id, stock_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS stock_daily_bar (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    stock_id BIGINT NOT NULL,
+    game_day INT NOT NULL,
+    open DECIMAL(10,2) NOT NULL,
+    high DECIMAL(10,2) NOT NULL,
+    low DECIMAL(10,2) NOT NULL,
+    close DECIMAL(10,2) NOT NULL,
+    change_pct DOUBLE NULL,
+    UNIQUE KEY uk_user_stock_day (user_id, stock_id, game_day),
+    INDEX idx_user_stock (user_id, stock_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS user_position (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id BIGINT NOT NULL,
