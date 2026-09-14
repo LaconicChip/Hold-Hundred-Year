@@ -39,6 +39,11 @@ public class UserStockState {
 
     private Double gapPct;
 
+    /** 当日涨跌幅（比率，0.04 = +4%）：盘中为 null，收盘结算写入当日收盘涨跌幅——
+     *  结算后 prev_close 双写为收盘价，current==prevClose，实时涨跌幅恒为 0，
+     *  收盘态展示与行情板恢复（QuoteBoard.restore）都走本列。 */
+    private Double dayChangePct;
+
     @Version
     private Integer version = 0;
 }

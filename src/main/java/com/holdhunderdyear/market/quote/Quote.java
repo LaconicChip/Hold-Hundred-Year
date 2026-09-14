@@ -38,6 +38,10 @@ public class Quote {
     /** GARCH 波动放大系数，初值 1（Phase 3 引擎写入）。 */
     private double garchK = 1.0;
 
+    /** 当日涨跌幅（比率）：结算写入当日收盘涨跌幅，盘中为 null；收盘态展示用
+     *  （prev_close 双写后 dayChangePct() 恒为 0，见 SettlementService）。 */
+    private Double lastClosePct;
+
     /** 当日均价：增量维护，分母为 tickCount。 */
     private double dayAvg;
     private int tickCount;

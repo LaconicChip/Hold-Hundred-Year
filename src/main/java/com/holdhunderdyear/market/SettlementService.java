@@ -176,6 +176,11 @@ public class SettlementService {
             // 收盘价被盘中钳制不超涨停，!canBuy() 即收于涨停
             boolean closedAtLimitUp = !wasHalted && !quote.canBuy();
             double close = state.getCurrentPrice().doubleValue();
+            // 当日涨跌幅必须在 setPrevClose 双写之前计算：双写后 current==prevClose 恒为 0
+            double prevCloseBefore = state.getPrevClose().doubleValue();
+            double dayChangePct = prevCloseBefore > 0 ? (close - prevCloseBefore) / prevCloseBefore : 0.0;
+            state.setDayChangePct(dayChangePct);
+            quote.setLastClosePct(dayChangePct);
             state.setPrevClose(state.getCurrentPrice());
             quote.setPrevClose(close);
             if (!wasHalted) {

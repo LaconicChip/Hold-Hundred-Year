@@ -97,6 +97,7 @@ public class QuoteBoard {
             quote.setLimitUpStreak(state.getLimitUpStreak());
             quote.setHalted(Boolean.TRUE.equals(state.getHalted()));
             quote.setSt(Boolean.TRUE.equals(state.getIsSt()));
+            quote.setLastClosePct(state.getDayChangePct());
             board.quotes.put(state.getStockId(), quote);
         }
         board.indexValue = indexValue;

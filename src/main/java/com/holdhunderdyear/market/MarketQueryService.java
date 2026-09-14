@@ -251,9 +251,12 @@ public class MarketQueryService {
     /**
      * 24 只股票静态档案 + 本账户最新行情（spec §11 GET /api/stocks）：StockDefs 档案序，
      * 价格/涨跌幅/停牌/ST/封板读自行情板（世界锁内快照读取，changePct 为比率）。
+     * 收盘/结算/终局态涨跌幅取持久化的当日收盘涨跌幅（Quote.lastClosePct）——
+     * 结算 prev_close 双写后实时 dayChangePct() 恒为 0；盘中仍用实时涨跌幅。
      */
     public List<StockQuoteDTO> stocksWithQuotes(long userId) {
-        requireGameState(userId);
+        UserGameState gameState = requireGameState(userId);
+        boolean closed = isClosedLike(gameState.getMarketState());
         QuoteBoard board = quoteBoardRegistry.getOrLoad(userId);
         board.getLock().lock();
         try {
@@ -271,7 +274,8 @@ public class MarketQueryService {
                 row.setCurrent(quote.getCurrent());
                 row.setHigh(quote.getHigh());
                 row.setLow(quote.getLow());
-                row.setChangePct(quote.dayChangePct());
+                row.setChangePct(closed && quote.getLastClosePct() != null
+                        ? quote.getLastClosePct() : quote.dayChangePct());
                 row.setLimitUpStreak(quote.getLimitUpStreak());
                 row.setHalted(quote.isHalted());
                 row.setSt(quote.isSt());
@@ -282,6 +286,14 @@ public class MarketQueryService {
         } finally {
             board.getLock().unlock();
         }
+    }
+
+    /** 已收盘/结算/终局态：行情展示走当日收盘涨跌幅通道（day_change_pct）。 */
+    private static boolean isClosedLike(String marketState) {
+        return MarketState.CLOSED.name().equals(marketState)
+                || MarketState.SETTLING.name().equals(marketState)
+                || MarketState.FINISHED.name().equals(marketState)
+                || MarketState.BANKRUPT.name().equals(marketState);
     }
 
     /**

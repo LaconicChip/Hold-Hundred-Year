@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS user_stock_state (
     halt_until_day INT NULL,
     is_st TINYINT(1) NOT NULL DEFAULT 0,
     gap_pct DOUBLE NOT NULL DEFAULT 0,
+    day_change_pct DOUBLE NULL,
     version INT NOT NULL DEFAULT 0,
     UNIQUE KEY uk_user_stock (user_id, stock_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

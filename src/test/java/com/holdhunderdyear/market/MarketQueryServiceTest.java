@@ -12,14 +12,17 @@ import com.holdhunderdyear.game.model.dto.MarketStateDTO;
 import com.holdhunderdyear.game.model.dto.StockQuoteDTO;
 import com.holdhunderdyear.market.entity.UserDailySnapshot;
 import com.holdhunderdyear.market.entity.UserGameState;
+import com.holdhunderdyear.market.entity.UserStockState;
 import com.holdhunderdyear.market.mapper.UserDailySnapshotMapper;
 import com.holdhunderdyear.market.mapper.UserGameStateMapper;
+import com.holdhunderdyear.market.mapper.UserStockStateMapper;
 import com.holdhunderdyear.world.WorldSeeder;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -63,6 +66,9 @@ class MarketQueryServiceTest {
 
     @Autowired
     private UserDailySnapshotMapper userDailySnapshotMapper;
+
+    @Autowired
+    private UserStockStateMapper userStockStateMapper;
 
     @Test
     void stateReportsFreshWorldContract() {
@@ -228,6 +234,29 @@ class MarketQueryServiceTest {
         BizException curveError = assertThrows(BizException.class,
                 () -> marketQueryService.equityCurve(userId));
         assertEquals(ErrorCode.NOT_FOUND, curveError.getErrorCode());
+    }
+
+    @Test
+    void stockListUsesLastClosePctAfterSettlement() {
+        long userId = worldSeeder.seedUser("mq_daypct1", BCRYPT_HASH);
+        UserGameState state = userGameStateMapper.selectOne(
+                new LambdaQueryWrapper<UserGameState>().eq(UserGameState::getUserId, userId));
+        state.setMarketState("SETTLING");
+        userGameStateMapper.updateById(state);
+        UserStockState stock = userStockStateMapper.selectOne(
+                new LambdaQueryWrapper<UserStockState>()
+                        .eq(UserStockState::getUserId, userId)
+                        .eq(UserStockState::getStockId, 1L));
+        stock.setCurrentPrice(new BigDecimal("170.00"));
+        userStockStateMapper.updateById(stock);
+
+        settlementService.settle(userId);
+
+        List<StockQuoteDTO> rows = marketQueryService.stocksWithQuotes(userId);
+        StockQuoteDTO first = rows.get(0);
+        assertEquals(1L, first.getStockId());
+        assertEquals((170.00 - 168.00) / 168.00, first.getChangePct(), 1e-9,
+                "收盘态 changePct 必须来自持久化的当日涨跌幅而非恒 0 的 dayChangePct()");
     }
 
     /** 置为待结算上下文并结算该日（fixture 同 SettlementServiceTest）。 */

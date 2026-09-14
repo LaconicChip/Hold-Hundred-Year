@@ -358,6 +358,27 @@ class SettlementServiceTest {
         assertEquals(119.0, board.quote(3L).getLow(), 1e-9);
     }
 
+    @Test
+    void settlePersistsDayChangePctForClosedDisplay() {
+        long userId = worldSeeder.seedUser("st_daypct1", "$2a$10$bcrypthash");
+        toSettling(userId, 3, 1000.0, null, null);
+        setStock(userId, 1L, "168.00", "170.00", null, null, null, null, null);
+        setStock(userId, 2L, "88.00", "84.00", null, null, null, null, null);
+        QuoteBoard board = reloadBoard(userId);
+
+        settlementService.settle(userId);
+
+        double upPct = (170.00 - 168.00) / 168.00;
+        double downPct = (84.00 - 88.00) / 88.00;
+        assertEquals(upPct, stockState(userId, 1L).getDayChangePct(), 1e-9,
+                "结算必须把当日涨跌幅写入 day_change_pct（比率口径）");
+        assertEquals(downPct, stockState(userId, 2L).getDayChangePct(), 1e-9);
+        assertEquals(upPct, board.quote(1L).getLastClosePct(), 1e-9,
+                "内存板 Quote.lastClosePct 同步当日涨跌幅");
+        assertEquals(0.0, board.quote(1L).dayChangePct(), 1e-9,
+                "prev_close 双写后 dayChangePct() 恒为 0——收盘涨跌幅必须走 lastClosePct 通道");
+    }
+
     // ---- 造数 helper ----
 
     /** 置为待结算上下文：交易日、收盘指数、段位与昨日净资产（null=保持播种值）。 */
