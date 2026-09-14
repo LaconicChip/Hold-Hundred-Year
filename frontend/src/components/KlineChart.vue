@@ -129,9 +129,10 @@ const option = computed(() => {
       textStyle: { color: cInk, fontSize: 12 },
       formatter: tooltipFormatter
     },
+    // 两个 grid 左右边距必须一致（x 轴联动 + 十字光标对齐）；右侧留白给最新价标注
     grid: [
-      { left: 56, right: 20, top: 16, height: '58%' },
-      { left: 56, right: 20, top: '76%', height: '14%' }
+      { left: 56, right: 46, top: 16, height: '58%' },
+      { left: 56, right: 46, top: '76%', height: '14%' }
     ],
     xAxis: [
       {

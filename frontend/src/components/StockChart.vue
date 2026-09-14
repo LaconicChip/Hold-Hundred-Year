@@ -30,19 +30,20 @@
 <script setup>
 import { computed } from 'vue'
 import { use } from 'echarts/core'
-import { LineChart, ScatterChart } from 'echarts/charts'
+import { LineChart } from 'echarts/charts'
 import { CanvasRenderer } from 'echarts/renderers'
 import {
   GridComponent,
   TooltipComponent,
-  MarkLineComponent
+  MarkLineComponent,
+  MarkPointComponent
 } from 'echarts/components'
 import VChart from 'vue-echarts'
 import { token } from '@/styles/theme'
 import SvgIcon from './SvgIcon.vue'
 
 // 按需注册 ECharts 模块（vue-echarts 要求显式 use）
-use([CanvasRenderer, LineChart, ScatterChart, GridComponent, TooltipComponent, MarkLineComponent])
+use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, MarkLineComponent, MarkPointComponent])
 
 const props = defineProps({
   // 固定 90 槽分时：[{ time, price|null }]，未到槽位 price 为 null（断线不画、尾段留白）
@@ -121,14 +122,16 @@ const option = computed(() => {
   const last = lastPoint.value
   const lastPct = last ? ((last.price - base) / base) * 100 : 0
 
+  // 只吃数字：ECharts 会把散布点/特殊系列的 value 传成数组，直接算术会抛异常并卡死 tooltip
   const tooltipFormatter = (params) => {
-    const rows = [`<b>${params[0].axisValue}</b>`]
+    const rows = [`<b>${params[0] ? params[0].axisValue : ''}</b>`]
     for (const item of params) {
-      if (item.value == null) continue
-      const pct = ((item.value - base) / base) * 100
+      const value = typeof item.value === 'number' ? item.value : null
+      if (value == null) continue
+      const pct = ((value - base) / base) * 100
       const cls = pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat'
       rows.push(
-        `${item.marker}${item.seriesName} <span class="num ${cls}">${item.value.toFixed(2)}（${pct > 0 ? '+' : ''}${pct.toFixed(2)}%）</span>`
+        `${item.marker}${item.seriesName} <span class="num ${cls}">${value.toFixed(2)}（${pct > 0 ? '+' : ''}${pct.toFixed(2)}%）</span>`
       )
     }
     return rows.join('<br/>')
@@ -195,6 +198,27 @@ const option = computed(() => {
         showSymbol: false,
         lineStyle: { width: 1.8, color: cBlue },
         areaStyle: { color: cBlue, opacity: 0.08 },
+        // 最新点高亮 + 价格标注：用 markPoint 而非独立系列——独立系列会把数组值带进
+        // tooltip params（曾导致 formatter 抛异常、ECharts 主流程卡死、曲线停更）
+        ...(last
+          ? {
+              markPoint: {
+                silent: true,
+                symbol: 'circle',
+                symbolSize: 8,
+                itemStyle: { color: lastPct >= 0 ? cUp : cDown, borderColor: cInk, borderWidth: 1.5 },
+                label: {
+                  show: true,
+                  position: lastPct >= 0 ? 'top' : 'bottom',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: lastPct >= 0 ? cUp : cDown,
+                  formatter: () => last.price.toFixed(2)
+                },
+                data: [{ coord: [times[last.index], last.price] }]
+              }
+            }
+          : {}),
         markLine: {
           silent: true,
           symbol: 'none',
@@ -220,28 +244,7 @@ const option = computed(() => {
         connectNulls: false,
         showSymbol: false,
         lineStyle: { width: 1.6, color: cYellow }
-      },
-      // 最新点高亮 + 价格标注（红涨绿跌）
-      ...(last
-        ? [
-            {
-              name: '最新',
-              type: 'scatter',
-              data: [{ value: [last.index, last.price] }],
-              symbolSize: 7,
-              itemStyle: { color: lastPct >= 0 ? cUp : cDown, borderColor: cInk, borderWidth: 1.5 },
-              label: {
-                show: true,
-                position: lastPct >= 0 ? 'top' : 'bottom',
-                fontSize: 11,
-                fontWeight: 700,
-                color: lastPct >= 0 ? cUp : cDown,
-                formatter: () => last.price.toFixed(2)
-              },
-              z: 10
-            }
-          ]
-        : [])
+      }
     ]
   }
 })
