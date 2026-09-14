@@ -28,6 +28,7 @@ export const useQuotesStore = defineStore('quotes', {
             basePrice: s.basePrice,
             current: r.current != null ? r.current : s.basePrice,
             prevCurrent: r.prevCurrent != null ? r.prevCurrent : s.basePrice,
+            prevClose: r.prevClose != null ? r.prevClose : s.basePrice,
             changePct: r.changePct != null ? r.changePct : 0,
             // 当日开高低 / 连板 / 停牌 / ST / 封板：来自 REST 全量行情，
             // WS 快照不下发这些字段，未加载时为 null，页面按“—”展示
@@ -71,6 +72,8 @@ export const useQuotesStore = defineStore('quotes', {
           // 记录旧值供闪烁动画
           prevCurrent: prev ? prev.current : q.current,
           current: q.current,
+          // WS 快照不带昨收，沿用上次 REST 落库值（首拉前退化为基准价）
+          prevClose: prev ? prev.prevClose != null ? prev.prevClose : def.basePrice : def.basePrice,
           // 后端 changePct 为小数比率（0.0998 表示 +9.98%），此处统一转百分数
           changePct: q.changePct * 100,
           // WS 快照不带开高低/连板/停牌/ST/封板，沿用上次 REST 落库值
@@ -101,6 +104,7 @@ export const useQuotesStore = defineStore('quotes', {
           prevCurrent: prev ? prev.current : q.current,
           current: q.current,
           changePct: q.changePct * 100,
+          prevClose: q.prevClose != null ? q.prevClose : def.basePrice,
           open: q.open != null ? q.open : null,
           high: q.high != null ? q.high : null,
           low: q.low != null ? q.low : null,
@@ -124,6 +128,7 @@ export const useQuotesStore = defineStore('quotes', {
           prevCurrent: s.basePrice,
           current: s.basePrice,
           changePct: 0,
+          prevClose: s.basePrice,
           open: null,
           high: null,
           low: null,

@@ -5,20 +5,20 @@
         <SvgIcon name="candle" class="chart-ic" />分时走势
       </span>
       <span class="chart-legend">
-        <span class="lg"><i class="lg-line lg-stock"></i>该股</span>
-        <span class="lg"><i class="lg-line lg-index"></i>百年指数</span>
+        <span class="lg"><i class="lg-line lg-price"></i>价格</span>
+        <span class="lg"><i class="lg-line lg-avg"></i>均价</span>
       </span>
-      <span class="chart-sub muted-2">相对开盘涨跌幅 %</span>
+      <span v-if="closed" class="sticker st-halt closed-badge">已收盘</span>
+      <span class="chart-sub muted-2 push">左轴价格 · 右轴涨跌幅%</span>
     </div>
 
-    <!-- 空态：收盘/未开盘时真实接口返回空数组 -->
+    <!-- 空态：未开盘时固定轴 90 点全为 null -->
     <div v-if="!hasData" class="empty chart-empty">
       <SvgIcon name="bull" class="chart-mascot" />
       <span class="empty-title">行情尚未开盘</span>
-      <span class="empty-desc">开盘后这里会跑出股价与指数的双线对决</span>
+      <span class="empty-desc">开盘后这里会跑出分时曲线，3 秒一跳实时延伸</span>
     </div>
 
-    <!-- 双线对比：股价与指数均归一化为“相对首点的涨跌幅%”，单轴可比 -->
     <VChart v-else class="chart" :option="option" :autoresize="true" />
   </div>
 </template>
@@ -26,12 +26,11 @@
 <script setup>
 import { computed } from 'vue'
 import { use } from 'echarts/core'
+import { LineChart, ScatterChart } from 'echarts/charts'
 import { CanvasRenderer } from 'echarts/renderers'
-import { LineChart } from 'echarts/charts'
 import {
   GridComponent,
   TooltipComponent,
-  LegendComponent,
   MarkLineComponent
 } from 'echarts/components'
 import VChart from 'vue-echarts'
@@ -39,57 +38,110 @@ import { token } from '@/styles/theme'
 import SvgIcon from './SvgIcon.vue'
 
 // 按需注册 ECharts 模块（vue-echarts 要求显式 use）
-use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent])
+use([CanvasRenderer, LineChart, ScatterChart, GridComponent, TooltipComponent, MarkLineComponent])
 
 const props = defineProps({
-  // 单股分时：[{ time, price }]，来自 api/stocks.js fetchStockQuotes
-  stockPoints: { type: Array, default: () => [] },
-  // 指数分时：[{ time, value }]，来自 api/stocks.js fetchIndexPoints
-  indexPoints: { type: Array, default: () => [] }
+  // 固定 90 槽分时：[{ time, price|null }]，未到槽位 price 为 null（断线不画、尾段留白）
+  points: { type: Array, default: () => [] },
+  // 昨收基准价：双轴对齐、昨收虚线、涨跌幅换算共用
+  prevClose: { type: Number, default: 0 },
+  // 涨跌停价（ST ±5%、普通 ±10%，前端按昨收算好传入；0 表示不算）
+  limitUp: { type: Number, default: 0 },
+  limitDown: { type: Number, default: 0 },
+  // 收盘/结算/终局态：显示"已收盘"角标
+  closed: { type: Boolean, default: false }
 })
 
-// 是否缺数（任一为空即判空态）
-const hasData = computed(() => props.stockPoints.length > 0 && props.indexPoints.length > 0)
+const hasData = computed(() => props.points.some((p) => p.price != null))
 
-// 把价格序列归一化为“相对首点的涨跌幅%”
-function toPctSeries(points, key) {
-  if (!points.length) return []
-  const base = points[0][key]
-  if (!base) return points.map(() => 0)
-  return points.map((p) => +(((p[key] - base) / base) * 100).toFixed(2))
+// 最新有效点（高亮 + 价格标注）
+const lastPoint = computed(() => {
+  for (let i = props.points.length - 1; i >= 0; i--) {
+    if (props.points[i].price != null) return { index: i, price: props.points[i].price }
+  }
+  return null
+})
+
+// X 轴刻度只标关键时点：午休断轴处 11:30/13:00 合并显示（同花顺惯例）
+const KEY_SLOTS = [0, 22, 44, 67, 89]
+function axisLabelFormatter(value, index) {
+  if (index === 44) return '11:30/13:00'
+  return value
 }
 
 const option = computed(() => {
-  const cBrand = token('--brand')
-  const cInk2 = token('--ink-2')
+  const cBlue = token('--blue')
+  const cYellow = token('--yellow')
   const cInk = token('--ink')
+  const cInk2 = token('--ink-2')
   const cInk3 = token('--ink-3')
   const cCard = token('--card')
   const cDash = token('--dash')
+  const cUp = token('--up')
+  const cDown = token('--down')
 
-  const len = Math.min(props.stockPoints.length, props.indexPoints.length)
-  const times = []
-  const stockPct = []
-  const indexPct = []
-  const s = toPctSeries(props.stockPoints, 'price')
-  const i = toPctSeries(props.indexPoints, 'value')
-  for (let k = 0; k < len; k++) {
-    times.push(props.stockPoints[k].time)
-    stockPct.push(s[k])
-    indexPct.push(i[k])
+  const times = props.points.map((p) => p.time)
+  const prices = props.points.map((p) => p.price)
+  // 均价线：逐点累计平均（无成交量口径，等权均价近似）
+  const avg = []
+  let sum = 0
+  let count = 0
+  for (const p of props.points) {
+    if (p.price != null) {
+      sum += p.price
+      count++
+      avg.push(+(sum / count).toFixed(3))
+    } else {
+      avg.push(null)
+    }
+  }
+
+  const base = props.prevClose > 0 ? props.prevClose : lastPoint.value?.price || 1
+  // 双轴对称范围：昨收上下等幅展开，把现价/均价/涨跌停全部包进来
+  let dev = base * 0.01
+  for (const p of props.points) {
+    if (p.price != null) dev = Math.max(dev, Math.abs(p.price - base))
+  }
+  if (avg.length) {
+    const lastAvg = [...avg].reverse().find((v) => v != null)
+    if (lastAvg != null) dev = Math.max(dev, Math.abs(lastAvg - base))
+  }
+  if (props.limitUp > 0) dev = Math.max(dev, Math.abs(props.limitUp - base))
+  if (props.limitDown > 0) dev = Math.max(dev, Math.abs(base - props.limitDown))
+  dev *= 1.08
+  const yMin = base - dev
+  const yMax = base + dev
+  const pctMin = -((dev / base) * 100)
+  const pctMax = (dev / base) * 100
+
+  const last = lastPoint.value
+  const lastPct = last ? ((last.price - base) / base) * 100 : 0
+
+  const tooltipFormatter = (params) => {
+    const rows = [`<b>${params[0].axisValue}</b>`]
+    for (const item of params) {
+      if (item.value == null) continue
+      const pct = ((item.value - base) / base) * 100
+      const cls = pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat'
+      rows.push(
+        `${item.marker}${item.seriesName} <span class="num ${cls}">${item.value.toFixed(2)}（${pct > 0 ? '+' : ''}${pct.toFixed(2)}%）</span>`
+      )
+    }
+    return rows.join('<br/>')
   }
 
   return {
-    color: [cBrand, cInk2],
-    grid: { left: 48, right: 18, top: 16, bottom: 28 },
+    animation: false,
+    grid: { left: 56, right: 56, top: 24, bottom: 28 },
     tooltip: {
       trigger: 'axis',
+      axisPointer: { type: 'cross', label: { backgroundColor: cInk } },
       backgroundColor: cCard,
       borderColor: cInk,
       borderWidth: 2,
       padding: [6, 10],
       textStyle: { color: cInk, fontSize: 12 },
-      valueFormatter: (v) => (v > 0 ? '+' : '') + v.toFixed(2) + '%'
+      formatter: tooltipFormatter
     },
     xAxis: {
       type: 'category',
@@ -97,39 +149,95 @@ const option = computed(() => {
       boundaryGap: false,
       axisLine: { lineStyle: { color: cInk, width: 1.5 } },
       axisTick: { show: false },
-      axisLabel: { color: cInk2, fontSize: 11, interval: 7 }
+      axisLabel: {
+        color: cInk2,
+        fontSize: 11,
+        interval: (index) => KEY_SLOTS.includes(index),
+        formatter: axisLabelFormatter
+      },
+      splitLine: { show: false }
     },
-    yAxis: {
-      type: 'value',
-      axisLabel: { color: cInk2, fontSize: 11, formatter: '{value}%' },
-      splitLine: { lineStyle: { color: cDash, type: 'dashed' } }
-    },
+    yAxis: [
+      {
+        type: 'value',
+        min: yMin,
+        max: yMax,
+        axisLabel: {
+          color: cInk2,
+          fontSize: 11,
+          formatter: (v) => v.toFixed(2)
+        },
+        splitLine: { lineStyle: { color: cDash, type: 'dashed' } }
+      },
+      {
+        type: 'value',
+        min: pctMin,
+        max: pctMax,
+        position: 'right',
+        axisLabel: {
+          color: cInk2,
+          fontSize: 11,
+          formatter: (v) => (v > 0 ? '+' : '') + v.toFixed(2) + '%'
+        },
+        splitLine: { show: false }
+      }
+    ],
     series: [
       {
-        name: '该股',
+        name: '价格',
         type: 'line',
-        data: stockPct,
-        smooth: false,
+        data: prices,
+        connectNulls: false,
         showSymbol: false,
-        lineStyle: { width: 2.6, color: cBrand },
-        areaStyle: { color: cBrand, opacity: 0.08 },
-        // 0 轴平盘参考线
+        lineStyle: { width: 1.8, color: cBlue },
+        areaStyle: { color: cBlue, opacity: 0.08 },
         markLine: {
           silent: true,
           symbol: 'none',
-          label: { show: false },
-          lineStyle: { color: cInk3, type: 'dashed', width: 1.5 },
-          data: [{ yAxis: 0 }]
+          label: { show: true, fontSize: 10, color: cInk2, position: 'insideStartTop' },
+          lineStyle: { type: 'dashed', width: 1.2 },
+          data: [
+            { yAxis: base, lineStyle: { color: cInk3 }, label: { formatter: '昨收 ' + base.toFixed(2) } },
+            // 午休断轴分隔线（11:30 与 13:00 之间留白）
+            { xAxis: times[44], lineStyle: { color: cDash }, label: { show: false } },
+            ...(props.limitUp > 0
+              ? [{ yAxis: props.limitUp, lineStyle: { color: cUp }, label: { formatter: '涨停 ' + props.limitUp.toFixed(2), color: cUp } }]
+              : []),
+            ...(props.limitDown > 0
+              ? [{ yAxis: props.limitDown, lineStyle: { color: cDown }, label: { formatter: '跌停 ' + props.limitDown.toFixed(2), color: cDown } }]
+              : [])
+          ]
         }
       },
       {
-        name: '百年指数',
+        name: '均价',
         type: 'line',
-        data: indexPct,
-        smooth: false,
+        data: avg,
+        connectNulls: false,
         showSymbol: false,
-        lineStyle: { width: 2, color: cInk2, type: 'dashed' }
-      }
+        lineStyle: { width: 1.6, color: cYellow }
+      },
+      // 最新点高亮 + 价格标注（红涨绿跌）
+      ...(last
+        ? [
+            {
+              name: '最新',
+              type: 'scatter',
+              data: [{ value: [last.index, last.price] }],
+              symbolSize: 7,
+              itemStyle: { color: lastPct >= 0 ? cUp : cDown, borderColor: cInk, borderWidth: 1.5 },
+              label: {
+                show: true,
+                position: lastPct >= 0 ? 'top' : 'bottom',
+                fontSize: 11,
+                fontWeight: 700,
+                color: lastPct >= 0 ? cUp : cDown,
+                formatter: () => last.price.toFixed(2)
+              },
+              z: 10
+            }
+          ]
+        : [])
     ]
   }
 })
@@ -160,16 +268,10 @@ const option = computed(() => {
 }
 .lg { display: inline-flex; align-items: center; gap: 5px; }
 .lg-line { width: 16px; height: 3px; border-radius: 2px; display: inline-block; }
-.lg-stock { background: var(--brand); }
-.lg-index {
-  background: repeating-linear-gradient(
-    90deg,
-    var(--ink-2) 0 4px,
-    transparent 4px 7px
-  );
-}
-.chart-sub { font-size: var(--fs-xs); }
-.chart { width: 100%; height: 300px; }
-.chart-empty { height: 300px; }
+.lg-price { background: var(--blue); }
+.lg-avg { background: var(--yellow); }
+.closed-badge { margin-left: 4px; }
+.chart { width: 100%; height: 320px; }
+.chart-empty { height: 320px; }
 .chart-mascot { width: 56px; height: 56px; opacity: 0.8; }
 </style>
