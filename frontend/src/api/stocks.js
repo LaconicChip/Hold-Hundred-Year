@@ -15,8 +15,3 @@ export function fetchStockQuotes(stockId) {
 export function fetchStockKline(stockId, limit = 60) {
   return http.get(`/api/stocks/${stockId}/kline`, { params: { limit } })
 }
-
-// 指数分时：GET /api/market/index
-export function fetchIndexPoints() {
-  return http.get('/api/market/index')
-}

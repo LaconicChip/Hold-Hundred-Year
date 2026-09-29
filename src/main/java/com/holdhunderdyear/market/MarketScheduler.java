@@ -14,9 +14,9 @@ import org.springframework.stereotype.Service;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * 世界调度器（spec §5）：每 {@link GameConstants#TICK_MS} 毫秒一轮（fixedDelay，上一轮
+ * 世界调度器（spec §5）：每 {@link GameConstants#SCHEDULER_HEARTBEAT_MS} 毫秒一轮（fixedDelay，上一轮
  * 跑完再计时），遍历在线用户（{@link WsSessionRegistry}）逐一推进各自世界——
- * 上午/下午盘中态推一跳；午休态按挂钟计时满 {@link GameConstants#LUNCH_MS} 恢复下午
+ * 上午/下午盘中态按各账户本局跳间隔推一跳；午休态按挂钟计时满午休长度恢复下午
  * （首个午休轮懒打点，重启后从零重计，可接受）；未开盘/已收盘/结算/终态跳过。
  *
  * <p>并发协议（P5）：每用户世界锁 tryLock 获取，失败（用户交易/快进持锁）立即跳过该

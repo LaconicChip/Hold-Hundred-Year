@@ -9,7 +9,7 @@ import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import router from '@/router'
 
-export const TOKEN_KEY = 'hold-year-token'
+const TOKEN_KEY = 'hold-year-token'
 
 // 读取本地令牌
 export function getToken() {

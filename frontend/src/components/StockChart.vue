@@ -50,7 +50,7 @@ const props = defineProps({
   points: { type: Array, default: () => [] },
   // 昨收基准价：双轴对齐、昨收虚线、涨跌幅换算共用
   prevClose: { type: Number, default: 0 },
-  // 涨跌停价（ST ±5%、普通 ±10%，前端按昨收算好传入；0 表示不算）
+  // 涨跌停价：后端按本局模式算好下发（标准 ±10%/ST ±5%，快速 ±20%/ST ±10%），前端不做任何百分比换算
   limitUp: { type: Number, default: 0 },
   limitDown: { type: Number, default: 0 },
   // 收盘/结算/终局态：显示"已收盘"角标

@@ -30,7 +30,3 @@ export function token(name) {
   return cache[name]
 }
 
-// 清空缓存（主题切换时用；当前无主题切换，预留）
-export function resetTokens() {
-  Object.keys(cache).forEach((k) => delete cache[k])
-}

@@ -1,7 +1,6 @@
 package com.holdhunderdyear.market;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.holdhunderdyear.market.entity.SysUser;
 import com.holdhunderdyear.market.entity.UserDailySnapshot;
 import com.holdhunderdyear.market.entity.UserEra;
 import com.holdhunderdyear.market.entity.UserGameState;

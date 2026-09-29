@@ -87,7 +87,7 @@ public class QuoteBoard {
     private Deque<Double> indexIntraday = new ArrayDeque<>();
 
     /** 午休开始打点（System.nanoTime()，0=未打点）：调度器在首个 LUNCH_BREAK 轮懒打点，
-     *  用于 {@link GameConstants#LUNCH_MS} 午休恢复判定。重启后从零重计（可接受）；
+     *  用于本局 GameMode#getLunchMs() 的午休恢复判定。重启后从零重计（可接受）；
      *  纯挂钟计时，绝不进入随机数协议、不影响确定性。volatile 兜底跨线程读，
      *  写读均在世界锁内。 */
     @ToString.Exclude

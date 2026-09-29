@@ -1,8 +1,8 @@
-// 消息元数据共享常量（来源标签 / 三态 / 单字色块头像 / NPC 名称映射）
-// 由 StockMsgList 与 Messages 等页面共用，集中维护避免重复定义与配色漂移
+// 消息元数据（来源标签 / 三态 / 单字色块头像 / NPC 名称映射）：页面只通过本文件导出的函数取值，
+// 映射表本身不导出，避免有人绕过口径直接改表。由 StockMsgList、Messages 等共用。
 
 // 来源枚举 -> 中文标签（与后端 MessageDTO.source 对齐）
-export const SRC_LABEL = {
+const SRC_LABEL = {
   AUTHORITY: '权威公告',
   MEDIA: '财经媒体',
   RUMOR: '股吧传闻',
@@ -13,7 +13,7 @@ export const SRC_LABEL = {
 }
 
 // 来源枚举 -> 样式类（令牌色：红/黄/灰/紫/绿/蓝）
-export const SRC_CLS = {
+const SRC_CLS = {
   AUTHORITY: 'src-auth',
   MEDIA: 'src-media',
   RUMOR: 'src-rumor',
@@ -31,12 +31,12 @@ export function srcCls(s) {
 }
 
 // 三态枚举 -> 中文标签
-export const TRUTH_LABEL = {
+const TRUTH_LABEL = {
   PENDING: '未证实',
   CONFIRMED: '已证实',
   DENIED: '已辟谣'
 }
-export const TRUTH_CLS = {
+const TRUTH_CLS = {
   PENDING: 'tr-pending',
   CONFIRMED: 'tr-confirmed',
   DENIED: 'tr-denied'
@@ -59,7 +59,7 @@ export const SRC_AVATAR = {
 }
 
 // NPC 中文名 -> 代码（NpcAvatar 的 npc 参数）
-export const NPC_NAME_MAP = {
+const NPC_NAME_MAP = {
   张大妈: 'DAMA',
   隔壁老王: 'LAOWANG',
   保安老李: 'LAOLI',

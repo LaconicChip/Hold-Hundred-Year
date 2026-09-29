@@ -6,14 +6,13 @@ import com.holdhunderdyear.game.model.enums.EraCode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
 /**
- * 纪元掷骰器：给定 seed 生成全剧（{@code GameConstants.TOTAL_DAYS} 天）的 11 个纪元
+ * 纪元掷骰器：给定 seed 生成全剧（{@code GameMode#totalDays()} 天）的 11 个纪元
  * 时间表与强度参数（纯函数、无状态）。分界点写在"36 交易日/年"的基准日历里，
  * 掷点时按当前 {@code DAYS_PER_YEAR} 等比映射，改年长只需动 GameConstants 一个数。
  * 随机数消费顺序固定：年分界点（年1 b1,b2,b3 → 年2 len5,b → 年3 c1,c2,c3），
