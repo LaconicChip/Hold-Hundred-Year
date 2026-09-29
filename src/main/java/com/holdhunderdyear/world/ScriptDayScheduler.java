@@ -24,8 +24,8 @@ import java.util.Set;
  * <ol>
  *   <li>熔断日（无随机）：era5.startDay 与 +1，各 1 天；</li>
  *   <li>千股跌停（era3）：n = 2+nextInt(2) → 救市日 pickDay 于 era3 后半段
- *       [start+(len+1)/2, end] → 跌停候选池校验（无随机；era3 除去救市日及其次日不足 n 时，
- *       救市日回落为 era3.end 并重算）→ first = era3.start+nextInt(2)（与救市日/其次日撞车时
+ *       [start+len/2, end-1] → 跌停候选池校验（无随机；era3 除去救市日及其次日不足 n 时，
+ *       救市日回落为 era3.end-1 并重算）→ first = era3.start+nextInt(2)（与救市日/其次日撞车时
  *       防御性翻转为两天中的另一天，无随机）→ n-1 次 pickDay 于 [era3.start, era3.end]
  *       （避开 first 与救市日/救市次日）→ n 个跌停日按 gameDay 升序逐日掷
  *       sealRatio = 0.85+0.10*nextDouble；</li>
@@ -38,7 +38,7 @@ import java.util.Set;
  *   <li>黑7月崩盘（era10 前半段）：c = 2+nextInt(2) → c 次 pickDay 于
  *       [era10.start, era10.start+(len+1)/2-1] → 按挑选顺序逐日掷 sealRatio；</li>
  *   <li>IPO：12 个候选名 Collections.shuffle 洗牌一次 → 逐年（年1/年2/年3）
- *       k = 2+nextInt(2) → k 次 pickDay 于年内 → 按挑选顺序依次取名（不重复）并掷
+ *       k = 2+nextInt(2) → k 次 pickDay 于年内（末段留出 IPO_LIFECYCLE_TAIL 天给 D+2/D+4）→ 按挑选顺序依次取名（不重复）并掷
  *       issuePrice = round2(5+25*nextDouble)。</li>
  * </ol>
  * pickDay 命中已用日期时的重掷循环同样由该 Random 驱动，天然确定；各候选区间长度均严格
@@ -55,6 +55,9 @@ public class ScriptDayScheduler {
     private static final List<String> IPO_NAME_POOL = List.of(
             "雷霆安防", "银河芯动", "九霄云算", "聚宝盆金服", "盘古智驾", "凤凰光学",
             "鲸落生物", "长城数科", "天权航天", "锦鲤锂业", "貔貅支付", "玄武云储");
+
+    /** 打新生命周期：申购日 → D+2 上市 → D+4 结算（IpoService），收官前要留这么多天。 */
+    private static final int IPO_LIFECYCLE_TAIL = 4;
 
     /** 制裁闪崩可命中的科技板块。 */
     private static final Set<String> TECH_SECTORS = Set.of("半导体", "算力", "通信", "传媒");
@@ -99,9 +102,15 @@ public class ScriptDayScheduler {
         int len3 = end3 - start3 + 1;
         int n = 2 + r.nextInt(2);
         n = Math.min(n, len3 - 1); // 防御：若未来纪元抖动放宽导致 len3 变小，避免 pickDay 候选耗尽
-        int rescueDay = pickDay(r, start3 + (len3 + 1) / 2, end3, new HashSet<>());
+        // 救市日最多落在纪元3 的倒数第二天：千股涨停是"救市次日"，救市日压在最后一天就会把
+        // 涨停甩到下一个纪元的第一格。EraScheduler 保证真实排期里 len3 >= 3（三天连戏下限），
+        // 此时下界 start3+len3/2 <= end3-1；万一拿到的是更短的纪元（手工构造/未来改档），
+        // 上界退回 end3 让链条溢出一天，也绝不因为窗口反序而抛。
+        int rescueLo = start3 + len3 / 2;
+        int rescueHi = Math.max(end3 - 1, rescueLo);
+        int rescueDay = pickDay(r, rescueLo, rescueHi, new HashSet<>());
         if (len3 - blockedCount(rescueDay, start3, end3) < n) {
-            rescueDay = end3;
+            rescueDay = rescueHi;
         }
         Set<Integer> blocked = new HashSet<>();
         blocked.add(rescueDay);
@@ -176,11 +185,14 @@ public class ScriptDayScheduler {
         int dyp = gameMode.getDaysPerYear();
         int[][] yearRanges = {{1, dyp}, {dyp + 1, dyp * 2}, {dyp * 2 + 1, gameMode.totalDays()}};
         for (int[] range : yearRanges) {
-            int k = Math.min(2 + r.nextInt(2), range[1] - range[0] + 1);
+            // 申购日要留出 D+2 上市、D+4 结算的日子：收官前 IPO_LIFECYCLE_TAIL 天不再排新申购，
+            // 否则玩家点完申购就终局，钱冻在一只既没上市也没结算的新股里（短局尤其容易撞上）
+            int hi = Math.min(range[1], gameMode.totalDays() - IPO_LIFECYCLE_TAIL);
+            int k = Math.min(2 + r.nextInt(2), hi - range[0] + 1);
             Set<Integer> ipoUsed = new HashSet<>();
             List<Integer> ipoDays = new ArrayList<>();
             for (int i = 0; i < k; i++) {
-                ipoDays.add(pickDay(r, range[0], range[1], ipoUsed));
+                ipoDays.add(pickDay(r, range[0], hi, ipoUsed));
             }
             for (int day : ipoDays) {
                 double issuePrice = Math.round((5 + 25 * r.nextDouble()) * 100.0) / 100.0;

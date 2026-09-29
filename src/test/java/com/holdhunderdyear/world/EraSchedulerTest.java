@@ -60,6 +60,21 @@ class EraSchedulerTest {
         }
     }
 
+    /**
+     * 纪元 3（股灾降临）要装下"≥2 天千股跌停 → 救市 → 次日千股涨停"，任何模式下都不得短于 4 天：
+     * 快速模式把年长砍到 12 天，若放任抖动压成 2~3 天，股灾会演成一日游、涨停还会漏到下一个纪元。
+     */
+    @Test
+    void eraThreeKeepsRoomForTheCrashChain() {
+        for (GameMode mode : GameMode.values()) {
+            for (long seed = 1; seed <= 1000; seed++) {
+                EraInstance era3 = scheduler.roll(seed, mode).get(2);
+                int len = era3.endDay() - era3.startDay() + 1;
+                assertTrue(len >= 4, "mode " + mode + " seed " + seed + " era3 length " + len + " < 4");
+            }
+        }
+    }
+
     @Test
     void everyEraLastsAtLeastThreeDaysAndStaysWithinItsYear() {
         // 纪元 1-4 属年1、5-7 属年2、8-11 属年3；年长由 GameMode.STANDARD.getDaysPerYear() 决定

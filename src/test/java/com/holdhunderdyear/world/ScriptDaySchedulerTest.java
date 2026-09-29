@@ -93,11 +93,12 @@ class ScriptDaySchedulerTest {
             List<ScriptDayInstance> rescues = ofType(scheduler.roll(seed, eras), ScriptType.RESCUE);
             assertEquals(1, rescues.size(), "seed " + seed + " RESCUE count");
             int len = era3.endDay() - era3.startDay() + 1;
-            int secondHalfStart = era3.startDay() + (len + 1) / 2;
+            // 后半段，但不许压在纪元最后一天：千股涨停是"救市次日"，压在末格就漏到下一个纪元
+            int secondHalfStart = era3.startDay() + len / 2;
             int rescueDay = rescues.get(0).gameDay();
-            assertTrue(rescueDay >= secondHalfStart && rescueDay <= era3.endDay(),
+            assertTrue(rescueDay >= secondHalfStart && rescueDay <= era3.endDay() - 1,
                     "seed " + seed + " rescueDay " + rescueDay
-                            + " outside era3 second half [" + secondHalfStart + "," + era3.endDay() + "]");
+                            + " outside era3 second half [" + secondHalfStart + "," + (era3.endDay() - 1) + "]");
             assertTrue(rescues.get(0).params().isEmpty(), "RESCUE params must be empty");
         }
     }
@@ -328,6 +329,52 @@ class ScriptDaySchedulerTest {
             assertThrows(UnsupportedOperationException.class, () -> params.put("x", 1));
             if (params.isEmpty()) {
                 assertEquals("{}", d.paramsJson());
+            }
+        }
+    }
+
+    /**
+     * 千股跌停 → 救市 → 次日千股涨停是三天连戏，整条链必须留在纪元 3 内：
+     * 救市日不能压在纪元最后一天（那样涨停就漏到下一个纪元），跌停日也必须在纪元 3 里。
+     */
+    @Test
+    void crashRescueRallyChainStaysInsideEraThree() {
+        for (GameMode mode : GameMode.values()) {
+            for (long seed = 1; seed <= MAX_SEED; seed++) {
+                List<EraInstance> eras = eraScheduler.roll(seed, mode);
+                EraInstance era3 = eras.get(2);
+                List<ScriptDayInstance> days = scheduler.roll(seed, eras, mode);
+                int rescue = ofType(days, ScriptType.RESCUE).get(0).gameDay();
+                assertTrue(rescue >= era3.startDay() && rescue < era3.endDay(),
+                        "mode " + mode + " seed " + seed + " rescue day " + rescue
+                                + " must sit inside era3 [" + era3.startDay() + "," + era3.endDay() + ")");
+                assertTrue(ofType(days, ScriptType.LIMIT_UP_ALL).stream()
+                                .anyMatch(d -> d.gameDay() == rescue + 1),
+                        "mode " + mode + " seed " + seed + " the day after the rescue must be a rally day");
+                for (ScriptDayInstance down : ofType(days, ScriptType.LIMIT_DOWN_ALL)) {
+                    assertTrue(down.gameDay() >= era3.startDay() && down.gameDay() <= era3.endDay(),
+                            "mode " + mode + " seed " + seed + " limit-down day " + down.gameDay()
+                                    + " outside era3 [" + era3.startDay() + "," + era3.endDay() + "]");
+                }
+            }
+        }
+    }
+
+    /**
+     * 申购之后还要 D+2 上市、D+4 结算：收官前四天不再排新申购，
+     * 否则玩家点完申购就终局，钱冻在一只既没上市也没结算的新股里。
+     */
+    @Test
+    void ipoSubscribeDaysLeaveRoomForTheirLifecycle() {
+        for (GameMode mode : GameMode.values()) {
+            int lastSafeDay = mode.totalDays() - 4;
+            for (long seed = 1; seed <= MAX_SEED; seed++) {
+                List<ScriptDayInstance> days = scheduler.roll(seed, eraScheduler.roll(seed, mode), mode);
+                for (ScriptDayInstance ipo : ofType(days, ScriptType.IPO)) {
+                    assertTrue(ipo.gameDay() <= lastSafeDay,
+                            "mode " + mode + " seed " + seed + " subscribe day " + ipo.gameDay()
+                                    + " cannot finish its D+2/D+4 lifecycle before day " + mode.totalDays());
+                }
             }
         }
     }

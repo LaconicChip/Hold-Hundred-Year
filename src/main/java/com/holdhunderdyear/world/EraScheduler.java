@@ -27,6 +27,14 @@ public class EraScheduler {
     private static final int BASE_YEAR2_START = 37;
     private static final int BASE_YEAR3_START = 73;
 
+    /**
+     * 纪元 3（股灾降临）的专属长度下限 = 4 天：股灾戏码要排"≥2 天千股跌停 → 救市 → 次日千股涨停"，
+     * 少一天就会出两种难看结果：要么涨停漏到下一个纪元的第一格（玩家在"灾后震荡"开局看到千股涨停），
+     * 要么只剩一天跌停、股灾演成一日游。快速模式年长减半到 12 天，这条下限尤其要守住
+     * （年1 四段 2+2+4+2 = 10 ≤ 12，抖动仍有 2 天余量）。
+     */
+    private static final int CRASH_CHAIN_MIN_ERA_LEN = 4;
+
 
     public record EraInstance(int eraIndex, EraCode code, int startDay, int endDay,
                               double muMkt, Map<String, Double> sectorCoefs) {
@@ -55,17 +63,21 @@ public class EraScheduler {
 
         // 年1 分界基准 11/21/29，抖动 ±3/±2/±2（掷点形状不变，只把结果日等比映射）
         int minEraLen = gameMode.getMinEraLen();
-        int[] y1 = clampBoundaries(year1Start, year1End, minEraLen,
+        // 每段的长度下限：年1 第三段（纪元3）要装下三天连戏，单独抬高
+        int[] y1Min = {minEraLen, minEraLen, CRASH_CHAIN_MIN_ERA_LEN, minEraLen};
+        int[] y2Min = {minEraLen, minEraLen, minEraLen};
+        int[] y3Min = {minEraLen, minEraLen, minEraLen, minEraLen};
+        int[] y1 = clampBoundaries(year1Start, year1End, y1Min,
                 scale(11 + r.nextInt(7) - 3, gameMode),
                 scale(21 + r.nextInt(5) - 2, gameMode),
                 scale(29 + r.nextInt(5) - 2, gameMode));
         // 年2：熔断纪元长度 3~5 天（不随年长缩放，它本就是"几天"）；蓝筹/贸易战分界基准 56 抖动 ±3
         int len5 = 3 + r.nextInt(3);
-        int[] y2 = clampBoundaries(year2Start, year2End, minEraLen,
+        int[] y2 = clampBoundaries(year2Start, year2End, y2Min,
                 year2Start + len5,
                 scale(56 + r.nextInt(7) - 3, gameMode));
         // 年3 分界基准 84/96/104，抖动 ±2/±2/±1
-        int[] y3 = clampBoundaries(year3Start, year3End, minEraLen,
+        int[] y3 = clampBoundaries(year3Start, year3End, y3Min,
                 scale(84 + r.nextInt(5) - 2, gameMode),
                 scale(96 + r.nextInt(5) - 2, gameMode),
                 scale(104 + r.nextInt(3) - 1, gameMode));
@@ -121,12 +133,21 @@ public class EraScheduler {
         return yearStart + (int) Math.round(fraction * (dyp - 1));
     }
 
-    private static int[] clampBoundaries(int yearStart, int yearEnd, int minEraLen, int... raw) {
+    /**
+     * 安全网：按升序裁剪分界点。每段长度不得小于该段自己的下限（{@code minLens} 逐段给出，
+     * 段数 = 分界点数 + 1，末段也算），并且每挪一个分界点都要给后面所有段留够总天数。
+     * 在当前抖动幅度下多数情况是恒等变换，仅作防御——纪元3 的三天连戏下限就靠它兜住。
+     */
+    private static int[] clampBoundaries(int yearStart, int yearEnd, int[] minLens, int... raw) {
         int[] boundaries = new int[raw.length];
         int prev = yearStart;
-        for (int i = 0; i < raw.length; i++) {
-            int b = Math.min(Math.max(raw[i], prev + minEraLen), yearEnd - minEraLen + 1);
-            boundaries[i] = b;
+        for (int seg = 0; seg < raw.length; seg++) {
+            int tail = 0;
+            for (int j = seg + 1; j < minLens.length; j++) {
+                tail += minLens[j];
+            }
+            int b = Math.min(Math.max(raw[seg], prev + minLens[seg]), yearEnd - tail + 1);
+            boundaries[seg] = b;
             prev = b;
         }
         return boundaries;
