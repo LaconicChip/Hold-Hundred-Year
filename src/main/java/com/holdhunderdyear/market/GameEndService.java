@@ -223,6 +223,7 @@ public class GameEndService {
                 .set(UserGameState::getTickIndex, 0)
                 .set(UserGameState::getWorldSeed, newSeed)
                 .set(UserGameState::getIndexValue, 1000.0)
+                .set(UserGameState::getPrevIndex, 1000.0)
                 .set(UserGameState::getPrevTotalAsset, null)
                 .set(UserGameState::getVolRegime, "NORMAL")
                 .set(UserGameState::getTier, "RETAIL")

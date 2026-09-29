@@ -76,14 +76,13 @@ public class QuoteBoard {
      * 从 stock_state 快照恢复行情板：价格、连板数、停牌、ST 从实体读取；
      * gapPct 不在此应用——那是开盘管线（跳空落地）的事；sealed=NONE、garchK=1、
      * dayAvg/tickCount=0、分时缓冲空（Checkpoint 不存分时，恢复后重新积累）。
-     * prevIndex = indexValue（spec §10：index_value 即昨收/当前快照同列）。
-     * 已知限制：熔断日盘中重启时 prevIndex 退化为最近 checkpoint 的盘中指数而非昨收
-     * （单列两用无法区分），熔断阈值基数随之偏移——触发窗口极窄，根治需 game_state
-     * 增加 prev_index 列（暂不做）。
+     * prevIndex 取 user_game_state.prev_index（当日开盘基准指数）：与 index_value 分列后，
+     * 盘中重启恢复出的熔断阈值基数仍是昨收，不再被逐跳 checkpoint 写进的盘中值污染。
      * 当日上下文（currentEra/volRegime/reverseDay/circuitBreakerDay）不在此恢复——
      * 由开盘管线（MarketStateService.openDay）写入。
      */
-    public static QuoteBoard restore(List<UserStockState> states, double indexValue, int tickIndex) {
+    public static QuoteBoard restore(List<UserStockState> states, double indexValue,
+                                     double prevIndex, int tickIndex) {
         QuoteBoard board = new QuoteBoard();
         for (UserStockState state : states) {
             Quote quote = new Quote();
@@ -101,7 +100,7 @@ public class QuoteBoard {
             board.quotes.put(state.getStockId(), quote);
         }
         board.indexValue = indexValue;
-        board.prevIndex = indexValue;
+        board.prevIndex = prevIndex;
         board.tickIndex = tickIndex;
         return board;
     }

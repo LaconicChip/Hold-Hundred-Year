@@ -27,6 +27,9 @@ public class UserGameState {
 
     private Double indexValue;
 
+    /** 当日开盘基准指数（昨收口径）：熔断阈值与盘中重启的唯一基准，见迁移 V20260929_01。 */
+    private Double prevIndex;
+
     private BigDecimal prevTotalAsset;
 
     private String volRegime;

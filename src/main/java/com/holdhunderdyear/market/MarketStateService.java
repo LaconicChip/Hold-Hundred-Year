@@ -219,6 +219,12 @@ public class MarketStateService {
         quoteBoardRegistry.evict(userId);
         QuoteBoard board = quoteBoardRegistry.getOrLoad(userId);
 
+        // 当日指数基准 = 昨收指数（结算后 index_value 不再变动；首日即基期 1000）。
+        // restore 读到的 prev_index 可能是上一日的，这里统一纠正并随后落库，
+        // 使盘中重启后的熔断阈值基数仍是当日昨收（spec §10 单列两用的根治）。
+        double dayBaseline = gameState.getIndexValue();
+        board.setPrevIndex(dayBaseline);
+
         VolRegime regime = rollVolRegime(worldSeed, newDay);
         List<UserScriptDay> scriptDays = scriptDaysFor(userId, newDay);
 
@@ -253,6 +259,7 @@ public class MarketStateService {
         gameState.setMarketState(MarketState.MORNING_OPEN.name());
         gameState.setTickIndex(0);
         gameState.setVolRegime(regime.name());
+        gameState.setPrevIndex(dayBaseline);
         userGameStateMapper.updateById(gameState);
         return board;
     }

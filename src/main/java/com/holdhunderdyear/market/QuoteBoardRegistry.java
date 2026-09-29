@@ -46,7 +46,8 @@ public class QuoteBoardRegistry {
                             .orderByAsc(UserStockState::getStockId));
             UserGameState gameState = userGameStateMapper.selectOne(
                     new LambdaQueryWrapper<UserGameState>().eq(UserGameState::getUserId, id));
-            return QuoteBoard.restore(states, gameState.getIndexValue(), gameState.getTickIndex());
+            return QuoteBoard.restore(states, gameState.getIndexValue(),
+                    gameState.getPrevIndex(), gameState.getTickIndex());
         });
     }
 

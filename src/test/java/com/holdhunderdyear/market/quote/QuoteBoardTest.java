@@ -44,12 +44,12 @@ class QuoteBoardTest {
         states.get(4).setIsSt(true);
         states.get(18).setHalted(true);
 
-        QuoteBoard board = QuoteBoard.restore(states, 1000.0, 5);
+        QuoteBoard board = QuoteBoard.restore(states, 1000.0, 900.0, 5);
 
         assertEquals(24, board.getQuotes().size());
         assertEquals(1000.0, board.getIndexValue(), 1e-9);
-        assertEquals(1000.0, board.getPrevIndex(), 1e-9,
-                "index_value snapshot doubles as prevIndex");
+        assertEquals(900.0, board.getPrevIndex(), 1e-9,
+                "prevIndex 来自 user_game_state.prev_index 自身，不再等于盘中 index_value 快照");
         assertEquals(5, board.getTickIndex());
 
         Quote first = board.quote(1L);
@@ -80,13 +80,13 @@ class QuoteBoardTest {
 
     @Test
     void quoteThrowsForUnknownStockId() {
-        QuoteBoard board = QuoteBoard.restore(List.of(state(StockDefs.ALL.get(0))), 1000.0, 0);
+        QuoteBoard board = QuoteBoard.restore(List.of(state(StockDefs.ALL.get(0))), 1000.0, 1000.0, 0);
         assertThrows(IllegalArgumentException.class, () -> board.quote(999L));
     }
 
     @Test
     void lockIsUsable() {
-        QuoteBoard board = QuoteBoard.restore(List.of(state(StockDefs.ALL.get(0))), 1000.0, 0);
+        QuoteBoard board = QuoteBoard.restore(List.of(state(StockDefs.ALL.get(0))), 1000.0, 1000.0, 0);
         board.getLock().lock();
         try {
             assertEquals(0, board.getTickIndex());
@@ -97,7 +97,7 @@ class QuoteBoardTest {
 
     @Test
     void shocksQueueAcceptsAndConsumesStockShock() {
-        QuoteBoard board = QuoteBoard.restore(List.of(state(StockDefs.ALL.get(0))), 1000.0, 0);
+        QuoteBoard board = QuoteBoard.restore(List.of(state(StockDefs.ALL.get(0))), 1000.0, 1000.0, 0);
         board.getShocks().enqueue(new PriceShock(1L, false, 0.05, 1, Decay.ONCE));
         assertEquals(0.05, board.getShocks().consumeStock(1L), 1e-9);
         assertEquals(0.0, board.getShocks().consumeStock(1L), 1e-9);
@@ -105,7 +105,7 @@ class QuoteBoardTest {
 
     @Test
     void appendIndexTickTracksIndexAndCapsBufferAt90() {
-        QuoteBoard board = QuoteBoard.restore(List.of(state(StockDefs.ALL.get(0))), 1000.0, 0);
+        QuoteBoard board = QuoteBoard.restore(List.of(state(StockDefs.ALL.get(0))), 1000.0, 1000.0, 0);
 
         board.appendIndexTick(1001.0);
         board.appendIndexTick(1002.0);
@@ -126,7 +126,7 @@ class QuoteBoardTest {
 
     @Test
     void lunchElapsedStartsTimingOnFirstCall() {
-        QuoteBoard board = QuoteBoard.restore(List.of(state(StockDefs.ALL.get(0))), 1000.0, 0);
+        QuoteBoard board = QuoteBoard.restore(List.of(state(StockDefs.ALL.get(0))), 1000.0, 1000.0, 0);
         assertEquals(0, board.lunchElapsedMillis(), "first call starts timing and reports zero");
         assertTrue(board.lunchElapsedMillis() <= 5,
                 "immediate second call must stay at the same origin, not restart it");
@@ -134,7 +134,7 @@ class QuoteBoardTest {
 
     @Test
     void lunchElapsedGrowsMonotonically() throws InterruptedException {
-        QuoteBoard board = QuoteBoard.restore(List.of(state(StockDefs.ALL.get(0))), 1000.0, 0);
+        QuoteBoard board = QuoteBoard.restore(List.of(state(StockDefs.ALL.get(0))), 1000.0, 1000.0, 0);
         assertEquals(0, board.lunchElapsedMillis());
         Thread.sleep(30);
         long first = board.lunchElapsedMillis();
@@ -145,7 +145,7 @@ class QuoteBoardTest {
 
     @Test
     void clearLunchTimingRestartsTiming() throws InterruptedException {
-        QuoteBoard board = QuoteBoard.restore(List.of(state(StockDefs.ALL.get(0))), 1000.0, 0);
+        QuoteBoard board = QuoteBoard.restore(List.of(state(StockDefs.ALL.get(0))), 1000.0, 1000.0, 0);
         board.lunchElapsedMillis();
         Thread.sleep(30);
         assertTrue(board.lunchElapsedMillis() > 0);

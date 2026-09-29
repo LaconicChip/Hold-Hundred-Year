@@ -79,6 +79,7 @@ public class WorldSeeder {
         state.setTickIndex(0);
         state.setWorldSeed(worldSeed);
         state.setIndexValue(1000.0);
+        state.setPrevIndex(1000.0);
         state.setVolRegime("NORMAL");
         state.setTier("RETAIL");
         userGameStateMapper.insert(state);

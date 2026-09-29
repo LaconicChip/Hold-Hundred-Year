@@ -67,6 +67,9 @@ class MarketStateServiceTest {
     private FastForwardService fastForwardService;
 
     @Autowired
+    private WorldTickService worldTickService;
+
+    @Autowired
     private QuoteBoardRegistry quoteBoardRegistry;
 
     @Autowired
@@ -274,6 +277,46 @@ class MarketStateServiceTest {
         assertTrue(msg.getTitle().contains(era2.getEraCode()), "title=" + msg.getTitle());
         assertEquals(EraCode.valueOf(era2.getEraCode()).getNarrative(), msg.getContent(),
                 "era-switch notice must read the new era's narrative");
+    }
+
+    @Test
+    void openDayStampsPrevIndexAsYesterdayCloseIndex() {
+        long userId = worldSeeder.seedUser("mkt_pidx1", "$2a$10$bcrypthash");
+
+        marketStateService.startDay(userId);
+        assertEquals(GameConstants.INITIAL_INDEX, gameState(userId).getPrevIndex(), 1e-9,
+                "day 1 has no yesterday, so the 1000 base index is its opening baseline");
+
+        fastForwardService.skip(userId);
+        double dayOneClose = gameState(userId).getIndexValue();
+
+        marketStateService.startDay(userId);
+        assertEquals(dayOneClose, gameState(userId).getPrevIndex(), 1e-9,
+                "day 2 must stamp day 1's close index as its own baseline");
+    }
+
+    @Test
+    void restartOnCircuitBreakerDayKeepsBreakerBaseline() {
+        long userId = worldSeeder.seedUser("mkt_pidx2", "$2a$10$bcrypthash");
+        UserScriptDay breaker = firstScriptDay(userId, ScriptType.CIRCUIT_BREAKER);
+
+        QuoteBoard board = startDayAt(userId, breaker.getGameDay());
+        double baseline = board.getPrevIndex();
+        assertTrue(baseline > 0, "breaker day must open with a positive index baseline");
+
+        for (int i = 0; i < 10; i++) {
+            worldTickService.tickOne(userId);
+        }
+        double intraday = gameState(userId).getIndexValue();
+        assertTrue(Math.abs(intraday - baseline) > 1e-9,
+                "intraday index has to drift from the baseline, otherwise this test proves nothing");
+
+        // 进程重启：内存板丢失，只能靠 Checkpoint 恢复
+        quoteBoardRegistry.evict(userId);
+        QuoteBoard restored = quoteBoardRegistry.getOrLoad(userId);
+
+        assertEquals(baseline, restored.getPrevIndex(), 1e-9,
+                "熔断阈值基数必须是当日开盘昨收，重启后不得退化为最近一次盘中 checkpoint");
     }
 
     @Test
