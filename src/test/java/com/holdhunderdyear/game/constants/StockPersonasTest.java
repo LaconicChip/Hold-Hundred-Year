@@ -16,7 +16,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 个股人设档案的完整性与"反重复"校验（纯单测，不连库）：
- * 覆盖 24 只票、每条文案非空白、无 emoji、事件文案都带 {stock} 槽位，
+ * 覆盖 24 只票（每股 8 条专属弹幕 + 6 条专属事件文案）、每条非空白、无 emoji、
+ * 事件文案都带 {stock} 槽位，
  * 以及个股专属池 + 板块池 + 全局池合起来不出现重复句子——
  * 文案量堆上去却互相抄，等于没堆。
  */
@@ -41,8 +42,8 @@ class StockPersonasTest {
             String who = "stock " + persona.stockId();
             assertFalse(persona.nickname().isBlank(), who + " needs a nickname");
             assertFalse(persona.temper().isBlank(), who + " needs a temper line");
-            assertTrue(persona.danmu().size() >= 5, who + " must own at least 5 danmu lines");
-            assertTrue(persona.news().size() >= 3, who + " must own at least 3 event lines");
+            assertTrue(persona.danmu().size() >= 8, who + " must own at least 8 danmu lines");
+            assertTrue(persona.news().size() >= 6, who + " must own at least 6 event lines");
             for (String line : persona.danmu()) {
                 assertReadable(line, who + " danmu");
             }
@@ -58,7 +59,7 @@ class StockPersonasTest {
     void sectorFlavorCoversEverySectorInStockDefs() {
         for (StockDef def : StockDefs.ALL) {
             List<String> pool = DanmuTexts.sectorPool(def.sector());
-            assertTrue(pool.size() >= 4, "sector " + def.sector() + " needs at least 4 lines");
+            assertTrue(pool.size() >= 6, "sector " + def.sector() + " needs at least 6 lines");
             assertSame(pool, DanmuTexts.sectorPool(def.sector()), "sector pool lookup must be stable");
         }
     }
@@ -87,7 +88,7 @@ class StockPersonasTest {
             }
         }
         assertTrue(duplicates.isEmpty(), "repeated copy across pools kills variety: " + duplicates);
-        assertTrue(seen.size() >= 300,
+        assertTrue(seen.size() >= 450,
                 "total distinct chatter lines must stay big enough to feel alive, got " + seen.size());
     }
 
