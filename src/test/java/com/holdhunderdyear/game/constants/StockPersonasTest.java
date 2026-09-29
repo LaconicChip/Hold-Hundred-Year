@@ -94,7 +94,7 @@ class StockPersonasTest {
         for (NpcLines.Scene scene : NpcLines.Scene.values()) {
             allPools.add(NpcLines.scene(scene));
         }
-        NpcLines.CHATTER.values().forEach(allPools::add);
+        NpcLines.chatterPool().values().forEach(allPools::add);
         for (List<String> pool : allPools) {
             for (String line : pool) {
                 if (line == null || line.isBlank()) {

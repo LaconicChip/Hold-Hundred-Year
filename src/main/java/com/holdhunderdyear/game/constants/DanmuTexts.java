@@ -1,46 +1,62 @@
 package com.holdhunderdyear.game.constants;
 
+import com.holdhunderdyear.game.content.ContentCatalog;
+
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * 弹幕文案池（Phase 8.3，spec §7.3）。按触发类别分多个只读 {@link List}，
- * 供 {@link com.holdhunderdyear.event.DanmuService#pickDanmu} 按命中类别随机抽取。
+ * 股吧弹幕文案池（spec §7.3）：9 个全局类别池 + 21 个板块池。
  *
- * <p>文案为股吧风短评（黑色幽默），纯中文无 emoji、每条非空白、数句至二十字以内，
- * 不携带占位符（前端渲染 ID/点赞仅做屏幕展示）。除下列全局类别池外，另有板块池
- * {@link #SECTOR_FLAVOR}（21 板块 × 6）与个股专属池 {@link StockPersonas}（24 股 × 5），
- * 由 DanmuService 按"个股专属 → 板块 → 全局"三级混抽。
+ * <p>文案本体在 <code>resources/content/danmu.txt</code>，这里只是一层带类型的读取入口——
+ * 加段子、改措辞改那个文本文件即可，不必动 Java。板块名必须与 {@link StockDefs} 的
+ * sector 字段一一对应（由 DanmuTextsTest/StockPersonasTest 校验）。
+ *
+ * <p>三级混抽（个股专属 → 板块 → 全局）在 {@code DanmuService}；个股专属池见
+ * {@link StockPersonas}。全部文案纯中文、无 emoji。
  */
 public final class DanmuTexts {
 
-    /**
-     * 板块专属弹幕池（21 个板块 × 6 条）：股吧里聊某个板块时的通用口吻，
-     * 与个股专属池（{@link StockPersonas}）、全局池三层混抽，避免"翻来覆去就那几句"。
-     * key 必须与 {@link StockDefs} 的 sector 字段一一对应。
-     */
-    public static final Map<String, List<String>> SECTOR_FLAVOR = Map.ofEntries(
-            Map.entry("白酒", List.of("白酒一红，说明资金又开始怕了", "喝不喝得起另说，反正股价先上去了", "高端酒的逻辑，就是越涨越有人买", "板块里就酒最硬，其他都在陪跑", "高端酒的护城河，是别人学不来的品牌", "白酒一歇，指数就少了根柱子")),
-            Map.entry("半导体", List.of("半导体一涨，全场都在查国产替代", "卡脖子的题材，一有消息就起飞", "设计封测一起动，没人真懂在炒什么", "半导体跌起来，从来不跟你讲道理", "半导体的周期，迟到但从不会缺席", "设备材料一起动，才叫真复苏")),
-            Map.entry("新能源", List.of("新能源的春天，年年都说年年等", "渗透率越高，卷得越狠", "政策一吹，新能源就集体抬头", "新能源的票，拿久了都练出定力了", "新能源的产能，永远跑在需求前面", "上游一降价，下游才有肉")),
-            Map.entry("医药", List.of("医药跌了三年，终于想起它还会赚钱", "创新药出海，讲的就是一个想象", "集采两个字，能让整个板块装死", "老龄化的逻辑没错，错在我买贵了", "创新药的钱，要等临床数据说话", "医药估值低，低得像有原因")),
-            Map.entry("地产", List.of("地产的消息面，比天气还难预测", "一松绑就反弹，一反弹就回落", "地产板块现在炒的是“还剩多少”", "保交楼三个字，能撑起一个涨停", "地产的利好，从来都是挤牙膏", "一条政策线，扯动一整条链")),
-            Map.entry("银行", List.of("银行又护盘了，其他票放心跌", "高股息的尽头，是没人愿意涨", "银行涨一分，指数红一片", "买银行的和买题材的，从来不是一拨人", "银行的账，只有年报敢写清楚", "红利策略的钱，最后都进了银行")),
-            Map.entry("券商", List.of("券商一拉，全场喊牛市", "旗手举旗的时候，也是它想跑的时候", "成交量不放，券商就是装睡", "每次券商涨停，都有人准备销户了", "券商的行情，是市场给的情绪奖", "并购重组一开口，券商就有故事")),
-            Map.entry("保险", List.of("保险看利率，利率不答应", "长端一抬，保险就直腰", "保险股慢，慢到像没买", "代理人出清完，故事才好讲", "保险的车险稳如老狗，寿险全靠新单", "代理人从百万砍到三十万，才有人敢看")),
-            Map.entry("家电", List.of("家电出海，赚的是汇率和订单", "以旧换新一提，家电就精神", "家电是最老实的周期", "内销看地产，外销看海运", "家电的天花板，是别人的厨房", "以旧换新的钱，要真发到用户手里")),
-            Map.entry("水产", List.of("水产看塘口，塘口看天气", "一条鱼涨价，全板块跟着乐", "农业的行情，从来不看财报", "鱼价这东西，比股价还难判断", "水产的库存，是活的，会跑", "饲料一降价，养鱼的多喘口气")),
-            Map.entry("军工", List.of("军工的订单，永远在路上", "地缘一紧，军工就硬", "军工不解释，解释就是涨停", "拿军工要有耐心，最好没有短期记忆", "军工的确定性，写在预算表里", "卫星和导弹，都归同一个甲方")),
-            Map.entry("传媒", List.of("传媒炒的是下一个爆款，谁都猜不到", "一部戏救一个股，一部撤档毁一年", "传媒的估值，全靠想象力", "流量在哪，传媒就往哪扑", "传媒的成本是钱，收入是人心", "一部戏的档期，能改一份财报")),
-            Map.entry("算力", List.of("算力不看市盈率，看排队订单", "一断供，算力自己就是题材", "机柜上架率，是这轮唯一的硬指标", "算力的电，比算力的芯片还紧", "算力的尽头是电，电的尽头是审批", "机柜空转一天，折旧照算一天")),
-            Map.entry("零售", List.of("零售看客流，客流看心情", "大促冲量，冲的是利润", "消费复苏这四个字，等得我都有点累了", "社区团购卷完，剩下的才是本事", "零售的毛利，是一分一分抠出来的", "即时零售的最后一公里，全是成本")),
-            Map.entry("航空", List.of("航空的利润，一半在油价手里", "旺季一开，航空就笑", "汇率一动，航空的账本就重算", "票价和运力，总有一个不配合", "航空的座位，过期就作废", "航线时刻，比票价更值钱")),
-            Map.entry("煤炭", List.of("煤炭不讲成长，只讲分红", "一涨电价，煤炭就乐", "煤炭的行情，冬天比夏天勤", "长协一签，煤企就装睡", "煤价不动，煤老板照样发钱", "安全监察一严，供给自己就紧了")),
-            Map.entry("钢铁", List.of("钢铁两头受气：上面矿贵，下面需求软", "限产一出，钢铁就硬三天", "吨钢利润薄如纸", "基建一发力，钢铁跟着喝汤", "钢价一半看铁矿，一半看工地", "钢厂利润一薄，环保就开始说话")),
-            Map.entry("农业", List.of("农业炒周期，周期不看人", "一号文件一发，农业集体抬头", "猪价是农业股的开关", "种子和饲料，谁先涨价谁赢", "农业的库存是活的，会生病", "猪栏空了，猪价才有脾气")),
-            Map.entry("物流", List.of("快递单量涨，单价跌，白忙", "油价一涨，物流就疼", "件量新高那天，往往是股价的高点", "国际件是物流唯一的新故事", "物流的效率，是从油价里抠出来的", "跨境件一堵，利润就换地方赚")),
-            Map.entry("制造", List.of("制造业看资本开支，开支一热就接单", "自动化的逻辑，是人工越来越贵", "机床不性感，但订单是真的", "出口一好，制造跟着吃肉", "制造的订单，三个月前就有答案", "工程师红利，是熬出来的不是喊出来的")),
-            Map.entry("通信", List.of("通信永远年轻，估值永远过高", "运营商砍开支，设备商就蔫", "卫星互联网，是通信最新的一张牌", "概念一热，通信就能连涨三天", "通信的标准，一代要等十年", "光模块的涨价，来得快去得也快")));
+    private static final String FILE = "danmu";
+    private static final String SECTOR_PREFIX = "SECTOR:";
+
+    /** 指数大跌（日内跌幅 ≤ -2%）。 */
+    public static final List<String> INDEX_DROP = ContentCatalog.require(FILE, "INDEX_DROP");
+    /** 指数大涨（日内涨幅 ≥ +2%）。 */
+    public static final List<String> INDEX_RISE = ContentCatalog.require(FILE, "INDEX_RISE");
+    /** 涨停封板（sealed=UP）。 */
+    public static final List<String> LIMIT_UP = ContentCatalog.require(FILE, "LIMIT_UP");
+    /** 跌停封板（sealed=DOWN）。 */
+    public static final List<String> LIMIT_DOWN = ContentCatalog.require(FILE, "LIMIT_DOWN");
+    /** 急拉（|涨跌幅| > 5% 且为正）。 */
+    public static final List<String> RALLY = ContentCatalog.require(FILE, "RALLY");
+    /** 跳水（|涨跌幅| > 5% 且为负）。 */
+    public static final List<String> DIVE = ContentCatalog.require(FILE, "DIVE");
+    /** 次级急拉（3%~5%）。 */
+    public static final List<String> RALLY_MINOR = ContentCatalog.require(FILE, "RALLY_MINOR");
+    /** 次级跳水（3%~5%）。 */
+    public static final List<String> DIVE_MINOR = ContentCatalog.require(FILE, "DIVE_MINOR");
+    /** 横盘冷门（全部活跃股 |涨跌幅| < 1%）。 */
+    public static final List<String> FLAT = ContentCatalog.require(FILE, "FLAT");
+
+    /** 全局类别池：类别名 -> 弹幕池，就是上面那 9 个常量的汇总视图（供计数与遍历）。 */
+    static final Map<String, List<String>> GLOBAL_POOLS = globalPools();
+
+    /** 板块池：key 为板块名（与 StockDefs.sector 同集合），value 为该板块的股吧口吻短评。 */
+    public static final Map<String, List<String>> SECTOR_FLAVOR = sectorFlavor();
+
+    /** 全部全局类别的文案合计（供测试统计总量）。 */
+    public static int totalCount() {
+        int total = 0;
+        for (List<String> pool : GLOBAL_POOLS.values()) {
+            total += pool.size();
+        }
+        return total;
+    }
+
+    private DanmuTexts() {
+    }
 
     /** 按板块取池子，未知板块回退全局横盘池（绝不返回空，调用方直接抽）。 */
     public static List<String> sectorPool(String sector) {
@@ -48,200 +64,25 @@ public final class DanmuTexts {
         return pool != null && !pool.isEmpty() ? pool : FLAT;
     }
 
-    /** 指数大跌（日内跌幅 ≤ -2%）。 */
-    public static final List<String> INDEX_DROP = List.of(
-            "大盘跳水，韭菜连根拔起",
-            "指数暴跌，一句话总结就是完蛋",
-            "大盘绿得发黑，抄底的抄在半山腰",
-            "指数加速下滑，大家都开始装死",
-            "大盘狂泻，满仓的含泪关灯吃面",
-            "指数一路向南，多头集体失联",
-            "大盘大跌，别问，问就是加仓",
-            "指数失守，人人心态炸裂",
-            "大盘绿油油，仿佛回到了春天",
-            "指数稀里哗啦，账户一片狼藉",
-            "大盘暴跌带头冲刺，散户跟在后面捡灰",
-            "指数躺平，谁也不信牛市还在");
-
-    /** 指数大涨（为下次扩展预留的整类覆盖文案）。 */
-    public static final List<String> INDEX_RISE = List.of(
-            "大盘起飞，欠我们的牛市这就兑现",
-            "指数狂奔，空头瞬间闭嘴",
-            "满屏大红，差点以为在过国庆",
-            "指数暴力拉升，踏空的正在排队",
-            "大盘一路向北，钱包热得发烫",
-            "指数涨停的气势，个股跟着吃席",
-            "今天大盘疯了一样涨",
-            "指数高歌猛进，散户集体上头",
-            "大盘狂飙，卖飞的人哭晕在厕所",
-            "指数刷新年内新高，没上车的追悔莫及",
-            "大盘红得发紫，人人都是股神",
-            "指数怒涨，空头坟头草又长高了一截");
-
-    /** 涨停封板（sealed=UP）。 */
-    public static final List<String> LIMIT_UP = List.of(
-            "一字涨停，散户排队打板头破血流",
-            "直接封死涨停，想买都没得买",
-            "涨停板上锈迹斑斑，一股难求",
-            "封单巨大，主力吃相难看但真香",
-            "涨停了，抱紧筹码别撒手",
-            "直接一板封死，卖飞的心在滴血",
-            "涨停封死，庄家唱起了胜利的歌",
-            "竞价就涨停，捡到钱的人都笑出声",
-            "封板封得死死的，想追都追不进",
-            "涨停板上挂单，望眼欲穿了一场空",
-            "直接拉涨停，满仓的当场起飞",
-            "封涨停是好事，就是买不进太气人",
-            "涨停板前人山人海，全是想上车的",
-            "一字板封死，明天接着数钱",
-            "涨停了，我终于体会何为手速",
-            "封板封得比城墙还结实",
-            "涨停板上写给空头的一封情书",
-            "主力一顿操作猛如虎，直接封板",
-            "涨停封死，散户组团感谢主力",
-            "又涨停了，敢情我买的是印钞机",
-            "封住涨停，盘面一度清净无言",
-            "板上钉钉式的涨停，舒服",
-            "涨停不大，也就三字我骄傲",
-            "封板成功，这下谁也拦不住",
-            "涨停最快乐，账户最诚实",
-            "涨停封单砸得震天响，爽");
-
-    /** 跌停封板（sealed=DOWN）。 */
-    public static final List<String> LIMIT_DOWN = List.of(
-            "跌停封死，想卖都卖不出去",
-            "一字跌停，割肉都没人接盘",
-            "跌停板上挂满单，跑路场景壮观",
-            "死死封住跌停，抄底党彻底傻眼",
-            "跌停了，今天回本的梦想泡汤",
-            "跌停封板，庄家带头跑路",
-            "一字板跌停，连捡便宜的机会都不给",
-            "跌停板上冷清清，没人敢接飞刀",
-            "封死跌停，满仓的当场气绝",
-            "跌停不大，也就动摇了人生",
-            "跌停板上写着四个字：来了就别走",
-            "主力一脚跌停，散户集体跳水",
-            "跌停封死，想抄底的先交学费",
-            "千手跌停，谁买谁是英雄",
-            "跌停板上人头攒动，全是想抄底的",
-            "直接砸到跌停，我的格局一夜归零",
-            "跌停封单垒成山，想跑得排队",
-            "又一字跌停，剧本都不带换的",
-            "跌停板上躺平，假装自己没买",
-            "封死跌停，卖飞党的噩梦重现",
-            "跌停板前两行泪，重仓的慌了神",
-            "主力封上跌停，关灯吃面名场面",
-            "跌停封死，庄家下车散户站岗",
-            "跌停板一眼望去，人从众",
-            "跌停不冤枉，只怪昨天太天真",
-            "封跌停跑不掉，只能在心里默念稳住");
-
-    /** 急拉（个股单日涨 >5% 且未封板）。 */
-    public static final List<String> RALLY = List.of(
-            "直线拉升，主力发糖了",
-            "分时直线跳升，追的根本没机会",
-            "一分钟涨八分，心脏有点受不了",
-            "暴力拉升，空头当场被打懵",
-            "偷偷摸摸涨这么多，主力不讲武德",
-            "急拉一波，没上车的正捶胸顿足",
-            "直线起飞，这曲线比我人生精彩",
-            "分时垂直拉升，看得人手痒",
-            "突然拉升，庄家藏的大招露了",
-            "一路猛拉，散户开始相信爱情",
-            "急拉行情，手慢的又错过了几个亿",
-            "直线冲高，持仓的人已经起飞",
-            "分时龙飞凤舞，今天主角是它",
-            "暴力拉升不回头，刺激",
-            "急拉到天际，排队的欲哭无泪",
-            "一条直线捅上天，韭菜直呼看不懂",
-            "拉升来得太猛，卖飞的心碎一地",
-            "分时扶摇直上，我都不敢直视账户",
-            "急拉这个气势，跟催缴房贷一样",
-            "快速拉升，明天难道还有大动作");
-
-    /** 跳水（个股单日跌 >5% 且未封跌停）。 */
-    public static final List<String> DIVE = List.of(
-            "直线跳水，多头措手不及",
-            "分时俯冲，抄底的反被抄了家",
-            "垂直砸盘，刚才还美滋滋",
-            "突然跳水，满仓的捂住胸口",
-            "一根大阴线砸下来，脸都绿了",
-            "分时瀑布式下跌，吓得手机都掉了",
-            "急跌不见底，卖飞还是接飞刀",
-            "猛砸一波，多头的信仰崩塌",
-            "直线下坠，庄家跑路实锤",
-            "跳水比跳悬崖还快，格局没了",
-            "分时杀跌，散户在风中凌乱",
-            "刚涨停转头就跳水，人生大起大落",
-            "急跌放量，逃命要紧",
-            "一根长阴线，把昨天的梦打回原形",
-            "直线下跌，抄底的看不见明天的太阳",
-            "快速杀跌，韭菜惊声尖叫",
-            "分时插水，我的仓位不知所措",
-            "一泻千里，挽尊都来不及",
-            "急跳水，满屏都在哀嚎",
-            "跳水表演正式开始，观众请保持安静");
-
-    /** 次级急拉（0.03 &lt; 涨 ≤0.05）。 */
-    public static final List<String> RALLY_MINOR = List.of(
-            "小幅拉升，是不是大动作前奏",
-            "分时稳步走高，资金悄悄进场",
-            "涨了一小波，主力在试探性抬价",
-            "温和造势，该股今天有点想法",
-            "缓步上涨，看着让人心痒",
-            "小有冲劲，目前还在蓄力",
-            "慢慢抬头，日内低点不再看空",
-            "初显涨势，尾盘或有更大惊喜",
-            "分时重心上移，多头初占上风",
-            "悄悄拉起几个点，主力在磨刀",
-            "温和放量上涨，像是要搞事情",
-            "小步快跑，别急还有后手",
-            "试探性上攻，量能还得跟上",
-            "缓涨不跌，令人安心的眼神");
-
-    /** 次级跳水（0.03 &lt; 跌 ≤0.05）。 */
-    public static final List<String> DIVE_MINOR = List.of(
-            "小幅走低，先别急着抄底",
-            "分时重心下移，空头蠢蠢欲动",
-            "跌了几个点，量有点不对",
-            "温和回落，别慌但准备好",
-            "缓步砸价，主力在偷偷出货",
-            "小有松动，成交却悄悄放大",
-            "午后走弱，警惕尾盘继续探底",
-            "慢慢阴跌，最磨人的节奏",
-            "分时下探又拉回，骗炮行情",
-            "小幅杀跌，多头的堤坝初现裂缝",
-            "重心下移，短线客开始撤离",
-            "温和下跌，底在哪还没人知道",
-            "阶梯式回落，先观望再说",
-            "缓跌不止，回本路漫漫");
-
-    /** 横盘冷门（全部活跃股 |涨跌幅| &lt;1%）。 */
-    public static final List<String> FLAT = List.of(
-            "全天横盘，散户都去睡午觉了",
-            "股价纹丝不动，看盘看到犯困",
-            "横得跟水泥地一样，毫无波澜",
-            "冷门板块，今天没有故事",
-            "分时贴地飞行，多空都懒得出手",
-            "横盘一天，成交量冷清得像淡季",
-            "没人气的股，连筹码都不愿意动",
-            "全天平静，庄家大概也放假了",
-            "涨不动也跌不动，看盘如上坟",
-            "横在原地，把耐心磨成了茧",
-            "冷门就是冷门，涨停似乎很遥远",
-            "一天下来价格没挪窝，阿弥陀佛",
-            "横盘不进场，进场全白忙",
-            "无聊的秀，全天都没什么水花");
-
-    /** 全部类别数量合计（供测试统计总量）。 */
-    public static int totalCount() {
-        return INDEX_RISE.size() + INDEX_DROP.size()
-                + LIMIT_UP.size() + LIMIT_DOWN.size()
-                + RALLY.size() + DIVE.size()
-                + RALLY_MINOR.size() + DIVE_MINOR.size()
-                + FLAT.size();
+    private static Map<String, List<String>> globalPools() {
+        Map<String, List<String>> byCategory = new LinkedHashMap<>();
+        byCategory.put("INDEX_DROP", INDEX_DROP);
+        byCategory.put("INDEX_RISE", INDEX_RISE);
+        byCategory.put("LIMIT_UP", LIMIT_UP);
+        byCategory.put("LIMIT_DOWN", LIMIT_DOWN);
+        byCategory.put("RALLY", RALLY);
+        byCategory.put("DIVE", DIVE);
+        byCategory.put("RALLY_MINOR", RALLY_MINOR);
+        byCategory.put("DIVE_MINOR", DIVE_MINOR);
+        byCategory.put("FLAT", FLAT);
+        return Map.copyOf(byCategory);
     }
 
-    private DanmuTexts() {
+    private static Map<String, List<String>> sectorFlavor() {
+        Map<String, List<String>> bySector = new LinkedHashMap<>();
+        for (String key : ContentCatalog.sectionsWithPrefix(FILE, SECTOR_PREFIX)) {
+            bySector.put(key.substring(SECTOR_PREFIX.length()), ContentCatalog.require(FILE, key));
+        }
+        return Map.copyOf(bySector);
     }
 }
