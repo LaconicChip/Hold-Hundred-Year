@@ -11,6 +11,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -36,6 +38,12 @@ public class MarketScheduler {
     private final UserGameStateMapper userGameStateMapper;
     private final WorldTickService worldTickService;
     private final MarketStateService marketStateService;
+
+    /** 冷用户（无缓存行情板）上次放行的纳秒戳：见 {@link #dueForBeat}。 */
+    private final Map<Long, Long> coldBeatAtNanos = new ConcurrentHashMap<>();
+
+    /** 冷用户放行间隔：一秒。比心跳密不了多少，但把每秒 10 次查库压成 1 次。 */
+    private static final long COLD_BEAT_INTERVAL_NANOS = 1_000_000_000L;
 
     public MarketScheduler(WsSessionRegistry wsSessionRegistry,
                            QuoteBoardRegistry quoteBoardRegistry,
@@ -91,16 +99,26 @@ public class MarketScheduler {
     }
 
     /**
-     * 心跳级预判：板子还没缓存（首次/刚重启）必须放行去加载；已缓存则按本局 tickMs
-     * 判定是否到点。午休期间由 resumeLunchIfDue 打一次 lastTickAtNanos 戳，把午休
-     * 检查也节流到"每跳一次"，避免 100ms 心跳变成每 100ms 查一次库。
+     * 心跳级预判：已缓存行情板的用户按本局 tickMs 判定是否到点（午休期间由
+     * resumeLunchIfDue 打一次 lastTickAtNanos 戳，把午休检查也节流成"每跳一次"）。
+     *
+     * <p>板子还没缓存的用户（注册后还没开过局、进程刚重启、刚登出）没有这个时间戳可依，
+     * 一律放行就会让 100ms 心跳退化成"每个在线用户每秒 10 次空查库"——开局前停在
+     * 大盘页的每个新号都是这个形状。所以冷用户按 COLD_BEAT_INTERVAL_NANOS 节流：
+     * 一秒放行一次，既保住"重启后自动续跑"（下一拍就会 getOrLoad 建板），又不查爆库。
      */
-    private boolean dueForBeat(long userId) {
+    boolean dueForBeat(long userId) {
         QuoteBoard board = quoteBoardRegistry.peek(userId);
-        if (board == null) {
-            return true;
+        if (board != null) {
+            return board.tickElapsedMillis() >= board.getGameMode().getTickMs();
         }
-        return board.tickElapsedMillis() >= board.getGameMode().getTickMs();
+        long now = System.nanoTime();
+        Long last = coldBeatAtNanos.get(userId);
+        if (last != null && now - last < COLD_BEAT_INTERVAL_NANOS) {
+            return false;
+        }
+        coldBeatAtNanos.put(userId, now);
+        return true;
     }
 
     /** 锁内二次确认：拿锁期间可能已被别的线程推进过（快进/交易/上一拍）。 */

@@ -13,5 +13,7 @@ HELP.md
 
 # 本地起服务/浏览器调试残留
 /backend_run.log
+/backend_run.err
 /frontend_run.log
+/frontend_run.err
 .playwright-mcp/
