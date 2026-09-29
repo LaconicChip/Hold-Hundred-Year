@@ -87,7 +87,7 @@
 
 - **Phase 0-13 全部完成并通过验收**（后端引擎/调度/交易/融资/事件/NPC/剧本/打新/WS/REST → 前端 8 页 + 组件 → 终局验收）。
 - 后端全量 **388 tests，0 Failures / 0 Errors**（同种子可复现、快进=逐跳、人设与板块/NPC 文案零重复总校验、事件骨架 75 条与 event-copy.txt 一一对应、文案文件全部登记、剧本日撒点不死循环、prev_index 基准、三类流水查询、模式档案与 /api/game/modes）；标准局 72 交易日约 2 小时、快速局 36 天约 30 分钟；前端 `npm run build` 通过，入口主包 17.6 kB（vendor 按 echarts / element-plus / vue 拆块）。
-- 验收图集：`docs/design/shots/01-login … 08-result`（另含 03b 封板、05b 已买入两张状态图）。
+- 验收图集 `docs/design/shots/`：01-login / 02-market / 03-stock / 03b-limit-sealed / 04-assets / 05-messages / 05-stock-bought / 06-rank / 07-summary / 08-result / 09-notice-popup（右下角浮层）/ 10-danmu-board（分道弹幕）/ 11-quick-mode-picker（模式选择）/ 12-quick-market（快速模式实盘：±20% 行情）/ 13-stock-detail（个股页：涨跌停虚线在 ±20% 处）。
 - 后续维护轮次（2026-09-29）：资产页三类流水接口与接入 → 结构整理与占位文案清理 → `prev_index` 根治 → 规格 §11 对齐 → 前端拆包 → 节奏压缩与弹幕/消息体验重做 → 一局一档案 GameMode → 倒计时三连修 → 涨跌停价由后端按本局下发 → **全部游戏文案外置到 `resources/content/`、删掉前端手抄的股票表与节奏镜像、清掉死常量/死配置/未用图标**。
 
 ## 6. 还值得做的事（都不是缺陷）
