@@ -9,8 +9,8 @@
 
     <div v-if="messages.length === 0" class="empty msg-empty">
       <SvgIcon name="bear" class="msg-mascot" />
-      <span class="empty-title">该股今日风平浪静</span>
-      <span class="empty-desc">没有传闻，也没有公告 —— 这本身有点可疑</span>
+      <span class="empty-title">这只票还没有消息</span>
+      <span class="empty-desc">历史公告、传闻、辟谣都会留在这里 —— 现在一片空白，本身有点可疑</span>
     </div>
 
     <div v-for="m in messages" :key="m.id" class="msg">

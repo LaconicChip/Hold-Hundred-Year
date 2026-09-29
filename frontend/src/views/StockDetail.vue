@@ -266,10 +266,11 @@ function fmtSigned(v) {
   return (n > 0 ? '+' : '') + n.toFixed(2)
 }
 
-// 进入页面：补充拉取消息（size:100），并按当前股过滤展示
+// 进入页面：向服务端要"这只票的历史消息"（带 stockId 过滤）。
+// 之前是拉全局最新 100 条再在前端挑，一天产 3~6 条消息，十几天前的个股新闻就再也翻不到了。
 async function loadMessages() {
   try {
-    await messages.fetchMessages({ size: 100 })
+    await messages.fetchMessages({ stockId: stockId.value, size: 60 })
   } catch {
     // 消息接口失败不阻塞个股详情
   }

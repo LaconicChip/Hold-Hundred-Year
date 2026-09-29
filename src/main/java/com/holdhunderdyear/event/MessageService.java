@@ -31,11 +31,13 @@ public class MessageService {
 
     /**
      * 分页查询某用户消息。可选筛选：source（须为 Source 枚举名，否则 400）、
-     * truthStatus、unreadOnly（仅未读）、gameDay；按 createdAt,id 倒序。page 默认 1、size 默认 20。
+     * truthStatus、unreadOnly（仅未读）、gameDay、stockId（只看某只票的历史消息，个股详情页用）；
+     * 按 createdAt,id 倒序。page 默认 1、size 默认 20。
      */
     @Transactional(readOnly = true)
     public PageResult<MessageDTO> list(long userId, String source, String truthStatus,
-                                       boolean unreadOnly, Integer gameDay, int page, int size) {
+                                       boolean unreadOnly, Integer gameDay, Long stockId,
+                                       int page, int size) {
         if (source != null && !source.isBlank()
                 && Arrays.stream(EventSkeleton.Source.values()).noneMatch(s -> s.name().equals(source))) {
             throw new BizException(ErrorCode.PARAM_ERROR);
@@ -46,6 +48,7 @@ public class MessageService {
                 .eq(truthStatus != null && !truthStatus.isBlank(), UserMessage::getTruthStatus, truthStatus)
                 .eq(unreadOnly, UserMessage::getIsRead, false)
                 .eq(gameDay != null, UserMessage::getGameDay, gameDay)
+                .eq(stockId != null, UserMessage::getStockId, stockId)
                 .orderByDesc(UserMessage::getCreatedAt)
                 .orderByDesc(UserMessage::getId);
 

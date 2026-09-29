@@ -33,10 +33,11 @@ public class MessageController {
                                           @RequestParam(required = false) String truthStatus,
                                           @RequestParam(required = false) Boolean unreadOnly,
                                           @RequestParam(required = false) Integer gameDay,
+                                          @RequestParam(required = false) Long stockId,
                                           @RequestParam(defaultValue = "1") int page,
                                           @RequestParam(defaultValue = "20") int size) {
         return R.ok(messageService.list(userId, source, truthStatus,
-                Boolean.TRUE.equals(unreadOnly), gameDay, page, size));
+                Boolean.TRUE.equals(unreadOnly), gameDay, stockId, page, size));
     }
 
     @PutMapping("/{id}/read")

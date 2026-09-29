@@ -73,22 +73,22 @@ class MessageServiceTest {
         insertMsg(userId, "SYSTEM", null, true, 4, 5, null);
         UserMessage m6 = insertMsg(userId, "INSIDER", "PENDING", false, 5, 6, null);
 
-        PageResult<MessageDTO> all = messageService.list(userId, null, null, false, null, 1, 20);
+        PageResult<MessageDTO> all = messageService.list(userId, null, null, false, null, null, 1, 20);
         assertEquals(6, all.getTotal(), "no-filter list must return all messages");
         assertEquals(6, all.getRecords().size(), "no-filter list must return 6 records");
         assertEquals(m6.getId(), all.getRecords().get(0).getId(), "newest createdAt must come first");
         assertEquals(m1.getId(), all.getRecords().get(5).getId(), "oldest createdAt must come last");
 
-        PageResult<MessageDTO> rumor = messageService.list(userId, "RUMOR", null, false, null, 1, 20);
+        PageResult<MessageDTO> rumor = messageService.list(userId, "RUMOR", null, false, null, null, 1, 20);
         assertEquals(1, rumor.getTotal(), "source=RUMOR must match exactly one");
         assertEquals("RUMOR", rumor.getRecords().get(0).getSource(), "source filter must produce RUMOR");
 
-        PageResult<MessageDTO> unread = messageService.list(userId, null, null, true, null, 1, 20);
+        PageResult<MessageDTO> unread = messageService.list(userId, null, null, true, null, null, 1, 20);
         assertEquals(3, unread.getTotal(), "unreadOnly must match exactly 3 unread");
         assertTrue(unread.getRecords().stream().allMatch(m -> !m.getIsRead()),
                 "unreadOnly list must contain only unread");
 
-        PageResult<MessageDTO> page2 = messageService.list(userId, null, null, false, null, 2, 2);
+        PageResult<MessageDTO> page2 = messageService.list(userId, null, null, false, null, null, 2, 2);
         assertEquals(2, page2.getRecords().size(), "page 2 size 2 must slice two records");
         assertEquals(6, page2.getTotal(), "total must stay 6 across pages");
         assertEquals(m4.getId(), page2.getRecords().get(0).getId(),
@@ -96,7 +96,7 @@ class MessageServiceTest {
         assertEquals(m3.getId(), page2.getRecords().get(1).getId(),
                 "desc page 2 must continue at fourth-newest (m3)");
 
-        PageResult<MessageDTO> day = messageService.list(userId, null, null, false, 5, 1, 20);
+        PageResult<MessageDTO> day = messageService.list(userId, null, null, false, 5, null, 1, 20);
         assertEquals(2, day.getTotal(), "gameDay=5 must match two messages");
     }
 
@@ -109,7 +109,7 @@ class MessageServiceTest {
         UserMessage original = insertMsg(userId, "RUMOR", "CONFIRMED", false, 1, 1, null);
         UserMessage followup = insertMsg(userId, "RUMOR", null, false, 1, 2, original.getId());
 
-        PageResult<MessageDTO> all = messageService.list(userId, null, null, false, null, 1, 20);
+        PageResult<MessageDTO> all = messageService.list(userId, null, null, false, null, null, 1, 20);
         List<MessageDTO> list = all.getRecords();
         assertEquals(2, list.size(), "both original and followup must be returned independently");
 
@@ -131,7 +131,7 @@ class MessageServiceTest {
         insertMsg(userId, "FUN", null, false, 1, 1, null);
         insertMsg(userId, "NPC", null, false, 1, 2, null);
 
-        PageResult<MessageDTO> all = messageService.list(userId, null, null, false, null, 1, 20);
+        PageResult<MessageDTO> all = messageService.list(userId, null, null, false, null, null, 1, 20);
         assertEquals(2, all.getTotal(), "FUN/NPC messages must be returned");
 
         for (MessageDTO m : all.getRecords()) {
@@ -227,11 +227,27 @@ class MessageServiceTest {
                 "pending sources must be media/rumor/insider");
 
         PageResult<MessageDTO> queried = messageService.list(userId,
-                found.getSource(), null, false, null, 1, 20);
+                found.getSource(), null, false, null, null, 1, 20);
         MessageDTO dto = queried.getRecords().stream()
                 .filter(m -> m.getId().equals(found.getId())).findFirst().orElseThrow();
         assertEquals("PENDING", dto.getTruthStatus(),
                 "MessageService must return the same pending truth_status the factory wrote");
+    }
+
+    @Test
+    void listCanBeFilteredByStock() {
+        long userId = worldSeeder.seedUser("msg_stock1", "$2a$10$bcrypthash");
+        UserMessage onStock = insertMsg(userId, "MEDIA", null, false, 1, 10, null);
+        onStock.setStockId(8L);
+        userMessageMapper.updateById(onStock);
+        insertMsg(userId, "AUTHORITY", null, false, 1, 20, null); // 全市场消息：不带 stockId
+
+        PageResult<MessageDTO> onlyStock = messageService.list(userId, null, null, false, null, 8L, 1, 20);
+
+        assertEquals(1, onlyStock.getTotal(), "only the stock-tagged message must come back");
+        assertEquals(onStock.getId(), onlyStock.getRecords().get(0).getId());
+        assertEquals(2, messageService.list(userId, null, null, false, null, null, 1, 20).getTotal(),
+                "without the stockId filter both messages stay visible");
     }
 
     // ---- 辅助 ----
