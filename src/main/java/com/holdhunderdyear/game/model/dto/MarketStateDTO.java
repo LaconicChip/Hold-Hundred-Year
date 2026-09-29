@@ -13,8 +13,29 @@ public class MarketStateDTO {
     /** 交易日状态机值（NOT_STARTED/MORNING_OPEN/LUNCH_BREAK/AFTERNOON_OPEN/SETTLING/CLOSED/BANKRUPT/FINISHED） */
     private String marketState;
 
-    /** 当前交易日（1..TOTAL_DAYS） */
+    /** 当前交易日（1..本局 totalDays） */
     private int currentDay;
+
+    /** 本局模式代码（STANDARD/QUICK），前端据此决定轮询间隔与文案 */
+    private String mode;
+
+    /** 本局模式中文名 */
+    private String modeLabel;
+
+    /** 本局模式说明（一行，注册页与状态条用） */
+    private String modeDescription;
+
+    /** 本局每跳毫秒数（倒计时与分时轮询的节奏） */
+    private int tickMs;
+
+    /** 本局一个交易日的现实秒数 */
+    private int daySeconds;
+
+    /** 本局收官日（满该日正常结束） */
+    private int totalDays;
+
+    /** 本局普通股涨跌停幅度（0.1 = ±10%） */
+    private double limitPct;
 
     /** 游戏年（(currentDay-1)/DAYS_PER_YEAR + 1） */
     private int year;

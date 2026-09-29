@@ -9,6 +9,7 @@
 | `V20260914_02__stock_daily_bar.sql` | 新建表 `stock_daily_bar`（每账户每股票每交易日的 OHLC 日线） | 日K落库与 `GET /api/stocks/{id}/kline` |
 | `V20260929_01__user_game_state_prev_index.sql` | `user_game_state` 加列 `prev_index DOUBLE NOT NULL DEFAULT 1000` 并按 `index_value` 回填 | 指数昨收基准独立成列（熔断日盘中重启不再把阈值基数当成盘中值） |
 | `V20260929_02__user_message_sector.sql` | `user_message` 加列 `sector VARCHAR(16) NULL` | 板块级消息记下归属板块，个股详情页 includeSector 才能捞回本板块新闻 |
+| `V20260929_03__user_game_state_game_mode.sql` | `user_game_state` 加列 `game_mode VARCHAR(16) NOT NULL DEFAULT 'STANDARD'` | 一局一个游戏档案（标准/快速），建局选定、整局不变 |
 
 ## 执行方式
 
@@ -17,6 +18,7 @@ mysql -uroot -p hold_year      < src/main/resources/db/V20260914_01__user_stock_
 mysql -uroot -p hold_year      < src/main/resources/db/V20260914_02__stock_daily_bar.sql
 mysql -uroot -p hold_year      < src/main/resources/db/V20260929_01__user_game_state_prev_index.sql
 mysql -uroot -p hold_year      < src/main/resources/db/V20260929_02__user_message_sector.sql
+mysql -uroot -p hold_year      < src/main/resources/db/V20260929_03__user_game_state_game_mode.sql
 # 测试库同理（hold_year_test）
 ```
 
@@ -30,6 +32,8 @@ mysql -uroot -p hold_year      < src/main/resources/db/V20260929_02__user_messag
   于是熔断日盘中重启进程后，行情板恢复出的熔断阈值基数会变成最近一次盘中值。
   迁移按 `index_value` 回填只是过渡口径（等价于升级前的行为），下一次开盘即自动纠正为真昨收，无需手工修数据。
   **未执行本迁移的库会让 `user_game_state` 相关读写报"Unknown column"**，测试库同样必须执行。
+- `game_mode` 存量账户一律回填 STANDARD，节奏与升级前完全相同；`GameMode.of()`
+  对 null/未知值也按标准模式兜底，所以老库与老客户端都不会因为缺字段而改变行为。
 - `sector` 为可空列：只有**板块级**消息写入（值取自 `StockDefs.sector` 的 21 个板块名），
   单票消息仍用 `stock_id`、全市场消息两者皆空。个股详情页查询 `?stockId=15&includeSector=true`
   时，服务端按 `StockDefs` 反查该股板块，一次返回"本票专属 + 本票所属板块"两类消息。

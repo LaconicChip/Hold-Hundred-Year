@@ -1,6 +1,7 @@
 package com.holdhunderdyear.market;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.holdhunderdyear.game.model.enums.GameMode;
 import com.holdhunderdyear.market.entity.UserGameState;
 import com.holdhunderdyear.market.entity.UserStockState;
 import com.holdhunderdyear.market.mapper.UserGameStateMapper;
@@ -46,8 +47,12 @@ public class QuoteBoardRegistry {
                             .orderByAsc(UserStockState::getStockId));
             UserGameState gameState = userGameStateMapper.selectOne(
                     new LambdaQueryWrapper<UserGameState>().eq(UserGameState::getUserId, id));
-            return QuoteBoard.restore(states, gameState.getIndexValue(),
+            QuoteBoard board = QuoteBoard.restore(states, gameState.getIndexValue(),
                     gameState.getPrevIndex(), gameState.getTickIndex());
+            // 本局档案（标准/快速）决定涨跌停幅度与跳速，恢复出来就要带上
+            board.setGameMode(GameMode.of(gameState.getGameMode()));
+            board.applyLimits();
+            return board;
         });
     }
 

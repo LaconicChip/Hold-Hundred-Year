@@ -25,6 +25,9 @@ public class UserGameState {
 
     private Long worldSeed;
 
+    /** 本局游戏档案（GameMode 枚举名：STANDARD/QUICK），新建局时选定、整局不变。 */
+    private String gameMode;
+
     private Double indexValue;
 
     /** 当日开盘基准指数（昨收口径）：熔断阈值与盘中重启的唯一基准，见迁移 V20260929_01。 */

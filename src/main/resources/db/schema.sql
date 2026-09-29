@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS user_game_state (
     market_state VARCHAR(32) NOT NULL,
     tick_index INT NOT NULL DEFAULT 0,
     world_seed BIGINT NOT NULL,
+    game_mode VARCHAR(16) NOT NULL DEFAULT 'STANDARD',
     index_value DOUBLE NOT NULL DEFAULT 1000,
     prev_index DOUBLE NOT NULL DEFAULT 1000,
     prev_total_asset DECIMAL(12,2) NULL,

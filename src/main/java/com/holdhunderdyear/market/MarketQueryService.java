@@ -14,6 +14,7 @@ import com.holdhunderdyear.game.model.dto.LeaderboardDTO;
 import com.holdhunderdyear.game.model.dto.MarketStateDTO;
 import com.holdhunderdyear.game.model.dto.StockQuoteDTO;
 import com.holdhunderdyear.game.model.enums.EraCode;
+import com.holdhunderdyear.game.model.enums.GameMode;
 import com.holdhunderdyear.game.model.enums.MarketState;
 import com.holdhunderdyear.market.entity.StockDailyBar;
 import com.holdhunderdyear.market.entity.UserDailySnapshot;
@@ -119,8 +120,16 @@ public class MarketQueryService {
         MarketStateDTO dto = new MarketStateDTO();
         dto.setMarketState(gameState.getMarketState());
         dto.setCurrentDay(currentDay);
-        dto.setYear((currentDay - 1) / GameConstants.DAYS_PER_YEAR + 1);
-        dto.setDayInYear((currentDay - 1) % GameConstants.DAYS_PER_YEAR + 1);
+        GameMode mode = GameMode.of(gameState.getGameMode());
+        dto.setYear((currentDay - 1) / mode.getDaysPerYear() + 1);
+        dto.setDayInYear((currentDay - 1) % mode.getDaysPerYear() + 1);
+        dto.setMode(mode.name());
+        dto.setModeLabel(mode.getLabel());
+        dto.setModeDescription(mode.getDescription());
+        dto.setTickMs(mode.getTickMs());
+        dto.setDaySeconds(mode.daySeconds());
+        dto.setTotalDays(mode.totalDays());
+        dto.setLimitPct(mode.getLimitPct());
         UserEra era = eraForDay(userId, currentDay);
         if (era != null) {
             dto.setEraCode(era.getEraCode());
@@ -344,13 +353,13 @@ public class MarketQueryService {
      * 尚无结算日的股票返回空列表（前端展示空态）。
      */
     public List<KlinePointDTO> stockKline(long userId, long stockId, int limit) {
-        requireGameState(userId);
+        UserGameState gs = requireGameState(userId);
         try {
             StockDefs.byId(stockId);
         } catch (IllegalArgumentException unknown) {
             throw new BizException(ErrorCode.NOT_FOUND);
         }
-        int capped = Math.max(1, Math.min(limit, GameConstants.TOTAL_DAYS));
+        int capped = Math.max(1, Math.min(limit, GameMode.of(gs.getGameMode()).totalDays()));
         List<StockDailyBar> bars = stockDailyBarMapper.selectList(
                 new LambdaQueryWrapper<StockDailyBar>()
                         .eq(StockDailyBar::getUserId, userId)

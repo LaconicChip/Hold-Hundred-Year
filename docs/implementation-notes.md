@@ -33,7 +33,7 @@
 3. **并发协议**：`QuoteBoardRegistry.worldLock(userId)` 覆盖调度/快进/交易，且"锁内开启事务、锁内提交"；`sys_user`/`user_position` 悲观锁 FOR UPDATE；`user_stock_state.version` 乐观锁。
 4. **节奏常量**（`GameConstants`）：45+45 跳、`TICK_MS=1000`、`LUNCH_MS=10000`、`DAYS_PER_YEAR=24`、`TOTAL_DAYS=72`。
    纪元边界写在"36 交易日/年"基准日历里、由 `EraScheduler.scale()` 按当前年长等比映射，剧本撒点的三年区间同样推导——**想再调一局长度，只改 `DAYS_PER_YEAR`/`TICK_MS` 两个数**，前端镜像常量在 `frontend/src/constants/rhythm.js`（改后端记得同步）。
-5. **交易规则**：红涨绿跌、T+1、涨停只可卖不可买、±10%（ST ±5%）、佣金万 3 最低 5 元、印花税千 1（仅卖出）、追保 140% / 强平 120%、年化 8%（日息 = 年化/36）。
+5. **交易规则**：红涨绿跌、T+1、涨停只可卖不可买、普通股 ±10%（ST ±5%）——**快速模式档案下为 ±20%（ST ±10%）**，涨跌停幅度由 `Quote.limitPct` 承载（行情板恢复时按本局 `GameMode` 下发），ST 恒取本局幅度的一半、所以戴帽摘帽不用回改；佣金万 3 最低 5 元、印花税千 1（仅卖出）、追保 140% / 强平 120%、年化 8%（日息 = 年化/36）。
 6. **指数口径**：等权（`IndexCalculator`）；**开盘管线在所有价格变动完成后必须统一重算开盘指数**（跳空/复牌/剧本钉板全部计入，`e6fbc19` 修复，不得回退）。
 7. **视觉**：贴纸风三件套（2px 墨描边 / 硬阴影 / 圆角）、标题用 `--font-fun`、全站禁 emoji、图标走 sprite + currentColor、色值只走 `tokens.css` 令牌（唯一例外 `styles/theme.js`）。
 8. **吉祥物**：牛市 = 牛小牛（暖棕 + 大弯角），熊市 = 熊猫滚滚（黑白 + 黑眼圈）；**不靠红绿区分物种**；大图 PNG、小图 SVG symbol（`bear` 画的是熊猫，id 不改）。
@@ -60,6 +60,7 @@
 - **弹幕黑板（前端）**：`DanmuBar.vue` 5 条道 + 限速队列（240ms 一拍、道忙就等），按 `stores/messages.js` 的 `danmuVersion/danmuSeq` 取增量——**不要 watch 数组长度**，环形缓冲封顶到 30 条后长度不再变化，监听器会永久失效（就是历史上"不开关一次不飘、一开关糊一屏"的病根）。默认开启，重新开启时把游标推到最新，不回放过期积压。
 - **个股历史消息**：`MessageService.list` 的第 6/7 个参数是 `stockId` + `includeSector`。个股页用 `stockId&includeSector=true`，一次拿回"本票专属（stock_id 命中）+ 本票所属板块（sector 命中且 stock_id 为空）"；板块名由后端按 `StockDefs` 反查，前端不需要知道。板块级消息的 `sector` 由 `EventFactory` 在 SECTOR 级事件落库时写入（迁移 `V20260929_02`）。历史存量消息的 sector 为 NULL，只有升级后新产生的板块消息能被个股页捞到。
 - **文案库三处**：`StockPersonas`（24 股 × 8 弹幕 + 6 事件）、`SectorFlavor`（21 板块 + 大盘 × 权威/媒体/传闻含追报/玩梗各 2）、`NpcLines`（4 场景 × 5 + 8 NPC × 5 闲聊），加上 `DanmuTexts` 的九个全局池与 21 板块池，全部被 `StockPersonasTest` 的"全局零重复"总校验覆盖——任何一处抄重直接红。
+- **一局一档案（GameMode）**：标准/快速两套节奏在 `game/model/enums/GameMode.java` 里各自带值（年长、跳毫秒、午休、涨跌停、最短纪元长度），建局时选定写进 `user_game_state.game_mode`，整局不变。**不要**再用 `GameConstants.TICK_MS/DAYS_PER_YEAR/TOTAL_DAYS` 做运行时判定——那些只是标准模式的默认值，运行时一律 `GameMode.of(gs.getGameMode())`。调度器改成 500ms 心跳（`SCHEDULER_HEARTBEAT_MS`）+ 每账户按本局 `tickMs` 门控（`QuoteBoard.lastTickAtNanos`）；快进与测试直接调 `tickOne`，不看墙钟，所以"快进=逐跳"等价与同种子可复现都不受影响。前端从 `/api/market/state` 读 `mode/tickMs/daySeconds/totalDays/limitPct`，注册页可选模式。
 - **前端菜单/路由**：`GameLayout.vue` 竖排菜单；`/market /stock/:id /assets /messages /leaderboard /summary /result`；涨跌与金额格式化统一在 `frontend/src/utils/format.js`。
 
 ## 4. 环境与运维
@@ -69,7 +70,7 @@
 | 操作 | 命令（仓库根） |
 | --- | --- |
 | 新库初始化 | 建库后对 `hold_year`、`hold_year_test` 各执行一次 `src/main/resources/db/schema.sql` |
-| 旧库升级 | 按 [db-migrations.md](db-migrations.md) 手工执行 4 份 V2026xx 脚本（两个库都要） |
+| 旧库升级 | 按 [db-migrations.md](db-migrations.md) 手工执行 5 份 V2026xx 脚本（两个库都要） |
 | 启动后端 | `.\mvnw.cmd spring-boot:run`（8080） |
 | 启动前端 | `cd frontend; npm run dev`（5173，`/api`、`/ws` 代理到 8080） |
 | 后端测试 | `.\mvnw.cmd test` |
@@ -88,7 +89,9 @@
 
 ## 6. 还值得做的事（都不是缺陷）
 
-0. **快速模式（方案已定，待实现）**：再加一档短局——**36 个交易日**（`DAYS_PER_YEAR` 对半开：24→12，三年=36 天）+ **每天时长再减半**（`TICK_MS` 与 `LUNCH_MS` 各减半），整局约 30 分钟。落地要点：
+0. ~~快速模式~~ **已完成**：`GameMode.QUICK` = 12 交易日/年 × 3 年 = 36 天、500ms/跳、午休 5 秒、涨跌停 ±20%（ST ±10%），建局时在注册页选择、整局不变。实机验证：QUICK 号 60 秒内出现 -20.00% 的单票日内跌幅（±10% 下不可能），state 回传 `QUICK / 1 of 36 / 500ms / 0.2`。
+0. **快速模式的两个已知余味**：① 收官前 4 天内申购的新股可能来不及走完 D+4 上市就终局（标准模式同样存在，短局更容易撞上）；② 快速模式下部分纪元只有 2 天，千股跌停链（跌停→救市→次日涨停）会顶到纪元边界。都不影响机制完整性，想更讲究可以给快速模式单独调剧本窗口。
+0. **（旧）快速模式方案存档**：再加一档短局——**36 个交易日**（`DAYS_PER_YEAR` 对半开：24→12，三年=36 天）+ **每天时长再减半**（`TICK_MS` 与 `LUNCH_MS` 各减半），整局约 30 分钟。落地要点：
    ① 纪元边界已按 `DAYS_PER_YEAR` 等比缩放，但 12 天/年装 11 个纪元时 `MIN_ERA_LEN=3` 会顶不住，需要允许 2 天短纪元或合并纪元；
    ② `ScriptDayScheduler` 的撒点夹逼与打新 D+2/D+4 窗口要按新年长重新校核（历史上这里就因窗口太小死循环过）；
    ③ **必须做成"新建局时选模式"**而不是全局改常量：`user_game_state` 要记录本局的年长/跳毫秒，否则同种子复现与"快进=逐跳"等价会被破坏；

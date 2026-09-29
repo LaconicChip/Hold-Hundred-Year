@@ -7,6 +7,7 @@ import com.holdhunderdyear.event.NpcService;
 import com.holdhunderdyear.event.ProgressService;
 import com.holdhunderdyear.game.constants.GameConstants;
 import com.holdhunderdyear.game.constants.StockDefs;
+import com.holdhunderdyear.game.model.enums.GameMode;
 import com.holdhunderdyear.game.model.enums.MarketState;
 import com.holdhunderdyear.market.entity.LoanRecord;
 import com.holdhunderdyear.market.entity.SysUser;
@@ -120,7 +121,7 @@ public class SettlementService {
         List<UserPosition> positions = unfreezeT1(userId);
         // 步骤⑤：融资计息（spec §6.4 权威口径：日利率 = 年化 8% / 36）
         SysUser user = sysUserMapper.selectById(userId);
-        accrueInterest(userId, user, day);
+        accrueInterest(userId, user, day, GameMode.of(gs.getGameMode()));
 
         // 步骤⑤续：追保 + 强平 + 爆仓（MarginService 在调用方事务内原地改账，强平会改
         // 余额/负债/持仓，其后必须重算口径再评价与快照）
@@ -246,14 +247,15 @@ public class SettlementService {
         return positions;
     }
 
-    /** 步骤⑤：对正负债计提当日利息并落 INTEREST 流水（空负债跳过）。 */
-    private void accrueInterest(long userId, SysUser user, int day) {
+    /** 步骤⑤：对正负债计提当日利息并落 INTEREST 流水（空负债跳过）。
+     *  日息 = 负债 × 年化 ÷ 本局年交易日数：快速模式一年 12 天，单日计提更多，年化不变。 */
+    private void accrueInterest(long userId, SysUser user, int day, GameMode mode) {
         BigDecimal debt = user.getDebt();
         if (debt == null || debt.compareTo(BigDecimal.ZERO) <= 0) {
             return;
         }
         BigDecimal interest = debt.multiply(BigDecimal.valueOf(GameConstants.ANNUAL_INTEREST))
-                .divide(BigDecimal.valueOf(GameConstants.DAYS_PER_YEAR), 2, RoundingMode.HALF_UP);
+                .divide(BigDecimal.valueOf(mode.getDaysPerYear()), 2, RoundingMode.HALF_UP);
         debt = debt.add(interest);
         user.setDebt(debt);
         sysUserMapper.updateById(user);
@@ -356,7 +358,7 @@ public class SettlementService {
 
     /** 步骤⑫：状态落位——收官日 FINISHED/NORMAL_FINISH 不发通知，否则 CLOSED 并推收盘结算通知。 */
     private void closeOutDay(long userId, int day, UserGameState gs, BigDecimal netAsset, double dayReturnPct) {
-        if (day >= GameConstants.TOTAL_DAYS) {
+        if (day >= GameMode.of(gs.getGameMode()).totalDays()) {
             gs.setMarketState(MarketState.FINISHED.name());
             gs.setEndReason("NORMAL_FINISH");
             gs.setEndDay(day);

@@ -22,8 +22,15 @@ public final class GameConstants {
      * 不动任何行情结果、封板时长、日内形态与"同种子同结果"保证。
      */
     public static final int TICK_MS = 1000;
-    /** 午休时长毫秒。 */
+    /** 午休时长毫秒（标准模式；每局实际值见 GameMode）。 */
     public static final int LUNCH_MS = 10000;
+
+    /**
+     * 调度器心跳毫秒：取所有模式里最快的跳间隔。调度线程按它空转，
+     * 每个账户再按自己的 {@code GameMode.tickMs} 判定是否真的推进一跳，
+     * 因此多模式并存时互不影响，快进与测试仍直接调 tickOne、不受墙钟约束。
+     */
+    public static final int SCHEDULER_HEARTBEAT_MS = 500;
 
     // ---- 三层因子基准波动（spec §5.2，每跳 σ）----
     /** 个股特质波动。 */

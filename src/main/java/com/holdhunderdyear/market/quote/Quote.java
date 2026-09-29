@@ -50,14 +50,26 @@ public class Quote {
     @ToString.Exclude
     private Deque<Double> intraday = new ArrayDeque<>();
 
-    /** 涨停价：ST +5%、普通 +10%，HALF_UP 保留 2 位。 */
+    /**
+     * 本局涨跌停幅度（普通股）：由 {@link com.holdhunderdyear.game.model.enums.GameMode}
+     * 在行情板恢复时统一写入，默认 10% 与历史行为一致；快速模式为 20%。
+     * ST 股取其一半（默认 5%、快速 10%），所以 ST 戴帽摘帽不需要回来改这个字段。
+     */
+    private double limitPct = 0.10;
+
+    /** 涨停价：按本局幅度（ST 减半）上浮 prevClose，HALF_UP 保留 2 位。 */
     public double limitUpPrice() {
-        return round2(prevClose * (isSt ? 1.05 : 1.10));
+        return round2(prevClose * (1 + effectiveLimitPct()));
     }
 
-    /** 跌停价：ST -5%、普通 -10%，HALF_UP 保留 2 位。 */
+    /** 跌停价：按本局幅度（ST 减半）下调 prevClose，HALF_UP 保留 2 位。 */
     public double limitDownPrice() {
-        return round2(prevClose * (isSt ? 0.95 : 0.90));
+        return round2(prevClose * (1 - effectiveLimitPct()));
+    }
+
+    /** 当前生效的涨跌停幅度：ST 股取一半。 */
+    public double effectiveLimitPct() {
+        return isSt ? limitPct / 2 : limitPct;
     }
 
     /** 当日涨跌幅（比例，0.04 = +4%）。 */

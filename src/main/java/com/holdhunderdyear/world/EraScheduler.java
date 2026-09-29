@@ -1,7 +1,7 @@
 package com.holdhunderdyear.world;
 
 import com.holdhunderdyear.game.constants.EraDefs;
-import com.holdhunderdyear.game.constants.GameConstants;
+import com.holdhunderdyear.game.model.enums.GameMode;
 import com.holdhunderdyear.game.model.enums.EraCode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -27,7 +27,7 @@ public class EraScheduler {
     private static final int BASE_YEAR_DAYS = 36;
     private static final int BASE_YEAR2_START = 37;
     private static final int BASE_YEAR3_START = 73;
-    private static final int MIN_ERA_LEN = 3;
+
 
     public record EraInstance(int eraIndex, EraCode code, int startDay, int endDay,
                               double muMkt, Map<String, Double> sectorCoefs) {
@@ -41,28 +41,35 @@ public class EraScheduler {
     }
 
     public List<EraInstance> roll(long seed) {
+        return roll(seed, GameMode.STANDARD);
+    }
+
+    /** 按本局模式掷纪元排期：快速模式年长减半，11 个纪元仍按序全覆盖。 */
+    public List<EraInstance> roll(long seed, GameMode mode) {
         Random r = WorldRandom.of(seed, "era");
 
-        int dyp = GameConstants.DAYS_PER_YEAR;
+        GameMode gameMode = mode == null ? GameMode.STANDARD : mode;
+        int dyp = gameMode.getDaysPerYear();
         int year1Start = 1, year1End = dyp;
         int year2Start = dyp + 1, year2End = dyp * 2;
-        int year3Start = dyp * 2 + 1, year3End = GameConstants.TOTAL_DAYS;
+        int year3Start = dyp * 2 + 1, year3End = gameMode.totalDays();
 
         // 年1 分界基准 11/21/29，抖动 ±3/±2/±2（掷点形状不变，只把结果日等比映射）
-        int[] y1 = clampBoundaries(year1Start, year1End,
-                scale(11 + r.nextInt(7) - 3),
-                scale(21 + r.nextInt(5) - 2),
-                scale(29 + r.nextInt(5) - 2));
+        int minEraLen = gameMode.getMinEraLen();
+        int[] y1 = clampBoundaries(year1Start, year1End, minEraLen,
+                scale(11 + r.nextInt(7) - 3, gameMode),
+                scale(21 + r.nextInt(5) - 2, gameMode),
+                scale(29 + r.nextInt(5) - 2, gameMode));
         // 年2：熔断纪元长度 3~5 天（不随年长缩放，它本就是"几天"）；蓝筹/贸易战分界基准 56 抖动 ±3
         int len5 = 3 + r.nextInt(3);
-        int[] y2 = clampBoundaries(year2Start, year2End,
+        int[] y2 = clampBoundaries(year2Start, year2End, minEraLen,
                 year2Start + len5,
-                scale(56 + r.nextInt(7) - 3));
+                scale(56 + r.nextInt(7) - 3, gameMode));
         // 年3 分界基准 84/96/104，抖动 ±2/±2/±1
-        int[] y3 = clampBoundaries(year3Start, year3End,
-                scale(84 + r.nextInt(5) - 2),
-                scale(96 + r.nextInt(5) - 2),
-                scale(104 + r.nextInt(3) - 1));
+        int[] y3 = clampBoundaries(year3Start, year3End, minEraLen,
+                scale(84 + r.nextInt(5) - 2, gameMode),
+                scale(96 + r.nextInt(5) - 2, gameMode),
+                scale(104 + r.nextInt(3) - 1, gameMode));
 
         int[][] spans = {
                 {year1Start, y1[0] - 1},
@@ -91,15 +98,15 @@ public class EraScheduler {
     }
 
     /**
-     * 安全网：按升序裁剪分界点，保证每段长度 >= MIN_ERA_LEN 且末段也 >= MIN_ERA_LEN。
+     * 安全网：按升序裁剪分界点，保证每段长度 >= 本局最短纪元长度且末段同样满足。
      * 在当前抖动幅度下数学上恒为恒等变换，仅作防御。
      */
     /**
      * 把基准日历（{@value #BASE_YEAR_DAYS} 交易日/年）里的某一天，等比映射到当前年长
      * 日历中同一相对位置。抖动在映射前叠加，故随机数消费顺序与基准版本完全一致。
      */
-    private static int scale(int baseDay) {
-        int dyp = GameConstants.DAYS_PER_YEAR;
+    private static int scale(int baseDay, GameMode mode) {
+        int dyp = mode.getDaysPerYear();
         int baseYearStart, yearStart;
         if (baseDay < BASE_YEAR2_START) {
             baseYearStart = 1;
@@ -115,11 +122,11 @@ public class EraScheduler {
         return yearStart + (int) Math.round(fraction * (dyp - 1));
     }
 
-    private static int[] clampBoundaries(int yearStart, int yearEnd, int... raw) {
+    private static int[] clampBoundaries(int yearStart, int yearEnd, int minEraLen, int... raw) {
         int[] boundaries = new int[raw.length];
         int prev = yearStart;
         for (int i = 0; i < raw.length; i++) {
-            int b = Math.min(Math.max(raw[i], prev + MIN_ERA_LEN), yearEnd - MIN_ERA_LEN + 1);
+            int b = Math.min(Math.max(raw[i], prev + minEraLen), yearEnd - minEraLen + 1);
             boundaries[i] = b;
             prev = b;
         }

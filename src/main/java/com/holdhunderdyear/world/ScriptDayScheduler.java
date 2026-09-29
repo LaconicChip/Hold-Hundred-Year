@@ -1,7 +1,7 @@
 package com.holdhunderdyear.world;
 
-import com.holdhunderdyear.game.constants.GameConstants;
 import com.holdhunderdyear.game.constants.StockDefs;
+import com.holdhunderdyear.game.model.enums.GameMode;
 import com.holdhunderdyear.game.model.enums.ScriptType;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -73,7 +73,13 @@ public class ScriptDayScheduler {
         }
     }
 
+    /** 按标准模式撒点（老调用方与测试沿用）。 */
     public List<ScriptDayInstance> roll(long seed, List<EraScheduler.EraInstance> eras) {
+        return roll(seed, eras, GameMode.STANDARD);
+    }
+
+    /** 按本局模式撒点：三年区间与收官日都随年长变化，剧本日类型一个不减。 */
+    public List<ScriptDayInstance> roll(long seed, List<EraScheduler.EraInstance> eras, GameMode mode) {
         Random r = WorldRandom.of(seed, "script");
         List<ScriptDayInstance> out = new ArrayList<>();
 
@@ -166,8 +172,9 @@ public class ScriptDayScheduler {
         List<String> names = new ArrayList<>(IPO_NAME_POOL);
         Collections.shuffle(names, r);
         int nameIdx = 0;
-        int dyp = GameConstants.DAYS_PER_YEAR;
-        int[][] yearRanges = {{1, dyp}, {dyp + 1, dyp * 2}, {dyp * 2 + 1, GameConstants.TOTAL_DAYS}};
+        GameMode gameMode = mode == null ? GameMode.STANDARD : mode;
+        int dyp = gameMode.getDaysPerYear();
+        int[][] yearRanges = {{1, dyp}, {dyp + 1, dyp * 2}, {dyp * 2 + 1, gameMode.totalDays()}};
         for (int[] range : yearRanges) {
             int k = Math.min(2 + r.nextInt(2), range[1] - range[0] + 1);
             Set<Integer> ipoUsed = new HashSet<>();

@@ -1,5 +1,6 @@
 package com.holdhunderdyear.market.quote;
 
+import com.holdhunderdyear.game.model.enums.GameMode;
 import com.holdhunderdyear.game.model.enums.VolRegime;
 import com.holdhunderdyear.market.entity.UserStockState;
 import com.holdhunderdyear.market.engine.ShockQueue;
@@ -36,6 +37,26 @@ public class QuoteBoard {
 
     private double indexValue;
     private double prevIndex;
+
+    /** 本局游戏档案（标准/快速）：涨跌停幅度、跳毫秒、收官日都由它决定。 */
+    private GameMode gameMode = GameMode.STANDARD;
+
+    /** 上一跳完成的挂钟纳秒（0=未打过点）：调度器按 gameMode.tickMs 判定该不该推进，
+     *  快进与测试直接调 tickOne 不经过这里，因此不影响"快进=逐跳"的等价性。 */
+    @ToString.Exclude
+    private volatile long lastTickAtNanos;
+
+    /** 把本局涨跌停幅度下发给每只票（恢复行情板与开盘时各一次）。 */
+    public void applyLimits() {
+        for (Quote quote : quotes.values()) {
+            quote.setLimitPct(gameMode.getLimitPct());
+        }
+    }
+
+    /** 距上一跳已过多少毫秒（未打过点返回极大值，表示可以立刻推进）。 */
+    public long tickElapsedMillis() {
+        return lastTickAtNanos == 0L ? Long.MAX_VALUE : (System.nanoTime() - lastTickAtNanos) / 1_000_000L;
+    }
 
     /** per-user 世界锁：调度/快进/交易互斥（P5）。 */
     private final ReentrantLock lock = new ReentrantLock();

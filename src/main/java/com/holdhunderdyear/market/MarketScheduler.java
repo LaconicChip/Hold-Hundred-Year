@@ -50,7 +50,7 @@ public class MarketScheduler {
     }
 
     /** 调度主循环：遍历在线用户快照，逐人 tryLock 推进一跳或午休计时。 */
-    @Scheduled(fixedDelay = GameConstants.TICK_MS)
+    @Scheduled(fixedDelay = GameConstants.SCHEDULER_HEARTBEAT_MS)
     public void tickOnlineWorlds() {
         for (long userId : wsSessionRegistry.onlineUserIds()) {
             try {
@@ -66,7 +66,12 @@ public class MarketScheduler {
                     }
                     MarketState state = MarketState.valueOf(gs.getMarketState());
                     switch (state) {
-                        case MORNING_OPEN, AFTERNOON_OPEN -> worldTickService.tickOne(userId);
+                        case MORNING_OPEN, AFTERNOON_OPEN -> {
+                            // 心跳比最快的模式还密，这里按本局跳速门控：没到点就空过这一拍
+                            if (dueToTick(userId)) {
+                                worldTickService.tickOne(userId);
+                            }
+                        }
                         case LUNCH_BREAK -> resumeLunchIfDue(userId);
                         default -> {
                         }
@@ -80,10 +85,16 @@ public class MarketScheduler {
         }
     }
 
-    /** 午休恢复：行情板计时满 LUNCH_MS 即转下午，并清零打点保证次日重新计时。 */
+    /** 本账户是否已经到了该推进下一跳的时刻（按本局模式的 tickMs 判定）。 */
+    private boolean dueToTick(long userId) {
+        QuoteBoard board = quoteBoardRegistry.getOrLoad(userId);
+        return board.tickElapsedMillis() >= board.getGameMode().getTickMs();
+    }
+
+    /** 午休恢复：行情板计时满本局 lunchMs 即转下午，并清零打点保证次日重新计时。 */
     private void resumeLunchIfDue(long userId) {
         QuoteBoard board = quoteBoardRegistry.getOrLoad(userId);
-        if (board.lunchElapsedMillis() < GameConstants.LUNCH_MS) {
+        if (board.lunchElapsedMillis() < board.getGameMode().getLunchMs()) {
             return;
         }
         marketStateService.resumeAfternoon(userId);

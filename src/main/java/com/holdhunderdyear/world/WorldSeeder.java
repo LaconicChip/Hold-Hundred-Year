@@ -1,6 +1,8 @@
 package com.holdhunderdyear.world;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhunderdyear.game.constants.NpcDefs;
+import com.holdhunderdyear.game.model.enums.GameMode;
 import com.holdhunderdyear.game.constants.StockDefs;
 import com.holdhunderdyear.market.entity.StockInfo;
 import com.holdhunderdyear.market.entity.SysUser;
@@ -61,7 +63,13 @@ public class WorldSeeder {
     }
 
     @Transactional(rollbackFor = Exception.class)
+    /** 以标准模式注册（测试与老调用方沿用）。 */
     public long seedUser(String username, String bcryptPassword) {
+        return seedUser(username, bcryptPassword, GameMode.STANDARD);
+    }
+
+    /** 以指定模式注册：模式随 game_state 落库，整局不变。 */
+    public long seedUser(String username, String bcryptPassword, GameMode mode) {
         long worldSeed = ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE);
 
         SysUser user = new SysUser();
@@ -72,12 +80,14 @@ public class WorldSeeder {
         sysUserMapper.insert(user);
         long userId = user.getId();
 
+        GameMode chosen = mode == null ? GameMode.STANDARD : mode;
         UserGameState state = new UserGameState();
         state.setUserId(userId);
         state.setCurrentDay(1);
         state.setMarketState("NOT_STARTED");
         state.setTickIndex(0);
         state.setWorldSeed(worldSeed);
+        state.setGameMode(chosen.name());
         state.setIndexValue(1000.0);
         state.setPrevIndex(1000.0);
         state.setVolRegime("NORMAL");
@@ -89,6 +99,14 @@ public class WorldSeeder {
         seedWorld(userId, worldSeed);
 
         return userId;
+    }
+
+    /**
+    /** 读本账户的本局模式；行缺失或值未知一律按标准模式。 */
+    private GameMode modeOf(long userId) {
+        UserGameState state = userGameStateMapper.selectOne(new LambdaQueryWrapper<UserGameState>()
+                .eq(UserGameState::getUserId, userId));
+        return state == null ? GameMode.STANDARD : GameMode.of(state.getGameMode());
     }
 
     /**
@@ -117,7 +135,8 @@ public class WorldSeeder {
             userStockStateMapper.insert(stockState);
         }
 
-        List<EraScheduler.EraInstance> eras = new EraScheduler().roll(worldSeed);
+        // 排期按本局模式掷：快速模式纪元密度翻倍，但 11 个纪元仍按序全覆盖
+        List<EraScheduler.EraInstance> eras = new EraScheduler().roll(worldSeed, modeOf(userId));
         for (EraScheduler.EraInstance era : eras) {
             UserEra userEra = new UserEra();
             userEra.setUserId(userId);
@@ -129,7 +148,8 @@ public class WorldSeeder {
             userEraMapper.insert(userEra);
         }
 
-        for (ScriptDayScheduler.ScriptDayInstance scriptDay : new ScriptDayScheduler().roll(worldSeed, eras)) {
+        for (ScriptDayScheduler.ScriptDayInstance scriptDay
+                : new ScriptDayScheduler().roll(worldSeed, eras, modeOf(userId))) {
             UserScriptDay userScriptDay = new UserScriptDay();
             userScriptDay.setUserId(userId);
             userScriptDay.setGameDay(scriptDay.gameDay());
