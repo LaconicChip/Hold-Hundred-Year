@@ -94,10 +94,10 @@ onMounted(async () => {
   } catch {
     // 消息拉取失败不阻塞大盘
   }
-  // 盘中轮询：每 10s 校正状态/倒计时（WS 不推状态变化时的兜底）
+  // 盘中轮询：每 2s 校正状态与倒计时（WS 只推行情不推状态，这里兜住阶段/跳号变化）
   pollTimer = setInterval(() => {
     market.fetchState().catch(() => {})
-  }, 10000)
+  }, 2000)
 })
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)

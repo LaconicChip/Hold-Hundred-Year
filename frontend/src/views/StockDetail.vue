@@ -277,7 +277,7 @@ async function loadMessages() {
   }
 }
 
-// 市场状态轮询（午休↔下午盘切换时交易面板随动，与 Market.vue 同款兜底）
+// 市场状态轮询（2 秒一次：午休↔下午盘切换时交易面板与倒计时随动）
 let statePoll = null
 // 分时轮询：一跳一拉，间隔与引擎跳速对齐（收盘态拉到完整 90 点，开销可忽略）
 let intradayPoll = null
@@ -295,7 +295,7 @@ onMounted(async () => {
   market.fetchState().catch(() => {})
   statePoll = setInterval(() => {
     market.fetchState().catch(() => {})
-  }, 10000)
+  }, 2000)
   await loadChartData()
   intradayPoll = setInterval(() => {
     loadChartData()

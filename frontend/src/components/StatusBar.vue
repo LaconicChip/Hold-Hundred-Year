@@ -171,6 +171,9 @@ const skipText = computed(() => '跳过当日')
 // 靠 -1 递减会跨过 0 变成 -0.5，显示成负时间；这里每次刷新对齐到目标时刻，
 // 之后按真实流逝时间反推，永远不会为负。
 const deadline = ref(0)
+// 必须有一个"会自己动"的响应式时钟：computed 里直接写 Date.now() 不是响应式的，
+// 那样倒计时算一次就冻住，只有切页重新挂载才更新（就是刚踩的那个坑）。
+const nowTick = ref(Date.now())
 let timer = null
 function fmt(s) {
   const whole = Math.max(0, Math.floor(s))
@@ -178,7 +181,7 @@ function fmt(s) {
   const sec = whole % 60
   return String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0')
 }
-const remaining = computed(() => Math.max(0, (deadline.value - Date.now()) / 1000))
+const remaining = computed(() => Math.max(0, (deadline.value - nowTick.value) / 1000))
 const countdownText = computed(() => fmt(remaining.value))
 
 function recalibrate() {
@@ -192,9 +195,11 @@ watch(() => market.isOpen, recalibrate)
 onMounted(() => {
   recalibrate()
   timer = setInterval(() => {
-    // 只负责让显示走动；真实校准来自 WS 快照与状态轮询
+    // 只做两件事：推一下时钟让倒计时自己走，以及收盘后归零。
+    // 真实校准来自状态轮询/WS 带回的 countdownTicks（watch 里 recalibrate）。
+    nowTick.value = Date.now()
     if (!market.isOpen) deadline.value = 0
-  }, 500)
+  }, 250)
 })
 onUnmounted(() => {
   if (timer) clearInterval(timer)
