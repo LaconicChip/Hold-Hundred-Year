@@ -1,29 +1,26 @@
 package com.holdhunderdyear.market;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.holdhunderdyear.common.BizException;
-import com.holdhunderdyear.event.HaltService;
 import com.holdhunderdyear.common.ErrorCode;
+import com.holdhunderdyear.event.HaltService;
+import com.holdhunderdyear.event.NotifyPublisher;
 import com.holdhunderdyear.game.constants.GameConstants;
-import com.holdhunderdyear.game.constants.StockDefs;
 import com.holdhunderdyear.game.constants.StockDefs.StockDef;
+import com.holdhunderdyear.game.constants.StockDefs;
 import com.holdhunderdyear.game.model.enums.EraCode;
 import com.holdhunderdyear.game.model.enums.MarketState;
 import com.holdhunderdyear.game.model.enums.ScriptType;
 import com.holdhunderdyear.game.model.enums.SealState;
 import com.holdhunderdyear.game.model.enums.VolRegime;
-import com.holdhunderdyear.market.entity.UserEra;
-import com.holdhunderdyear.market.entity.UserGameState;
-import com.holdhunderdyear.market.entity.UserMessage;
-import com.holdhunderdyear.market.entity.UserScriptDay;
-import com.holdhunderdyear.market.entity.UserStockState;
 import com.holdhunderdyear.market.engine.IndexCalculator;
 import com.holdhunderdyear.market.engine.PriceShock;
 import com.holdhunderdyear.market.engine.SealMachine;
+import com.holdhunderdyear.market.entity.UserEra;
+import com.holdhunderdyear.market.entity.UserGameState;
+import com.holdhunderdyear.market.entity.UserScriptDay;
+import com.holdhunderdyear.market.entity.UserStockState;
 import com.holdhunderdyear.market.mapper.UserEraMapper;
 import com.holdhunderdyear.market.mapper.UserGameStateMapper;
-import com.holdhunderdyear.market.mapper.UserMessageMapper;
 import com.holdhunderdyear.market.mapper.UserScriptDayMapper;
 import com.holdhunderdyear.market.mapper.UserStockStateMapper;
 import com.holdhunderdyear.market.quote.Quote;
@@ -31,6 +28,8 @@ import com.holdhunderdyear.market.quote.QuoteBoard;
 import com.holdhunderdyear.trade.IpoService;
 import com.holdhunderdyear.world.EraScheduler;
 import com.holdhunderdyear.world.WorldRandom;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
@@ -92,7 +91,7 @@ public class MarketStateService {
 
     private final UserGameStateMapper userGameStateMapper;
     private final UserStockStateMapper userStockStateMapper;
-    private final UserMessageMapper userMessageMapper;
+    private final NotifyPublisher notifyPublisher;
     private final UserEraMapper userEraMapper;
     private final UserScriptDayMapper userScriptDayMapper;
     private final QuoteBoardRegistry quoteBoardRegistry;
@@ -104,7 +103,7 @@ public class MarketStateService {
 
     public MarketStateService(UserGameStateMapper userGameStateMapper,
                               UserStockStateMapper userStockStateMapper,
-                              UserMessageMapper userMessageMapper,
+                              NotifyPublisher notifyPublisher,
                               UserEraMapper userEraMapper,
                               UserScriptDayMapper userScriptDayMapper,
                               QuoteBoardRegistry quoteBoardRegistry,
@@ -113,7 +112,7 @@ public class MarketStateService {
                               PlatformTransactionManager transactionManager) {
         this.userGameStateMapper = userGameStateMapper;
         this.userStockStateMapper = userStockStateMapper;
-        this.userMessageMapper = userMessageMapper;
+        this.notifyPublisher = notifyPublisher;
         this.userEraMapper = userEraMapper;
         this.userScriptDayMapper = userScriptDayMapper;
         this.quoteBoardRegistry = quoteBoardRegistry;
@@ -490,15 +489,7 @@ public class MarketStateService {
             return;
         }
         EraCode code = EraCode.valueOf(current.getEraCode());
-        UserMessage message = new UserMessage();
-        message.setUserId(userId);
-        message.setSource("SYSTEM");
-        message.setType("NOTIFY");
-        message.setTitle("纪元切换：" + code.getName() + "（" + code.name() + "）");
-        message.setContent(code.getNarrative());
-        message.setGameDay(newDay);
-        message.setIsRead(false);
-        userMessageMapper.insert(message);
+        notifyPublisher.system(userId, newDay, "纪元切换：" + code.getName(), code.getNarrative());
     }
 
     /** 查询 day 所属纪元（user_era 行 start_day <= day <= end_day）。 */

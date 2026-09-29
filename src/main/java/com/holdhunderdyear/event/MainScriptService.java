@@ -1,10 +1,10 @@
 package com.holdhunderdyear.event;
 
 import com.holdhunderdyear.game.constants.StockDefs;
+import com.holdhunderdyear.market.engine.PriceShock;
 import com.holdhunderdyear.market.entity.GameEvent;
 import com.holdhunderdyear.market.entity.UserGameState;
 import com.holdhunderdyear.market.entity.UserMessage;
-import com.holdhunderdyear.market.engine.PriceShock;
 import com.holdhunderdyear.market.mapper.GameEventMapper;
 import com.holdhunderdyear.market.mapper.UserMessageMapper;
 import com.holdhunderdyear.market.quote.Quote;
@@ -49,13 +49,16 @@ public class MainScriptService {
     private static final int MAX_TOPUP = 50;
 
     private final UserMessageMapper userMessageMapper;
+    private final NotifyPublisher notifyPublisher;
     private final GameEventMapper gameEventMapper;
 
     /** 每用户当前剧本状态（key=userId）。 */
     private final Map<Long, MainScriptState> scripts = new ConcurrentHashMap<>();
 
-    public MainScriptService(UserMessageMapper userMessageMapper, GameEventMapper gameEventMapper) {
+    public MainScriptService(UserMessageMapper userMessageMapper, NotifyPublisher notifyPublisher,
+                             GameEventMapper gameEventMapper) {
         this.userMessageMapper = userMessageMapper;
+        this.notifyPublisher = notifyPublisher;
         this.gameEventMapper = gameEventMapper;
     }
 
@@ -214,17 +217,7 @@ public class MainScriptService {
                 content = name + "单日天地板，从涨停直落跌停。";
             }
         }
-        UserMessage message = new UserMessage();
-        message.setUserId(userId);
-        message.setSource("SYSTEM");
-        message.setType("NOTIFY");
-        message.setTitle(title);
-        message.setContent(content);
-        message.setStockId(st.stockId);
-        message.setIsRead(false);
-        message.setGameDay(gs.getCurrentDay());
-        message.setCreatedAt(LocalDateTime.now());
-        userMessageMapper.insert(message);
+        notifyPublisher.system(userId, gs.getCurrentDay(), title, content, st.stockId);
     }
 
     /** 重开/登出时移除该用户剧本状态（内存态，不持久化）。 */

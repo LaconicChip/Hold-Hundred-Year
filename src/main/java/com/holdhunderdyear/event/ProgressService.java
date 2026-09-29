@@ -1,22 +1,20 @@
 package com.holdhunderdyear.event;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.holdhunderdyear.game.constants.Titles.Title;
 import com.holdhunderdyear.game.constants.Titles;
 import com.holdhunderdyear.market.entity.TradeRecord;
 import com.holdhunderdyear.market.entity.UserGameState;
 import com.holdhunderdyear.market.entity.UserIpoRecord;
-import com.holdhunderdyear.market.entity.UserMessage;
 import com.holdhunderdyear.market.entity.UserPosition;
 import com.holdhunderdyear.market.entity.UserScriptDay;
 import com.holdhunderdyear.market.entity.UserTitle;
 import com.holdhunderdyear.market.mapper.TradeRecordMapper;
 import com.holdhunderdyear.market.mapper.UserIpoRecordMapper;
-import com.holdhunderdyear.market.mapper.UserMessageMapper;
 import com.holdhunderdyear.market.mapper.UserPositionMapper;
 import com.holdhunderdyear.market.mapper.UserScriptDayMapper;
 import com.holdhunderdyear.market.mapper.UserTitleMapper;
 import com.holdhunderdyear.market.quote.QuoteBoard;
-import com.holdhunderdyear.game.constants.Titles.Title;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
@@ -51,20 +49,20 @@ public class ProgressService {
     private final Map<Long, Set<Integer>> onboardingDays = new ConcurrentHashMap<>();
 
     private final UserTitleMapper userTitleMapper;
-    private final UserMessageMapper userMessageMapper;
+    private final NotifyPublisher notifyPublisher;
     private final TradeRecordMapper tradeRecordMapper;
     private final UserScriptDayMapper userScriptDayMapper;
     private final UserPositionMapper userPositionMapper;
     private final UserIpoRecordMapper userIpoRecordMapper;
 
     public ProgressService(UserTitleMapper userTitleMapper,
-                           UserMessageMapper userMessageMapper,
+                           NotifyPublisher notifyPublisher,
                            TradeRecordMapper tradeRecordMapper,
                            UserScriptDayMapper userScriptDayMapper,
                            UserPositionMapper userPositionMapper,
                            UserIpoRecordMapper userIpoRecordMapper) {
         this.userTitleMapper = userTitleMapper;
-        this.userMessageMapper = userMessageMapper;
+        this.notifyPublisher = notifyPublisher;
         this.tradeRecordMapper = tradeRecordMapper;
         this.userScriptDayMapper = userScriptDayMapper;
         this.userPositionMapper = userPositionMapper;
@@ -175,17 +173,9 @@ public class ProgressService {
         notify(userId, day, title.name(), content);
     }
 
-    /** 系统祝贺/引导气泡落库（source=SYSTEM、type=NOTIFY、未读、当日）。 */
+    /** 系统祝贺/引导气泡落库（字段惯例统一在 {@link NotifyPublisher}）。 */
     private void notify(long userId, int day, String title, String content) {
-        UserMessage message = new UserMessage();
-        message.setUserId(userId);
-        message.setSource("SYSTEM");
-        message.setType("NOTIFY");
-        message.setTitle(title);
-        message.setContent(content);
-        message.setIsRead(false);
-        message.setGameDay(day);
-        userMessageMapper.insert(message);
+        notifyPublisher.system(userId, day, title, content);
     }
 
     /** 按 code 从 Titles.ALL 取 Title；未知 code 属编程错误直接抛。 */

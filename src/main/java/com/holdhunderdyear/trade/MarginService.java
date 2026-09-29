@@ -1,8 +1,8 @@
 package com.holdhunderdyear.trade;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhunderdyear.common.BizException;
 import com.holdhunderdyear.common.ErrorCode;
+import com.holdhunderdyear.event.NotifyPublisher;
 import com.holdhunderdyear.game.constants.GameConstants;
 import com.holdhunderdyear.game.model.dto.LoanResultDTO;
 import com.holdhunderdyear.game.model.enums.MarketState;
@@ -21,6 +21,7 @@ import com.holdhunderdyear.market.mapper.UserMessageMapper;
 import com.holdhunderdyear.market.mapper.UserPositionMapper;
 import com.holdhunderdyear.market.quote.Quote;
 import com.holdhunderdyear.market.quote.QuoteBoard;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -76,6 +77,7 @@ public class MarginService {
     private final UserPositionMapper userPositionMapper;
     private final TradeRecordMapper tradeRecordMapper;
     private final LoanRecordMapper loanRecordMapper;
+    private final NotifyPublisher notifyPublisher;
     private final UserMessageMapper userMessageMapper;
     private final TransactionTemplate transactionTemplate;
 
@@ -85,6 +87,7 @@ public class MarginService {
                          UserPositionMapper userPositionMapper,
                          TradeRecordMapper tradeRecordMapper,
                          LoanRecordMapper loanRecordMapper,
+                         NotifyPublisher notifyPublisher,
                          UserMessageMapper userMessageMapper,
                          PlatformTransactionManager transactionManager) {
         this.quoteBoardRegistry = quoteBoardRegistry;
@@ -93,6 +96,7 @@ public class MarginService {
         this.userPositionMapper = userPositionMapper;
         this.tradeRecordMapper = tradeRecordMapper;
         this.loanRecordMapper = loanRecordMapper;
+        this.notifyPublisher = notifyPublisher;
         this.userMessageMapper = userMessageMapper;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
@@ -373,18 +377,9 @@ public class MarginService {
                         + "%，请补充担保物或偿还负债。", null);
     }
 
-    /** 系统通知落库（字段惯例同 SettlementService.notify）。 */
+    /** 系统通知落库（字段惯例统一在 {@link NotifyPublisher}）。 */
     private void notify(long userId, int day, String title, String content, Long stockId) {
-        UserMessage message = new UserMessage();
-        message.setUserId(userId);
-        message.setSource("SYSTEM");
-        message.setType("NOTIFY");
-        message.setTitle(title);
-        message.setContent(content);
-        message.setStockId(stockId);
-        message.setIsRead(false);
-        message.setGameDay(day);
-        userMessageMapper.insert(message);
+        notifyPublisher.system(userId, day, title, content, stockId);
     }
 
     /** 比例转百分比文本（1.4 → "140"），文案由常量派生（同 SettlementService）。 */

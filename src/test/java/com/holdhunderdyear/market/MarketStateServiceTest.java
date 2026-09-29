@@ -235,7 +235,7 @@ class MarketStateServiceTest {
         // 第 1 日开盘必然推纪元叙事消息；此外若随机种子的打新申购日恰逢 day1，会多推一条
         // "新股申购"通知（onDayOpen）。故按纪元消息查找断言其属性，而非断言消息总数。
         UserMessage msg = messages(userId).stream()
-                .filter(m -> m.getTitle().contains("BULL_START"))
+                .filter(m -> m.getTitle().startsWith("纪元切换"))
                 .findFirst().orElse(null);
         assertNotNull(msg, "day-1 open must push the era-start notify message");
         assertEquals("SYSTEM", msg.getSource());
@@ -243,7 +243,10 @@ class MarketStateServiceTest {
         assertEquals(1, msg.getGameDay());
         assertFalse(msg.getIsRead());
         assertNull(msg.getTruthStatus());
-        assertTrue(msg.getTitle().contains("BULL_START"), "title must contain era code, title=" + msg.getTitle());
+        assertTrue(msg.getTitle().contains(EraCode.BULL_START.getName()),
+                "title must read the era's Chinese name, title=" + msg.getTitle());
+        assertFalse(msg.getTitle().contains("BULL_START"),
+                "player-facing title must not leak the enum name, title=" + msg.getTitle());
         assertEquals(EraCode.BULL_START.getNarrative(), msg.getContent(),
                 "era notice must carry the era narrative, not a placeholder");
         assertFalse(msg.getContent().contains("占位"), "no placeholder copy may reach players");
@@ -268,14 +271,16 @@ class MarketStateServiceTest {
         // 随机种子的打新申购/中签/上市日恰逢纪元首日时会多推一条打新通知（onDayOpen），
         // 故按纪元消息过滤断言其属性与唯一性，而非断言消息总数（同 day-1 测试的防御模式）。
         List<UserMessage> eraMsgs = messages(userId).stream()
-                .filter(m -> m.getTitle() != null && m.getTitle().contains(era2.getEraCode()))
+                .filter(m -> m.getTitle() != null && m.getTitle().startsWith("纪元切换"))
                 .collect(Collectors.toList());
         assertEquals(1, eraMsgs.size(), "exactly one era-switch notify message expected");
         UserMessage msg = eraMsgs.get(0);
         assertEquals(era2.getStartDay(), msg.getGameDay());
         assertEquals("SYSTEM", msg.getSource());
         assertEquals("NOTIFY", msg.getType());
-        assertTrue(msg.getTitle().contains(era2.getEraCode()), "title=" + msg.getTitle());
+        EraCode switched = EraCode.valueOf(era2.getEraCode());
+        assertEquals("纪元切换：" + switched.getName(), msg.getTitle(),
+                "era-switch title is the Chinese era name only, no enum code");
         assertEquals(EraCode.valueOf(era2.getEraCode()).getNarrative(), msg.getContent(),
                 "era-switch notice must read the new era's narrative");
     }
@@ -624,10 +629,10 @@ class MarketStateServiceTest {
                 .eq(UserMessage::getUserId, userId));
     }
 
-    /** 第 1 日纪元叙事消息数（title 含 BULL_START；不计打新申购等其它通知）。 */
+    /** 第 1 日纪元叙事消息数（title 以"纪元切换"开头；不计打新申购等其它通知）。 */
     private long eraStartMessageCount(long userId) {
         return messages(userId).stream()
-                .filter(m -> m.getTitle() != null && m.getTitle().contains("BULL_START"))
+                .filter(m -> m.getTitle() != null && m.getTitle().startsWith("纪元切换"))
                 .count();
     }
 

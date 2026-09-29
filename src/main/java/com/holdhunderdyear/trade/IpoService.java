@@ -1,21 +1,20 @@
 package com.holdhunderdyear.trade;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhunderdyear.common.BizException;
 import com.holdhunderdyear.common.ErrorCode;
+import com.holdhunderdyear.event.NotifyPublisher;
 import com.holdhunderdyear.game.model.enums.EraCode;
 import com.holdhunderdyear.market.entity.SysUser;
 import com.holdhunderdyear.market.entity.UserGameState;
 import com.holdhunderdyear.market.entity.UserIpoRecord;
-import com.holdhunderdyear.market.entity.UserMessage;
 import com.holdhunderdyear.market.entity.UserScriptDay;
 import com.holdhunderdyear.market.mapper.SysUserMapper;
 import com.holdhunderdyear.market.mapper.UserGameStateMapper;
 import com.holdhunderdyear.market.mapper.UserIpoRecordMapper;
-import com.holdhunderdyear.market.mapper.UserMessageMapper;
 import com.holdhunderdyear.market.mapper.UserScriptDayMapper;
 import com.holdhunderdyear.market.quote.QuoteBoard;
 import com.holdhunderdyear.world.WorldRandom;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -69,20 +68,20 @@ public class IpoService {
     private final UserIpoRecordMapper userIpoRecordMapper;
     private final UserGameStateMapper userGameStateMapper;
     private final SysUserMapper sysUserMapper;
-    private final UserMessageMapper userMessageMapper;
+    private final NotifyPublisher notifyPublisher;
     private final com.holdhunderdyear.ws.PushService pushService;
 
     public IpoService(UserScriptDayMapper userScriptDayMapper,
                       UserIpoRecordMapper userIpoRecordMapper,
                       UserGameStateMapper userGameStateMapper,
                       SysUserMapper sysUserMapper,
-                      UserMessageMapper userMessageMapper,
+                      NotifyPublisher notifyPublisher,
                       com.holdhunderdyear.ws.PushService pushService) {
         this.userScriptDayMapper = userScriptDayMapper;
         this.userIpoRecordMapper = userIpoRecordMapper;
         this.userGameStateMapper = userGameStateMapper;
         this.sysUserMapper = sysUserMapper;
-        this.userMessageMapper = userMessageMapper;
+        this.notifyPublisher = notifyPublisher;
         this.pushService = pushService;
     }
 
@@ -299,15 +298,8 @@ public class IpoService {
         return gs;
     }
 
+    /** 打新提醒落库（参数顺序沿用本服务习惯，字段惯例统一在 {@link NotifyPublisher}）。 */
     private void insertMessage(long userId, String title, String content, int gameDay) {
-        UserMessage message = new UserMessage();
-        message.setUserId(userId);
-        message.setSource("SYSTEM");
-        message.setType("NOTIFY");
-        message.setTitle(title);
-        message.setContent(content);
-        message.setGameDay(gameDay);
-        message.setIsRead(false);
-        userMessageMapper.insert(message);
+        notifyPublisher.system(userId, gameDay, title, content);
     }
 }

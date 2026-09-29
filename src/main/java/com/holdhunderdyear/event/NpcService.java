@@ -11,11 +11,9 @@ import com.holdhunderdyear.market.entity.SysUser;
 import com.holdhunderdyear.market.entity.TradeRecord;
 import com.holdhunderdyear.market.entity.UserDailySnapshot;
 import com.holdhunderdyear.market.entity.UserGameState;
-import com.holdhunderdyear.market.entity.UserMessage;
 import com.holdhunderdyear.market.mapper.SysUserMapper;
 import com.holdhunderdyear.market.mapper.TradeRecordMapper;
 import com.holdhunderdyear.market.mapper.UserDailySnapshotMapper;
-import com.holdhunderdyear.market.mapper.UserMessageMapper;
 import com.holdhunderdyear.market.quote.Quote;
 import com.holdhunderdyear.market.quote.QuoteBoard;
 import com.holdhunderdyear.world.WorldRandom;
@@ -57,7 +55,7 @@ public class NpcService {
     /** 张大妈反指走弱介入的负向幅度。 */
     private static final double DAMA_DECLINE_PCT = -0.05;
 
-    private final UserMessageMapper userMessageMapper;
+    private final NotifyPublisher notifyPublisher;
     private final UserDailySnapshotMapper userDailySnapshotMapper;
     private final SysUserMapper sysUserMapper;
     private final TradeRecordMapper tradeRecordMapper;
@@ -65,11 +63,11 @@ public class NpcService {
     /** @玩家消息每日去重：userId → 已发消息的 gameDay。 */
     private final Map<Long, Set<Integer>> playerMsgDays = new ConcurrentHashMap<>();
 
-    public NpcService(UserMessageMapper userMessageMapper,
+    public NpcService(NotifyPublisher notifyPublisher,
                       UserDailySnapshotMapper userDailySnapshotMapper,
                       SysUserMapper sysUserMapper,
                       TradeRecordMapper tradeRecordMapper) {
-        this.userMessageMapper = userMessageMapper;
+        this.notifyPublisher = notifyPublisher;
         this.userDailySnapshotMapper = userDailySnapshotMapper;
         this.sysUserMapper = sysUserMapper;
         this.tradeRecordMapper = tradeRecordMapper;
@@ -287,17 +285,8 @@ public class NpcService {
         return assets;
     }
 
-    /** NPC 角色线消息落库（字段惯例：来源 "NPC"、type "NOTIFY"、未读、当日）。 */
+    /** NPC 角色线消息落库（source=NPC，字段惯例统一在 {@link NotifyPublisher}）。 */
     private void notify(long userId, int day, String title, String content, Long stockId) {
-        UserMessage message = new UserMessage();
-        message.setUserId(userId);
-        message.setSource("NPC");
-        message.setType("NOTIFY");
-        message.setTitle(title);
-        message.setContent(content);
-        message.setStockId(stockId);
-        message.setIsRead(false);
-        message.setGameDay(day);
-        userMessageMapper.insert(message);
+        notifyPublisher.npc(userId, day, title, content, stockId);
     }
 }

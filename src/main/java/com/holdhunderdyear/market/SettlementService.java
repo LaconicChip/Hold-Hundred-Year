@@ -1,8 +1,8 @@
 package com.holdhunderdyear.market;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhunderdyear.common.BizException;
 import com.holdhunderdyear.common.ErrorCode;
+import com.holdhunderdyear.event.NotifyPublisher;
 import com.holdhunderdyear.event.NpcService;
 import com.holdhunderdyear.event.ProgressService;
 import com.holdhunderdyear.game.constants.GameConstants;
@@ -10,11 +10,10 @@ import com.holdhunderdyear.game.constants.StockDefs;
 import com.holdhunderdyear.game.model.enums.GameMode;
 import com.holdhunderdyear.game.model.enums.MarketState;
 import com.holdhunderdyear.market.entity.LoanRecord;
-import com.holdhunderdyear.market.entity.SysUser;
 import com.holdhunderdyear.market.entity.StockDailyBar;
+import com.holdhunderdyear.market.entity.SysUser;
 import com.holdhunderdyear.market.entity.UserDailySnapshot;
 import com.holdhunderdyear.market.entity.UserGameState;
-import com.holdhunderdyear.market.entity.UserMessage;
 import com.holdhunderdyear.market.entity.UserPosition;
 import com.holdhunderdyear.market.entity.UserStockState;
 import com.holdhunderdyear.market.mapper.LoanRecordMapper;
@@ -22,12 +21,12 @@ import com.holdhunderdyear.market.mapper.StockDailyBarMapper;
 import com.holdhunderdyear.market.mapper.SysUserMapper;
 import com.holdhunderdyear.market.mapper.UserDailySnapshotMapper;
 import com.holdhunderdyear.market.mapper.UserGameStateMapper;
-import com.holdhunderdyear.market.mapper.UserMessageMapper;
 import com.holdhunderdyear.market.mapper.UserPositionMapper;
 import com.holdhunderdyear.market.mapper.UserStockStateMapper;
 import com.holdhunderdyear.market.quote.Quote;
 import com.holdhunderdyear.market.quote.QuoteBoard;
 import com.holdhunderdyear.trade.MarginService;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -63,7 +62,7 @@ public class SettlementService {
     private final SysUserMapper sysUserMapper;
     private final LoanRecordMapper loanRecordMapper;
     private final UserDailySnapshotMapper userDailySnapshotMapper;
-    private final UserMessageMapper userMessageMapper;
+    private final NotifyPublisher notifyPublisher;
     private final QuoteBoardRegistry quoteBoardRegistry;
     private final MarginService marginService;
     private final NpcService npcService;
@@ -76,7 +75,7 @@ public class SettlementService {
                              SysUserMapper sysUserMapper,
                              LoanRecordMapper loanRecordMapper,
                              UserDailySnapshotMapper userDailySnapshotMapper,
-                             UserMessageMapper userMessageMapper,
+                             NotifyPublisher notifyPublisher,
                              QuoteBoardRegistry quoteBoardRegistry,
                              MarginService marginService,
                              NpcService npcService,
@@ -88,7 +87,7 @@ public class SettlementService {
         this.sysUserMapper = sysUserMapper;
         this.loanRecordMapper = loanRecordMapper;
         this.userDailySnapshotMapper = userDailySnapshotMapper;
-        this.userMessageMapper = userMessageMapper;
+        this.notifyPublisher = notifyPublisher;
         this.quoteBoardRegistry = quoteBoardRegistry;
         this.marginService = marginService;
         this.npcService = npcService;
@@ -381,17 +380,8 @@ public class SettlementService {
         return BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 
-    /** 系统通知落库（字段惯例同 detectEraSwitchAndNotify）。 */
+    /** 系统通知落库（字段惯例统一在 {@link NotifyPublisher}）。 */
     private void notify(long userId, int day, String title, String content, Long stockId) {
-        UserMessage message = new UserMessage();
-        message.setUserId(userId);
-        message.setSource("SYSTEM");
-        message.setType("NOTIFY");
-        message.setTitle(title);
-        message.setContent(content);
-        message.setStockId(stockId);
-        message.setIsRead(false);
-        message.setGameDay(day);
-        userMessageMapper.insert(message);
+        notifyPublisher.system(userId, day, title, content, stockId);
     }
 }

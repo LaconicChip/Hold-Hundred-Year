@@ -1,22 +1,20 @@
 package com.holdhunderdyear.trade;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.holdhunderdyear.event.NotifyPublisher;
 import com.holdhunderdyear.game.constants.StockDefs;
 import com.holdhunderdyear.market.entity.SysUser;
-import com.holdhunderdyear.market.entity.UserMessage;
 import com.holdhunderdyear.market.entity.UserPosition;
 import com.holdhunderdyear.market.entity.UserStockState;
 import com.holdhunderdyear.market.mapper.SysUserMapper;
-import com.holdhunderdyear.market.mapper.UserMessageMapper;
 import com.holdhunderdyear.market.mapper.UserPositionMapper;
 import com.holdhunderdyear.market.mapper.UserStockStateMapper;
 import com.holdhunderdyear.market.quote.Quote;
 import com.holdhunderdyear.market.quote.QuoteBoard;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.LocalDateTime;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -44,16 +42,16 @@ public class CorporateActionService {
     private final UserPositionMapper userPositionMapper;
     private final UserStockStateMapper userStockStateMapper;
     private final SysUserMapper sysUserMapper;
-    private final UserMessageMapper userMessageMapper;
+    private final NotifyPublisher notifyPublisher;
 
     public CorporateActionService(UserPositionMapper userPositionMapper,
                                   UserStockStateMapper userStockStateMapper,
                                   SysUserMapper sysUserMapper,
-                                  UserMessageMapper userMessageMapper) {
+                                  NotifyPublisher notifyPublisher) {
         this.userPositionMapper = userPositionMapper;
         this.userStockStateMapper = userStockStateMapper;
         this.sysUserMapper = sysUserMapper;
-        this.userMessageMapper = userMessageMapper;
+        this.notifyPublisher = notifyPublisher;
     }
 
     /**
@@ -174,18 +172,8 @@ public class CorporateActionService {
                 .eq(UserStockState::getStockId, stockId));
     }
 
-    /** 企业行动通知落库（惯例同 SettlementService.notify，game_day 非空 schema 必填）。 */
+    /** 企业行动通知落库（参数顺序沿用本服务习惯，字段惯例统一在 {@link NotifyPublisher}）。 */
     private void notify(long userId, long stockId, int gameDay, String title, String content) {
-        UserMessage message = new UserMessage();
-        message.setUserId(userId);
-        message.setSource("SYSTEM");
-        message.setType("NOTIFY");
-        message.setTitle(title);
-        message.setContent(content);
-        message.setStockId(stockId);
-        message.setIsRead(false);
-        message.setGameDay(gameDay);
-        message.setCreatedAt(LocalDateTime.now());
-        userMessageMapper.insert(message);
+        notifyPublisher.system(userId, gameDay, title, content, stockId);
     }
 }
