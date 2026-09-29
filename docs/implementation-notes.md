@@ -69,7 +69,7 @@
 | 操作 | 命令（仓库根） |
 | --- | --- |
 | 新库初始化 | 建库后对 `hold_year`、`hold_year_test` 各执行一次 `src/main/resources/db/schema.sql` |
-| 旧库升级 | 按 [db-migrations.md](db-migrations.md) 手工执行 3 份 V2026xx 脚本（两个库都要） |
+| 旧库升级 | 按 [db-migrations.md](db-migrations.md) 手工执行 4 份 V2026xx 脚本（两个库都要） |
 | 启动后端 | `.\mvnw.cmd spring-boot:run`（8080） |
 | 启动前端 | `cd frontend; npm run dev`（5173，`/api`、`/ws` 代理到 8080） |
 | 后端测试 | `.\mvnw.cmd test` |
