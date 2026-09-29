@@ -11,6 +11,23 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     }
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // 第三方大依赖按缓存粒度拆块：改版业务代码时不必让用户重下整个 vendor
+        // （echarts 只在带图表的页面按需加载；element-plus 由 main.js 全量注册，随首屏）
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          if (id.includes('echarts') || id.includes('zrender')) return 'vendor-echarts'
+          if (id.includes('element-plus')) return 'vendor-element'
+          if (id.includes('@vue/') || id.includes('/vue/') || id.includes('vue-router') || id.includes('pinia')) {
+            return 'vendor-vue'
+          }
+          return 'vendor'
+        }
+      }
+    }
+  },
   server: {
     port: 5173,
     proxy: {
