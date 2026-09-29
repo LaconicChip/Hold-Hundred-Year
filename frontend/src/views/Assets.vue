@@ -202,17 +202,64 @@
         </div>
       </template>
 
-      <!-- 融资流水：后端 loan_record 查询接口未实现，补齐后接入 -->
-      <div v-else-if="tab === 'loan'" class="empty flow-empty">
-        <span class="empty-title">暂无融资流水</span>
-        <span class="empty-desc">后端 loan_record 查询接口补齐后接入</span>
-      </div>
+      <!-- 融资流水 -->
+      <template v-else-if="tab === 'loan'">
+        <div v-if="!loanRecords.length" class="empty flow-empty">
+          <span class="empty-title">暂无融资流水</span>
+          <span class="empty-desc">借过一笔钱，这里就会开始记账</span>
+        </div>
+        <div v-else class="scroll-x">
+          <table class="tbl zebra flow-table">
+            <thead>
+              <tr>
+                <th>时间</th><th>类型</th><th>金额</th>
+                <th>操作后负债</th><th>交易日</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="r in loanRecords" :key="r.id">
+                <td class="num dim">{{ r.time }}</td>
+                <td>
+                  <span class="tag" :class="loanCls(r.loanType)">{{ loanLabel(r.loanType) }}</span>
+                </td>
+                <td class="num">{{ fmtMoney(r.amount) }}</td>
+                <td class="num">{{ fmtMoney(r.debtAfter) }}</td>
+                <td class="num dim">第 {{ r.gameDay }} 天</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
 
-      <!-- 打新记录：后端打新查询接口未实现，补齐后接入 -->
-      <div v-else class="empty flow-empty">
-        <span class="empty-title">暂无打新记录</span>
-        <span class="empty-desc">后端打新查询接口补齐后接入</span>
-      </div>
+      <!-- 打新记录 -->
+      <template v-else>
+        <div v-if="!ipoRecords.length" class="empty flow-empty">
+          <span class="empty-title">暂无打新记录</span>
+          <span class="empty-desc">申购日开盘弹窗里顶格申购后，这里跟踪中签与上市</span>
+        </div>
+        <div v-else class="scroll-x">
+          <table class="tbl zebra flow-table">
+            <thead>
+              <tr>
+                <th>时间</th><th>新股</th><th>发行价</th>
+                <th>状态</th><th>盈利</th><th>交易日</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="r in ipoRecords" :key="r.id">
+                <td class="num dim">{{ r.time }}</td>
+                <td>{{ r.ipoName }}</td>
+                <td class="num">{{ r.issuePrice.toFixed(2) }}</td>
+                <td>
+                  <span class="tag" :class="ipoCls(r.status)">{{ ipoLabel(r.status) }}</span>
+                </td>
+                <td class="num" :class="priceCls(r.profit)">{{ settledProfitText(r) }}</td>
+                <td class="num dim">第 {{ r.gameDay }} 天</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
     </section>
 
     <!-- 108 天资产 vs 指数曲线 -->
@@ -258,7 +305,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useMarketStore } from '@/stores/market'
 import { useUserStore } from '@/stores/user'
-import { fetchAssets, fetchPositions, fetchTrades, fetchTitles } from '@/api/me'
+import { fetchAssets, fetchPositions, fetchTrades, fetchLoanRecords, fetchIpoRecords, fetchTitles } from '@/api/me'
 import { borrow, repay } from '@/api/loan'
 import { fetchEquityCurve } from '@/api/market'
 import { use } from 'echarts/core'
@@ -287,6 +334,8 @@ const INIT_CAPITAL = 100000
 const assets = ref(null)
 const positions = ref([])
 const trades = ref([])
+const loanRecords = ref([])
+const ipoRecords = ref([])
 const titles = ref([])
 
 // 融资面板
@@ -419,6 +468,28 @@ function fmtPct(v) {
   if (!n) return '0.00%'
   return (n > 0 ? '+' : '') + n.toFixed(2) + '%'
 }
+// 融资流水类型：后端 loan_record.loan_type 原文 -> 中文标签 / 配色类
+const LOAN_LABEL = { BORROW: '借款', REPAY: '还款', INTEREST: '结息', LIQUIDATE: '强平还款' }
+const LOAN_CLS = { BORROW: 'loan-borrow', REPAY: 'loan-repay', INTEREST: 'loan-interest', LIQUIDATE: 'loan-liquidate' }
+// 打新状态：后端 user_ipo_record.status 原文 -> 中文标签 / 配色类
+const IPO_LABEL = { SUBSCRIBED: '已申购', PAID: '已中签', LOST: '未中签', ABANDONED: '放弃缴款', SETTLED: '已结算' }
+const IPO_CLS = { SUBSCRIBED: 'ipo-sub', PAID: 'ipo-paid', LOST: 'ipo-flat', ABANDONED: 'ipo-flat', SETTLED: 'ipo-settled' }
+function loanLabel(t) {
+  return LOAN_LABEL[t] || t
+}
+function loanCls(t) {
+  return LOAN_CLS[t] || 'tag-flat'
+}
+function ipoLabel(s) {
+  return IPO_LABEL[s] || s
+}
+function ipoCls(s) {
+  return IPO_CLS[s] || 'tag-flat'
+}
+// 盈利只在结算后有意义：未结算显示占位，避免把 0 当成"没赚"
+function settledProfitText(r) {
+  return r.status === 'SETTLED' ? fmtMoney(r.profit) : '--'
+}
 function fmtMoney(v) {
   const n = +v
   if (!isFinite(n)) return '0.00'
@@ -436,6 +507,7 @@ async function doBorrow() {
     await user.fetchAssets().catch(() => {}) // 刷新资产
     const a = await fetchAssets()
     assets.value = a
+    await loadLoanRecords() // 借款立即进流水
     ElMessage.success('借款成功')
   } catch (e) {
     loanErr.value = e.message || '借款失败'
@@ -453,12 +525,23 @@ async function doRepay() {
     await user.fetchAssets().catch(() => {})
     const a = await fetchAssets()
     assets.value = a
+    await loadLoanRecords() // 还款立即进流水
     ElMessage.success('还款成功')
   } catch (e) {
     loanErr.value = e.message || '还款失败'
   } finally {
     loanLoading.value = false
   }
+}
+
+// 融资流水 / 打新记录：GET /api/me/loan-records 与 /api/me/ipo-records，失败降级空态
+async function loadLoanRecords() {
+  const lr = await fetchLoanRecords().catch(() => ({ records: [] }))
+  loanRecords.value = lr.records || []
+}
+async function loadIpoRecords() {
+  const ir = await fetchIpoRecords().catch(() => ({ records: [] }))
+  ipoRecords.value = ir.records || []
 }
 
 // ---- 数据加载 ----
@@ -470,6 +553,8 @@ async function loadAll() {
   positions.value = Array.isArray(pos) ? pos : pos.records || []
   const tr = await fetchTrades().catch(() => ({ records: [] }))
   trades.value = tr.records || []
+  await loadLoanRecords()
+  await loadIpoRecords()
   titles.value = await fetchTitles().catch(() => [])
   // 净值曲线：真实接口，失败降级空态
   try {
@@ -624,6 +709,16 @@ onMounted(loadAll)
 .flow-table .dim { color: var(--ink-3); }
 .side-buy { color: var(--up); border-color: var(--up); }
 .side-sell { color: var(--down); border-color: var(--down); }
+/* 融资/打新状态标签：配色走令牌，红绿只用于金额涨跌，状态本身用橙/蓝/灰/印章红 */
+.loan-borrow { color: var(--orange); border-color: var(--orange); }
+.loan-repay { color: var(--blue); border-color: var(--blue); }
+.loan-interest { color: var(--ink-2); border-color: var(--dash); }
+.loan-liquidate { color: var(--seal); border-color: var(--seal); }
+.ipo-sub { color: var(--blue); border-color: var(--blue); }
+.ipo-paid { color: var(--up); border-color: var(--up); }
+.ipo-flat { color: var(--ink-3); border-color: var(--ink-3); }
+.ipo-settled { color: var(--ink-2); border-color: var(--dash); }
+.tag-flat { color: var(--ink-2); border-color: var(--dash); }
 .pos-empty { padding: var(--sp-6) var(--sp-4); }
 .empty-art { width: 88px; height: 88px; object-fit: contain; }
 .flow-empty { padding: var(--sp-6) var(--sp-4); }
