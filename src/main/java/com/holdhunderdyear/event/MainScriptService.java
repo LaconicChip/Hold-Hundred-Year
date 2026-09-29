@@ -6,7 +6,6 @@ import com.holdhunderdyear.market.entity.GameEvent;
 import com.holdhunderdyear.market.entity.UserGameState;
 import com.holdhunderdyear.market.entity.UserMessage;
 import com.holdhunderdyear.market.mapper.GameEventMapper;
-import com.holdhunderdyear.market.mapper.UserMessageMapper;
 import com.holdhunderdyear.market.quote.Quote;
 import com.holdhunderdyear.market.quote.QuoteBoard;
 import org.springframework.stereotype.Service;
@@ -48,16 +47,16 @@ public class MainScriptService {
     /** 兜底轮数上限（防极端钳制下不收敛；+5%×50 轮足破一切参考价，正常路径远用不完）。 */
     private static final int MAX_TOPUP = 50;
 
-    private final UserMessageMapper userMessageMapper;
     private final NotifyPublisher notifyPublisher;
+    private final MessageService messageService;
     private final GameEventMapper gameEventMapper;
 
     /** 每用户当前剧本状态（key=userId）。 */
     private final Map<Long, MainScriptState> scripts = new ConcurrentHashMap<>();
 
-    public MainScriptService(UserMessageMapper userMessageMapper, NotifyPublisher notifyPublisher,
+    public MainScriptService(MessageService messageService, NotifyPublisher notifyPublisher,
                              GameEventMapper gameEventMapper) {
-        this.userMessageMapper = userMessageMapper;
+        this.messageService = messageService;
         this.notifyPublisher = notifyPublisher;
         this.gameEventMapper = gameEventMapper;
     }
@@ -313,7 +312,7 @@ public class MainScriptService {
         message.setIsRead(false);
         message.setGameDay(gs.getCurrentDay());
         message.setCreatedAt(now);
-        userMessageMapper.insert(message);
+        messageService.publish(message);
     }
 
     /** 权重轮盘：SHAKEOUT 0.45 / PUMP_DUMP 0.40 / SKY_EARTH 0.15。 */

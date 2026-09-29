@@ -145,23 +145,16 @@ function onLogout() {
   router.push('/login')
 }
 
-// 新消息轮询（5 秒）：驱动头条大弹幕与右下角浮层，实现见 stores/messages.js pollAndPresent
-const MESSAGE_POLL_MS = 5000
-let messagePoll = null
-
 onMounted(() => {
   syncCollapsed()
   window.addEventListener('resize', syncCollapsed)
   // 侧栏要显示纪元/段位/交易日，进主布局时补一次状态
   if (!market.currentDay) market.fetchState()
-  // 新消息轮询：驱动头条大弹幕与右下角浮层（首轮静默，只登记不播报）
-  messages.pollAndPresent()
-  messagePoll = setInterval(() => messages.pollAndPresent(), MESSAGE_POLL_MS)
+  // 铃铛角标：连接建立之前落库的未读不会推送过来，这里补拉一次（不播报）
+  messages.syncUnread()
 })
 onUnmounted(() => {
   window.removeEventListener('resize', syncCollapsed)
-  if (messagePoll) clearInterval(messagePoll)
-  messagePoll = null
 })
 </script>
 

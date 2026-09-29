@@ -1,7 +1,6 @@
 package com.holdhunderdyear.event;
 
 import com.holdhunderdyear.market.entity.UserMessage;
-import com.holdhunderdyear.market.mapper.UserMessageMapper;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -11,16 +10,16 @@ import java.time.LocalDateTime;
  * 打新中签、剧本收官、称号解锁、NPC 角色线——这些都不是"行情事件"，只是要告诉玩家一句话，
  * 字段惯例完全一样（type=NOTIFY、未读、当日、created_at 取当前），过去在 7 个服务里各抄了一份。
  *
- * <p>行情事件（EVENT / 三态传闻）仍走 {@code EventFactory} 与 {@code MainScriptService}，
- * 它们要写 sector、truth_status、followup_of，语义不同，不并进来。
+ * <p>行情事件（EVENT / 三态传闻）由 {@code EventFactory} 与 {@code MainScriptService} 自己组装，
+ * 它们要多写 sector、truth_status、followup_of，但落库+推送同样收口在 MessageService.publish。
  */
 @Component
 public class NotifyPublisher {
 
-    private final UserMessageMapper userMessageMapper;
+    private final MessageService messageService;
 
-    public NotifyPublisher(UserMessageMapper userMessageMapper) {
-        this.userMessageMapper = userMessageMapper;
+    public NotifyPublisher(MessageService messageService) {
+        this.messageService = messageService;
     }
 
     /** 系统通知（source=SYSTEM）：不绑定个股。 */
@@ -49,6 +48,6 @@ public class NotifyPublisher {
         message.setIsRead(false);
         message.setGameDay(gameDay);
         message.setCreatedAt(LocalDateTime.now());
-        userMessageMapper.insert(message);
+        messageService.publish(message);
     }
 }

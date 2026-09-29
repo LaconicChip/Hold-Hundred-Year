@@ -81,6 +81,7 @@ public class EventFactory {
     private static final String USER_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
     private final UserMessageMapper userMessageMapper;
+    private final MessageService messageService;
     private final GameEventMapper gameEventMapper;
     private final UserPositionMapper userPositionMapper;
     private final MainScriptService mainScriptService;
@@ -90,11 +91,13 @@ public class EventFactory {
     private final ConcurrentHashMap<Long, List<PendingAction>> pendingActions = new ConcurrentHashMap<>();
 
     public EventFactory(UserMessageMapper userMessageMapper,
+                        MessageService messageService,
                         GameEventMapper gameEventMapper,
                         UserPositionMapper userPositionMapper,
                         MainScriptService mainScriptService,
                         CorporateActionService corporateActionService) {
         this.userMessageMapper = userMessageMapper;
+        this.messageService = messageService;
         this.gameEventMapper = gameEventMapper;
         this.userPositionMapper = userPositionMapper;
         this.mainScriptService = mainScriptService;
@@ -260,7 +263,7 @@ public class EventFactory {
         message.setIsRead(false);
         message.setGameDay(gs.getCurrentDay());
         message.setCreatedAt(LocalDateTime.now());
-        userMessageMapper.insert(message);
+        messageService.publish(message);
 
         GameEvent event = new GameEvent();
         event.setUserId(userId);
@@ -496,7 +499,7 @@ public class EventFactory {
         followup.setIsRead(false);
         followup.setGameDay(gs.getCurrentDay());
         followup.setCreatedAt(LocalDateTime.now());
-        userMessageMapper.insert(followup);
+        messageService.publish(followup);
     }
 
     /** 冲击类待办：每股一条（MARKET 为 marketWide 单条）。 */

@@ -1,7 +1,6 @@
 package com.holdhunderdyear.event;
 
 import com.holdhunderdyear.market.entity.UserMessage;
-import com.holdhunderdyear.market.mapper.UserMessageMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -13,17 +12,17 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 /**
- * 提醒消息落库惯例（纯单测 + mock mapper）：type=NOTIFY、未读、当日、created_at 非空，
+ * 提醒消息字段惯例（纯单测 + mock MessageService）：type=NOTIFY、未读、当日、created_at 非空，
  * source 按入口分 SYSTEM / NPC，stockId 缺省为空。
  */
 class NotifyPublisherTest {
 
     @Test
     void systemNoticeUsesTheSharedFieldConvention() {
-        UserMessageMapper mapper = mock(UserMessageMapper.class);
-        new NotifyPublisher(mapper).system(7L, 3, "追保通知", "维持担保比例已低于 140%");
+        MessageService messages = mock(MessageService.class);
+        new NotifyPublisher(messages).system(7L, 3, "追保通知", "维持担保比例已低于 140%");
 
-        UserMessage saved = capture(mapper);
+        UserMessage saved = capture(messages);
         assertEquals(7L, saved.getUserId(), "user id must be carried");
         assertEquals("SYSTEM", saved.getSource(), "system notice source");
         assertEquals("NOTIFY", saved.getType(), "notice type");
@@ -37,18 +36,19 @@ class NotifyPublisherTest {
 
     @Test
     void npcNoticeCarriesNpcSourceAndStock() {
-        UserMessageMapper mapper = mock(UserMessageMapper.class);
-        new NotifyPublisher(mapper).npc(9L, 12, "张大妈荐股", "她看好这只票", 5L);
+        MessageService messages = mock(MessageService.class);
+        new NotifyPublisher(messages).npc(9L, 12, "张大妈荐股", "她看好这只票", 5L);
 
-        UserMessage saved = capture(mapper);
+        UserMessage saved = capture(messages);
         assertEquals("NPC", saved.getSource(), "npc notice source drives the avatar chip");
         assertEquals(5L, saved.getStockId(), "stock id");
         assertEquals(12, saved.getGameDay(), "game day");
     }
 
-    private static UserMessage capture(UserMessageMapper mapper) {
+    /** 取交给 MessageService.publish 的那条消息（publish 返回入参，所以直接透传 mock 返回值）。 */
+    private static UserMessage capture(MessageService messages) {
         ArgumentCaptor<UserMessage> captor = ArgumentCaptor.forClass(UserMessage.class);
-        verify(mapper).insert(captor.capture());
+        verify(messages).publish(captor.capture());
         return captor.getValue();
     }
 }

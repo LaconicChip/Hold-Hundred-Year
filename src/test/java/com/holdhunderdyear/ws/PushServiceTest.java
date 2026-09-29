@@ -1,6 +1,6 @@
 package com.holdhunderdyear.ws;
 
-import com.holdhunderdyear.market.entity.UserMessage;
+import com.holdhunderdyear.game.model.dto.MessageDTO;
 import org.junit.jupiter.api.Test;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
@@ -49,8 +49,9 @@ class PushServiceTest {
     void messageNotificationDanmuRouteToTheirOwnQueues() {
         registry.register(7L, "s1");
 
-        UserMessage msg = new UserMessage();
+        MessageDTO msg = new MessageDTO();
         msg.setId(1L);
+        msg.setTitle("纪元切换：牛市启动");
         push.pushMessage(7L, msg);
         verify(template).convertAndSendToUser("7", "/queue/messages", msg);
 

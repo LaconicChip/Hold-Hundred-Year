@@ -9,6 +9,7 @@ import com.holdhunderdyear.game.constants.StockDefs;
 import com.holdhunderdyear.game.model.dto.MessageDTO;
 import com.holdhunderdyear.market.entity.UserMessage;
 import com.holdhunderdyear.market.mapper.UserMessageMapper;
+import com.holdhunderdyear.ws.PushService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,17 +18,34 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * 消息中心服务（Task 8.2，spec §11）：查询用户消息（来源/真伪三态/未读/按日筛选、
- * 分页、新建先后倒序）、标记单条/全部已读。消息本身由 8.1 事件工厂写入；
- * 本服务只读查询与展示，truth_status 与 followup_of 原样返回，不做拼装。
+ * 消息中心服务（Task 8.2，spec §11/§13）：写入（{@link #publish}）、查询（来源/真伪三态/
+ * 未读/按日筛选、分页、新建先后倒序）、标记已读。truth_status 与 followup_of 原样返回，不做拼装。
+ *
+ * <p>全仓所有消息写入都必须走 {@link #publish}：落库后立刻把同一份 DTO 推到
+ * /user/queue/messages，前端据此实时"当面提醒"，不再靠轮询发现新消息。
  */
 @Service
 public class MessageService {
 
     private final UserMessageMapper userMessageMapper;
+    private final PushService pushService;
 
-    public MessageService(UserMessageMapper userMessageMapper) {
+    public MessageService(UserMessageMapper userMessageMapper, PushService pushService) {
         this.userMessageMapper = userMessageMapper;
+        this.pushService = pushService;
+    }
+
+    /**
+     * 消息落库 + 实时推送的唯一出口：insert 完就把同一份 DTO 推给该用户的消息通道，
+     * 前端按 messageMeta 的通道规则决定大弹幕/浮层/只进列表。推送是尽力而为
+     * （{@link PushService} 内部吞异常），绝不因为推不动而影响消息写入。
+     *
+     * @return 传入的实体（已带自增 id，供 followup_of 等后续引用）
+     */
+    public UserMessage publish(UserMessage message) {
+        userMessageMapper.insert(message);
+        pushService.pushMessage(message.getUserId(), toDto(message));
+        return message;
     }
 
     /**

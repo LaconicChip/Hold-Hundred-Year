@@ -1,4 +1,6 @@
 // 消息中心 store（消息列表 / 弹幕 / 通知）
+// 新消息一律由后端在落库的同一条路径上 WS 推送过来（MessageService.publish → /user/queue/messages），
+// 前端不再轮询发现新消息；只有"连接建立之前的历史"由 syncUnread 补一次。
 import { defineStore } from 'pinia'
 import { fetchMessages, markMessageRead, markAllRead } from '@/api/message'
 import { useUserStore } from './user'
@@ -28,8 +30,6 @@ export const useMessagesStore = defineStore('messages', {
     notifications: [], // 轻量通知对象（字段不定）
     banners: [], // 头条大弹幕队列（新消息按通道入队，播一条移一条）
     popups: [], // 右下角浮层队列（最多 3 条，组件侧定时收起）
-    presented: new Set(), // 已"当面提醒"过的消息 id，防重复播报
-    primed: false // 首轮只登记不播报：刷新页面不该把历史未读全弹一遍
   }),
 
   getters: {
@@ -40,29 +40,22 @@ export const useMessagesStore = defineStore('messages', {
   },
 
   actions: {
-    // 轮询补获新消息并走"当面提醒"通道。
-    // 为什么轮询而不是 WS：后端 /user/queue/messages 通道虽有，但全仓没有任何生产调用点
-    // （消息只落库不推送），逐个写入方补推送要改 10 个服务；这里 5 秒拉一次未读，
-    // 覆盖所有来源（事件/结算/追保/强平/停牌/除权/打新/纪元/NPC），一处解决。
-    async pollAndPresent() {
-      let page
+    /**
+     * 进主布局时补一次未读：新消息由 WS 实时推（见 pushMessage），但"这次连接建立之前"
+     * 落库的那些不会推过来，靠这一次拉取兜住铃铛角标。只登记、不播报——
+     * 刷新页面把历史未读全弹一遍是灾难。
+     */
+    async syncUnread() {
       try {
-        page = await fetchMessages({ unreadOnly: true, size: 20 })
-      } catch {
-        return // 拉取失败静默，下轮再试
-      }
-      const records = (page && page.records) || []
-      const silent = !this.primed
-      this.primed = true
-      for (const m of records.slice().reverse()) {
-        if (!m || m.id == null) continue
-        if (!this.list.some((x) => x.id === m.id)) {
-          this.list.unshift(m)
-          this.total += 1
+        const page = await fetchMessages({ unreadOnly: true, size: 20 })
+        for (const m of ((page && page.records) || []).slice().reverse()) {
+          if (m && m.id != null && !this.list.some((x) => x.id === m.id)) {
+            this.list.unshift(m)
+            this.total += 1
+          }
         }
-        if (this.presented.has(m.id)) continue
-        this.presented.add(m.id)
-        if (!silent) this.present(m)
+      } catch {
+        // 拉取失败不阻塞页面：WS 推送与消息页自己的拉取都不依赖这一次
       }
     },
 
@@ -97,7 +90,7 @@ export const useMessagesStore = defineStore('messages', {
       })
     },
 
-    // WS 推送的单条消息入列（置顶），并按通道决定"当面提醒"的强度
+    /** WS /user/queue/messages 推来的单条消息：置顶入列（角标随动）并按通道决定"当面提醒"强度。 */
     pushMessage(dto) {
       if (!dto || dto.id == null) return
       if (this.list.some((m) => m.id === dto.id)) return

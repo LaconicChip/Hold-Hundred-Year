@@ -1,6 +1,5 @@
 package com.holdhunderdyear.event;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhunderdyear.common.BizException;
 import com.holdhunderdyear.common.ErrorCode;
 import com.holdhunderdyear.common.PageResult;
@@ -12,8 +11,12 @@ import com.holdhunderdyear.market.entity.UserMessage;
 import com.holdhunderdyear.market.mapper.UserGameStateMapper;
 import com.holdhunderdyear.market.mapper.UserMessageMapper;
 import com.holdhunderdyear.world.WorldSeeder;
+import com.holdhunderdyear.ws.PushService;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +31,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 
 /**
  * 消息中心服务集成测试（hold_year_test 库，方法级事务自动回滚）。
@@ -38,6 +43,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SpringBootTest
 @Transactional
 class MessageServiceTest {
+
+    @MockitoBean
+    private PushService pushService;
 
     @Autowired
     private MessageService messageService;
@@ -59,6 +67,29 @@ class MessageServiceTest {
 
     private static final Set<String> SOURCE_NAMES = Arrays.stream(EventSkeleton.Source.values())
             .map(Enum::name).collect(Collectors.toSet());
+
+    @Test
+    void publishPersistsTheMessageAndPushesTheSameShape() {
+        long userId = worldSeeder.seedUser("msg_publish1", "$2a$10$bcrypthash");
+        UserMessage message = new UserMessage();
+        message.setUserId(userId);
+        message.setSource("SYSTEM");
+        message.setType("NOTIFY");
+        message.setTitle("纪元切换：牛市启动");
+        message.setContent("低估值打底，券商先动。");
+        message.setIsRead(false);
+        message.setGameDay(1);
+        message.setCreatedAt(LocalDateTime.now());
+
+        UserMessage saved = messageService.publish(message);
+
+        assertNotNull(saved.getId(), "publish must return the stored row with its id");
+        ArgumentCaptor<MessageDTO> pushed = ArgumentCaptor.forClass(MessageDTO.class);
+        verify(pushService).pushMessage(eq(userId), pushed.capture());
+        assertEquals(saved.getId(), pushed.getValue().getId(), "pushed payload is the row just stored");
+        assertEquals("纪元切换：牛市启动", pushed.getValue().getTitle(), "pushed payload carries the title");
+        assertEquals("SYSTEM", pushed.getValue().getSource(), "pushed payload carries the source");
+    }
 
     // ---- 1. 消息落库与筛选 ----
 

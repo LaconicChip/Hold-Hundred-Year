@@ -1,6 +1,6 @@
 package com.holdhunderdyear.ws;
 
-import com.holdhunderdyear.market.entity.UserMessage;
+import com.holdhunderdyear.game.model.dto.MessageDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
@@ -40,8 +40,8 @@ public class PushService {
         sendToUser(userId, "/queue/quotes", snapshot);
     }
 
-    /** 下发一条消息 DTO 给用户的消息中心。 */
-    public void pushMessage(long userId, UserMessage message) {
+    /** 下发一条消息给用户的消息中心（与 REST 列表同一种 MessageDTO 形状，前端一套逻辑吃两边）。 */
+    public void pushMessage(long userId, MessageDTO message) {
         sendToUser(userId, "/queue/messages", message);
     }
 
