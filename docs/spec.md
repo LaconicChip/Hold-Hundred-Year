@@ -442,6 +442,8 @@ BANKRUPT / FINISHED（终局：冻结一切操作，展示结局结算页）
 
 ### 7.7 营业部生态与进度系统（中期目标感）
 
+- **NPC 台词库**：四个角色线场景（张大妈荐股、老李停车场、龙虎榜、割肉热议）各有 5 条台词随机抽；8 位 NPC 各有 5 句性格闲聊，每日约 45% 概率由一位在场 NPC 说一句（`game/constants/NpcLines.java`）。
+- **板块消息库**：21 个板块 + 大盘各有权威公告/媒体报道/股吧传闻（含配套证实·辟谣追报）/玩梗段子（`game/constants/SectorFlavor.java`），板块级与全市场级事件 55% 改用对应板块文案，标题与正文成对替换。
 - **营业部收益排行榜**：8\~10 名虚拟散户与玩家同榜——张大妈（追涨杀跌型）、隔壁老王（高杠杆追热点）、保安老李（定投指数型，常年暗赚）、"炒股养家居士"（死捂一只不动）、"拆迁户老钱"（满仓大通银号吃股息）、"95 后新基民"（追题材风口）、"辞职炒股的程序猿"（量化幻觉型，频繁交易亏手续费）等。每个 NPC 的日收益率由基于世界种子的规则函数生成（策略画像决定 β/换手/踩点倾向），每日收盘结算后更新排名，推送"今日营业部榜"（玩家排名高亮）。黑7月纪元老王与新基民排名标记"已销户/天台排队中"；通关结算页展示 108 天最终榜与各 NPC 结局小剧场。
 
 - **资产段位**：按当日净资产（峰值进阶、跌破降级）评定：散户（<15 万）→ 中户（15 万）→ 大户（30 万）→ 游资（60 万）→ 牛散（100 万）。状态条常驻当前段位；升级推送"营业部主任亲自给您递烟"，降级推送玩梗通知（"您已跌回中户室，张大妈表示慰问"）。
@@ -491,7 +493,7 @@ BANKRUPT / FINISHED（终局：冻结一切操作，展示结局结算页）
 5. **trade\_record**：id、user\_id、stock\_id、trade\_type（BUY/SELL）、price、shares、amount、commission、tax、game\_day、created\_at。
 6. **loan\_record**（融资流水）：id、user\_id、loan\_type（BORROW/REPAY/INTEREST/LIQUIDATE）、amount、debt\_after（操作后负债余额）、game\_day、created\_at。
 7. **game\_event**（事件与剧本记录）：id、user\_id、stock\_id（可空，政策面为空）、scope（STOCK/SECTOR/MARKET）、script\_type（NONE/SHAKEOUT/PUMP\_DUMP/TAIL\_WHIP/SKY\_EARTH/POLICY/LIMIT\_UP\_ALL/LIMIT\_DOWN\_ALL/CIRCUIT\_BREAKER/SANCTION/CRASH\_WEEK）、event\_type（GOOD/BAD/NEUTRAL）、impact\_pattern（七种反应模式：INSTANT/SPIKE\_FADE/BUY\_RUMOR/SLOW\_DRIFT/OVERSHOOT\_REVERT/NEWS\_FLIP/CHAIN）、title、content、impact\_pct、game\_day、created\_at。
-8. **user\_message**（消息中心）：id、user\_id、source（AUTHORITY/MEDIA/RUMOR/INSIDER/FUN/NPC/SYSTEM）、truth\_status（PENDING/CONFIRMED/DENIED，FUN/NPC 为空）、type（NEWS/TIP/EVENT/NOTIFY）、title、content、stock\_id（可空）、followup\_of（原消息 id，辟谣/证实关联）、is\_read、game\_day、created\_at。
+8. **user\_message**（消息中心）：id、user\_id、source（AUTHORITY/MEDIA/RUMOR/INSIDER/FUN/NPC/SYSTEM）、stock\_id（可空）、sector（可空，板块级消息的归属板块）、truth\_status（PENDING/CONFIRMED/DENIED，FUN/NPC 为空）、type（NEWS/TIP/EVENT/NOTIFY）、title、content、stock\_id（可空）、followup\_of（原消息 id，辟谣/证实关联）、is\_read、game\_day、created\_at。
 9. **user\_game\_state**（单行/账户）：id、user\_id（唯一）、current\_day、market\_state、tick\_index、world\_seed（世界随机种子，§5）、index\_value（百年指数昨收/当前快照）、prev\_total\_asset（昨日结算总资产，用于日收益率）、vol\_regime（当日波动率体制 CALM/NORMAL/WILD）、tier（当前资产段位：RETAIL/MIDDLE/BIG/HOTSHOT/MASTER）、end\_reason（空/NORMAL\_FINISH/BANKRUPT）、end\_day、updated\_at。
 10. **user\_title**（称号与挑战徽章）：id、user\_id、title\_code、title\_name、kind（TITLE 称号/BADGE 阶段挑战徽章）、game\_day（解锁日）、created\_at；唯一索引 (user\_id, title\_code)。
 11. **user\_era**（本局纪元时间表，注册时掷出）：id、user\_id、era\_index（1..11）、era\_code、start\_day、end\_day、params\_json（该纪元随机掷出的 μ\_mkt、板块系数字段）；唯一索引 (user\_id, era\_index)。
@@ -574,7 +576,7 @@ BANKRUPT / FINISHED（终局：冻结一切操作，展示结局结算页）
 
 - `GET  /api/market/daily-summary?gameDay={n}`：某日收盘总结数据（默认最近结算日）：日收益率、指数日涨跌幅、资产快照、担保比例、当日要闻列表、T+1 解冻/追保/强平/停牌提示、玩梗评语、当前纪元与明日风险提示。
 
-- `GET  /api/messages`（按来源/三态/已读/交易日/**stockId** 筛选）、`PUT /api/messages/{id}/read`、`PUT /api/messages/read-all`（全部已读，铃铛清红点）
+- `GET  /api/messages`（按来源/三态/已读/交易日/**stockId**/**includeSector** 筛选；includeSector=true 时连同该票所属板块的板块级消息一起返回）、`PUT /api/messages/{id}/read`、`PUT /api/messages/read-all`（全部已读，铃铛清红点）
   个股详情页凭 `stockId` 向服务端要**这只票的历史消息**，不再"拉全局最新 100 条再在前端挑"。
 
 ## 12. 前端页面（Vue 3 + Element Plus）

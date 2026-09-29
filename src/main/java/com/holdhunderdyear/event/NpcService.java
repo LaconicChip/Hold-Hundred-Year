@@ -2,6 +2,7 @@ package com.holdhunderdyear.event;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhunderdyear.game.constants.NpcDefs;
+import com.holdhunderdyear.game.constants.NpcLines;
 import com.holdhunderdyear.game.constants.StockDefs;
 import com.holdhunderdyear.game.model.enums.EraCode;
 import com.holdhunderdyear.game.model.enums.SealState;
@@ -47,6 +48,7 @@ public class NpcService {
     private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
     /** 张大妈荐股每日触发概率（其余天不荐股，防每日常发）。 */
+    private static final double CHATTER_PROB = 0.45;
     private static final double DAMA_RECO_PROB = 0.85;
 
     /** 满仓判定：玩家现金 ≤ 该阈值视为基本全部买入（spec §7.7 老李停车场）。 */
@@ -109,8 +111,9 @@ public class NpcService {
         }
 
         maybeDamaRecommends(userId, day, board, rng);
-        maybeLaoliParkingWarn(userId, day, board);
-        maybePlayerEvents(userId, day, board);
+        maybeLaoliParkingWarn(userId, day, board, rng);
+        maybePlayerEvents(userId, day, board, rng);
+        maybeNpcChatter(userId, day, npcs, rng);
         return MAPPER.writeValueAsString(npcs);
     }
 
@@ -169,7 +172,7 @@ public class NpcService {
         long stockId = tradable.get(rng.nextInt(tradable.size()));
         String stockName = StockDefs.byId(stockId).name();
         notify(userId, day, "张大妈荐股",
-                "张大妈高调喊冲 " + stockName + "：我外甥在上市公司当保安，内部消息，明天涨停！",
+                pick(NpcLines.Scene.DAMA_RECOMMEND, rng).replace("{stock}", stockName),
                 stockId);
         if (damaDeclines(rng)) {
             board.getShocks().enqueue(new PriceShock(stockId, false,
@@ -177,13 +180,12 @@ public class NpcService {
         }
     }
 
-    /** 老李停车场：满仓且 WILD 时写一条停车位警示通知。 */
-    private void maybeLaoliParkingWarn(long userId, int day, QuoteBoard board) {
+    /** 老李停车场：满仓且 WILD 时写一条停车位警示通知（台词从池里抽）。 */
+    private void maybeLaoliParkingWarn(long userId, int day, QuoteBoard board, Random rng) {
         SysUser user = sysUserMapper.selectById(userId);
         boolean fullPosition = user != null && isFullPosition(user);
         if (laoliParkingTrigger(fullPosition, board.getVolRegime())) {
-            notify(userId, day, "老李停车场",
-                    "今天停车场车又满了，我守了八年，每次这样都没好事。", null);
+            notify(userId, day, "老李停车场", pick(NpcLines.Scene.LAOLI_PARKING, rng), null);
         }
     }
 
@@ -194,12 +196,12 @@ public class NpcService {
     }
 
     /** @玩家事件（每日至多 1 条）：追涨停买入当日收盘 → 龙虎榜；跌停割肉次日涨停 → 割肉。 */
-    private void maybePlayerEvents(long userId, int day, QuoteBoard board) {
+    private void maybePlayerEvents(long userId, int day, QuoteBoard board, Random rng) {
         for (TradeRecord record : trades(userId, day, "BUY")) {
             if (closedAtLimitUp(board, record.getStockId())) {
                 if (claimPlayerMsg(userId, day)) {
                     notify(userId, day, "龙虎榜",
-                            "该股龙虎榜：知名游资一日游，散户大本营接盘。", record.getStockId());
+                            pick(NpcLines.Scene.LONGBOARD, rng), record.getStockId());
                 }
                 return;
             }
@@ -207,11 +209,44 @@ public class NpcService {
         for (TradeRecord record : trades(userId, day - 1, "SELL")) {
             if (closedAtLimitUp(board, record.getStockId())) {
                 if (claimPlayerMsg(userId, day)) {
-                    notify(userId, day, "割肉", "股吧热议：昨天割肉的老师还好吗。", record.getStockId());
+                    notify(userId, day, "割肉", pick(NpcLines.Scene.CUT_LOSS, rng), record.getStockId());
                 }
                 return;
             }
         }
+    }
+
+    /**
+     * 每日 NPC 闲聊（约 45% 概率）：从当日仍在场的 ACTIVE NPC 里挑一位说一句性格台词，
+     * 让排行榜那几张老面孔真的贯穿全剧，而不是只在结算时冒出一个数字。
+     */
+    private void maybeNpcChatter(long userId, int day, List<Map<String, Object>> npcs, Random rng) {
+        if (rng.nextDouble() >= CHATTER_PROB) {
+            return;
+        }
+        List<Integer> active = new ArrayList<>();
+        for (int i = 0; i < npcs.size(); i++) {
+            if ("ACTIVE".equals(npcs.get(i).get("status"))) {
+                active.add(i);
+            }
+        }
+        if (active.isEmpty()) {
+            return;
+        }
+        Map<String, Object> npc = npcs.get(active.get(rng.nextInt(active.size())));
+        String code = String.valueOf(npc.get("code"));
+        String name = String.valueOf(npc.get("name"));
+        List<String> lines = NpcLines.chatter(code);
+        if (lines.isEmpty()) {
+            return;
+        }
+        notify(userId, day, name + "的今日语录", lines.get(rng.nextInt(lines.size())), null);
+    }
+
+    /** 从场景台词池抽一条。 */
+    private static String pick(NpcLines.Scene scene, Random rng) {
+        List<String> lines = NpcLines.scene(scene);
+        return lines.get(rng.nextInt(lines.size()));
     }
 
     /** 该 user 某日某方向的成交记录。 */

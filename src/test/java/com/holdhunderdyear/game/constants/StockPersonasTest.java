@@ -17,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * 个股人设档案的完整性与"反重复"校验（纯单测，不连库）：
  * 覆盖 24 只票（每股 8 条专属弹幕 + 6 条专属事件文案）、每条非空白、无 emoji、
+ * 并把板块文案库（SectorFlavor）与 NPC 台词库（NpcLines）一起纳入零重复总校验。
  * 事件文案都带 {stock} 槽位，
  * 以及个股专属池 + 板块池 + 全局池合起来不出现重复句子——
  * 文案量堆上去却互相抄，等于没堆。
@@ -80,15 +81,32 @@ class StockPersonasTest {
         allPools.add(DanmuTexts.FLAT);
         DanmuTexts.SECTOR_FLAVOR.values().forEach(allPools::add);
         StockPersonas.ALL.forEach((persona) -> allPools.add(persona.danmu()));
+        StockPersonas.ALL.forEach((persona) -> allPools.add(persona.news()));
+        // 板块文案库与 NPC 台词库一起进总校验：任何一处抄重都会红
+        for (String sector : SectorFlavor.sectors()) {
+            for (SectorFlavor.Channel channel : SectorFlavor.Channel.values()) {
+                for (SectorFlavor.Entry entry : SectorFlavor.pool(sector, channel)) {
+                    allPools.add(List.of(entry.title(), entry.text(),
+                            entry.reveal() == null ? "" : entry.reveal()));
+                }
+            }
+        }
+        for (NpcLines.Scene scene : NpcLines.Scene.values()) {
+            allPools.add(NpcLines.scene(scene));
+        }
+        NpcLines.CHATTER.values().forEach(allPools::add);
         for (List<String> pool : allPools) {
             for (String line : pool) {
+                if (line == null || line.isBlank()) {
+                    continue; // 板块传闻之外的条目没有追报，空位不参与查重
+                }
                 if (!seen.add(line)) {
                     duplicates.add(line);
                 }
             }
         }
         assertTrue(duplicates.isEmpty(), "repeated copy across pools kills variety: " + duplicates);
-        assertTrue(seen.size() >= 450,
+        assertTrue(seen.size() >= 700,
                 "total distinct chatter lines must stay big enough to feel alive, got " + seen.size());
     }
 

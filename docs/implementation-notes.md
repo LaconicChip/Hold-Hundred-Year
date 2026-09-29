@@ -58,7 +58,8 @@
   **为什么用轮询而不是 WS**：`PushService.pushMessage` 全仓没有任何生产调用点（消息只落库不推送），补齐要动 10 个写入方的构造器；5 秒拉未读一处解决且覆盖所有来源。要改回 WS，就把 `MessageService.publish()` 接上推送并删掉 `pollAndPresent` 的定时器。
 - **票名重起过 7 个**（鸱夷酒业→九坛老窖、片爷科技→芯火半导体、极乐传媒→造梦传媒、智算无穷→天算算力、阡陌商社→万家商社、百丈钢铁→炉火钢铁、通天信联→千里信联）：`StockDefs.java` 与 `frontend/src/constants/stocks.js` 必须同步，存量库的 `stock_info` 也要 UPDATE（新库由 WorldSeeder 重播）。
 - **弹幕黑板（前端）**：`DanmuBar.vue` 5 条道 + 限速队列（240ms 一拍、道忙就等），按 `stores/messages.js` 的 `danmuVersion/danmuSeq` 取增量——**不要 watch 数组长度**，环形缓冲封顶到 30 条后长度不再变化，监听器会永久失效（就是历史上"不开关一次不飘、一开关糊一屏"的病根）。默认开启，重新开启时把游标推到最新，不回放过期积压。
-- **个股历史消息**：`GET /api/messages?stockId=` 服务端过滤（`MessageService.list` 第 6 个参数），个股页拉 60 条；板块级/大盘级消息不带 `stockId`，因此不会出现在单只票的列表里（要把板块新闻也归进去，需给 `user_message` 加 `sector` 列，见 §6）。
+- **个股历史消息**：`MessageService.list` 的第 6/7 个参数是 `stockId` + `includeSector`。个股页用 `stockId&includeSector=true`，一次拿回"本票专属（stock_id 命中）+ 本票所属板块（sector 命中且 stock_id 为空）"；板块名由后端按 `StockDefs` 反查，前端不需要知道。板块级消息的 `sector` 由 `EventFactory` 在 SECTOR 级事件落库时写入（迁移 `V20260929_02`）。历史存量消息的 sector 为 NULL，只有升级后新产生的板块消息能被个股页捞到。
+- **文案库三处**：`StockPersonas`（24 股 × 8 弹幕 + 6 事件）、`SectorFlavor`（21 板块 + 大盘 × 权威/媒体/传闻含追报/玩梗各 2）、`NpcLines`（4 场景 × 5 + 8 NPC × 5 闲聊），加上 `DanmuTexts` 的九个全局池与 21 板块池，全部被 `StockPersonasTest` 的"全局零重复"总校验覆盖——任何一处抄重直接红。
 - **前端菜单/路由**：`GameLayout.vue` 竖排菜单；`/market /stock/:id /assets /messages /leaderboard /summary /result`；涨跌与金额格式化统一在 `frontend/src/utils/format.js`。
 
 ## 4. 环境与运维
@@ -81,16 +82,21 @@
 ## 5. 验收状态
 
 - **Phase 0-13 全部完成并通过验收**（后端引擎/调度/交易/融资/事件/NPC/剧本/打新/WS/REST → 前端 8 页 + 组件 → 终局验收）。
-- 后端全量 **365 tests，0 Failures / 0 Errors**（人设 8 弹幕/6 事件 × 24 股、板块 6 条 × 21、跨池零重复、消息按 stockId 过滤、剧本日撒点不死循环）；一局 72 交易日约 2 小时；前端 `npm run build` 通过，入口主包 15.39 kB（vendor 按 echarts / element-plus / vue 拆块）。
+- 后端全量 **367 tests，0 Failures / 0 Errors**（人设与板块/NPC 文案零重复总校验、板块消息 includeSector、剧本日撒点不死循环、prev_index 基准、三类流水查询）；一局 72 交易日约 2 小时；前端 `npm run build` 通过，入口主包 15.39 kB（vendor 按 echarts / element-plus / vue 拆块）。
 - 验收图集：`docs/design/shots/01-login … 08-result`（另含 03b 封板、05b 已买入两张状态图）。
 - 后续维护轮次（2026-09-29）：资产页三类流水接口与接入 → 结构整理与占位文案清理 → `prev_index` 根治 → 规格 §11 对齐 → 前端拆包。
 
 ## 6. 还值得做的事（都不是缺陷）
 
+0. **快速模式（方案已定，待实现）**：再加一档短局——**36 个交易日**（`DAYS_PER_YEAR` 对半开：24→12，三年=36 天）+ **每天时长再减半**（`TICK_MS` 与 `LUNCH_MS` 各减半），整局约 30 分钟。落地要点：
+   ① 纪元边界已按 `DAYS_PER_YEAR` 等比缩放，但 12 天/年装 11 个纪元时 `MIN_ERA_LEN=3` 会顶不住，需要允许 2 天短纪元或合并纪元；
+   ② `ScriptDayScheduler` 的撒点夹逼与打新 D+2/D+4 窗口要按新年长重新校核（历史上这里就因窗口太小死循环过）；
+   ③ **必须做成"新建局时选模式"**而不是全局改常量：`user_game_state` 要记录本局的年长/跳毫秒，否则同种子复现与"快进=逐跳"等价会被破坏；
+   ④ 段位、称号、按天计息（年化 ÷ 年长）与晚报口径都要跟着本局模式走。
+
 0. **把"当面提醒"改回 WS 推送**：见 §3 最后一条，目前靠前端 5 秒轮询兜住，实时性差 0~5 秒。
 1. **倍速按钮（1x/2x/4x）**：`TICK_MS` 目前是编译期常量，要做运行期可切换需把它变成每账户的运行时参数，并让午休计时（`lunchStartedNanos` 用挂钟）与状态栏倒计时一起跟着档位走。随机序列按跳消费，倍速**不影响**同种子可复现性。
 
-1. **把板块/大盘级消息也挂到个股页**：给 `user_message` 加 `sector` 列（含迁移），个股页按"stockId 或 所属板块"取消息，历史区才真正"全"。
 2. **Element Plus 按需引入**：`main.js` 目前 `app.use(ElementPlus)` + 注册全部图标，而全站只用到 `el-dialog`、`el-input-number` 与 `ElMessage`/`ElMessageBox`，白担约 960 kB（min）。改按需引入需逐页核对弹窗与提示样式。
 2. **生产化打包/部署说明**：当前只有开发模式运行手册，无部署文档。
 3. **纪元叙事文案**：11 条在 `game/model/enums/EraCode.java` 的 `narrative` 字段，属产品文案，可随时改（测试只断言"通知正文等于该字段"）。

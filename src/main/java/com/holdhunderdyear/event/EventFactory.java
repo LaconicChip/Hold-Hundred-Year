@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.holdhunderdyear.game.constants.EventSkeletons;
 import com.holdhunderdyear.game.constants.GameConstants;
+import com.holdhunderdyear.game.constants.SectorFlavor;
 import com.holdhunderdyear.game.constants.StockDefs;
 import com.holdhunderdyear.game.constants.StockPersonas;
 import com.holdhunderdyear.game.constants.StockDefs.StockDef;
@@ -69,6 +70,9 @@ public class EventFactory {
 
     /** 事件出现闸：掷骰通过率（8.5 主力剧本接管此落空分支，8.1 不处理）。 */
     private static final double EVENT_GATE = 0.65;
+
+    /** 板块级消息改用板块专属文案的概率（其余保留事件骨架原文）。 */
+    private static final double SECTOR_FLAVOR_PROB = 0.55;
 
     /** 槽位解析：白名单 {stock}/{amount}/{user}。 */
     private static final Pattern SLOT_PATTERN = Pattern.compile("\\{(stock|amount|user)\\}");
@@ -174,6 +178,25 @@ public class EventFactory {
                     stockName, rng);
         }
 
+        // 板块级/全市场级消息：55% 改用该板块（或大盘）专属文案。标题与正文成对替换，
+        // 传闻类同时换掉追报正文，保证"当初的谣"和"后来的辟谣"讲的是同一件事。
+        if (targetStockId == null) {
+            SectorFlavor.Channel channel = sectorChannelOf(skeleton.source());
+            if (channel != null && rng.nextDouble() < SECTOR_FLAVOR_PROB) {
+                String flavorSector = skeleton.scope() == EventSkeleton.Scope.SECTOR && variant.sector() != null
+                        ? variant.sector() : SectorFlavor.MARKET;
+                List<SectorFlavor.Entry> flavorPool = SectorFlavor.pool(flavorSector, channel);
+                if (!flavorPool.isEmpty()) {
+                    SectorFlavor.Entry entry = flavorPool.get(rng.nextInt(flavorPool.size()));
+                    title = fillSlots(entry.title(), stockName, rng);
+                    content = fillSlots(entry.text(), stockName, rng);
+                    if (entry.reveal() != null && followupContent != null) {
+                        followupContent = fillSlots(entry.reveal(), stockName, rng);
+                    }
+                }
+            }
+        }
+
         // 模式相关掷骰（消费顺序固定，保证确定性）
         int driftTicks = 0;
         long revealDue = 0L;
@@ -230,6 +253,10 @@ public class EventFactory {
         message.setTitle(title);
         message.setContent(content);
         message.setStockId(targetStockId);
+        // 板块级消息记下归属板块，个股页才能把"本板块的新闻"一起捞出来
+        if (targetStockId == null && skeleton.scope() == EventSkeleton.Scope.SECTOR) {
+            message.setSector(variant.sector());
+        }
         message.setIsRead(false);
         message.setGameDay(gs.getCurrentDay());
         message.setCreatedAt(LocalDateTime.now());
@@ -367,6 +394,17 @@ public class EventFactory {
             }
         }
         return candidates.get(candidates.size() - 1).id();
+    }
+
+    /** 事件来源 → 板块文案类别；内幕等来源保留骨架原文（返回 null 即不替换）。 */
+    private static SectorFlavor.Channel sectorChannelOf(EventSkeleton.Source source) {
+        return switch (source) {
+            case AUTHORITY -> SectorFlavor.Channel.AUTHORITY;
+            case MEDIA -> SectorFlavor.Channel.MEDIA;
+            case RUMOR -> SectorFlavor.Channel.RUMOR;
+            case FUN -> SectorFlavor.Channel.FUN;
+            default -> null;
+        };
     }
 
     /** 槽位填充：{stock}→stockName（仅 STOCK 骨架使用）、{amount}→随机金额、{user}→随机股友。 */
