@@ -64,15 +64,15 @@ class StockDefsTest {
 
     @Test
     void namedStocksHaveExpectedCodes() {
-        assertStockCode("鸱夷酒业", "600001");
-        assertStockCode("片爷科技", "600002");
+        assertStockCode("九坛老窖", "600001");
+        assertStockCode("芯火半导体", "600002");
         assertStockCode("回春堂", "600005");
         assertStockCode("万间置业", "600006");
         assertStockCode("大通银号", "600007");
         assertStockCode("汪洋水产", "600012");
-        assertStockCode("极乐传媒", "600014");
-        assertStockCode("智算无穷", "600015");
-        assertStockCode("通天信联", "600024");
+        assertStockCode("造梦传媒", "600014");
+        assertStockCode("天算算力", "600015");
+        assertStockCode("千里信联", "600024");
     }
 
     @Test
@@ -94,7 +94,7 @@ class StockDefsTest {
     void byCodeLooksUpStockAndReturnsEmptyForUnknown() {
         Optional<StockDef> found = StockDefs.byCode("600001");
         assertTrue(found.isPresent());
-        assertEquals("鸱夷酒业", found.get().name());
+        assertEquals("九坛老窖", found.get().name());
         assertTrue(StockDefs.byCode("999999").isEmpty());
     }
 

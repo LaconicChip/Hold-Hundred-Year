@@ -3,6 +3,7 @@ package com.holdhunderdyear.event;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhunderdyear.game.constants.DanmuTexts;
 import com.holdhunderdyear.game.constants.StockDefs;
+import com.holdhunderdyear.game.constants.StockPersonas;
 import com.holdhunderdyear.game.constants.StockDefs.StockDef;
 import com.holdhunderdyear.game.model.enums.SealState;
 import com.holdhunderdyear.market.MarketStateService;
@@ -13,6 +14,7 @@ import com.holdhunderdyear.market.mapper.UserGameStateMapper;
 import com.holdhunderdyear.market.mapper.UserMessageMapper;
 import com.holdhunderdyear.market.quote.Quote;
 import com.holdhunderdyear.market.quote.QuoteBoard;
+import com.holdhunderdyear.world.WorldRandom;
 import com.holdhunderdyear.world.WorldSeeder;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -95,7 +97,8 @@ class DanmuServiceTest {
         q.setCurrent(q.limitUpPrice());
         String danmu = DanmuService.pickDanmu(userId, board, new Random(7));
         assertNotNull(danmu, "a limit-up sealed stock must trigger the limit-up class");
-        assertTrue(DanmuTexts.LIMIT_UP.contains(danmu), "danmu must come from the limit-up category");
+        assertTrue(inStockFlavor(danmu, StockDefs.ALL.get(0).id(), DanmuTexts.LIMIT_UP),
+                "limit-up danmu must come from the stock/sector/global limit-up tiers");
     }
 
     @Test
@@ -106,7 +109,8 @@ class DanmuServiceTest {
         q.setCurrent(Quote.round2(q.getPrevClose() * 1.08)); // +8% > 5% 触发急拉
         String danmu = DanmuService.pickDanmu(userId, board, new Random(7));
         assertNotNull(danmu, "a +8% surging stock must trigger the rally class");
-        assertTrue(DanmuTexts.RALLY.contains(danmu), "danmu must come from the rally category");
+        assertTrue(inStockFlavor(danmu, StockDefs.ALL.get(0).id(), DanmuTexts.RALLY),
+                "rally danmu must come from the stock/sector/global rally tiers");
     }
 
     @Test
@@ -117,7 +121,46 @@ class DanmuServiceTest {
         q.setCurrent(Quote.round2(q.getPrevClose() * 0.94)); // -6% > 5% 触发跳水
         String danmu = DanmuService.pickDanmu(userId, board, new Random(7));
         assertNotNull(danmu, "a -6% plunging stock must trigger the dive class");
-        assertTrue(DanmuTexts.DIVE.contains(danmu), "danmu must come from the dive category");
+        assertTrue(inStockFlavor(danmu, StockDefs.ALL.get(0).id(), DanmuTexts.DIVE),
+                "dive danmu must come from the stock/sector/global dive tiers");
+    }
+
+    @Test
+    void indexRallyYieldsIndexRiseDanmu() {
+        long userId = 1L;
+        QuoteBoard board = flatBoard(1025.0); // 指数 +2.5%（prevIndex 由 flatBoard 置为同值，手动压低基准）
+        board.setPrevIndex(1000.0);
+        String danmu = DanmuService.pickDanmu(userId, board, new Random(3));
+        assertNotNull(danmu, "index rally >= +2% must trigger the index-rise class");
+        assertTrue(DanmuTexts.INDEX_RISE.contains(danmu), "index rally must read the global index-rise pool");
+    }
+
+    @Test
+    void sealedStockEventuallyUsesItsOwnPersonaPool() {
+        // 同一触发态换不同随机源：个股专属池必须真的会被抽到（否则"每只票专属文案"是空话）
+        long stockId = StockDefs.ALL.get(0).id();
+        List<String> persona = StockPersonas.byId(stockId).danmu();
+        int hits = 0;
+        for (int seed = 0; seed < 60; seed++) {
+            QuoteBoard board = flatBoard(1000.0);
+            Quote q = board.quote(stockId);
+            q.setSealed(SealState.UP);
+            q.setCurrent(q.limitUpPrice());
+            // 用生产同款播种方式（WorldRandom 会先打散种子）：new Random(小整数) 的首个
+            // double 分布偏斜，测不出三级池的真实占比。
+            String danmu = DanmuService.pickDanmu(1L, board, WorldRandom.of(777L, "danmu" + seed));
+            if (persona.contains(danmu)) {
+                hits++;
+            }
+        }
+        assertTrue(hits >= 10, "persona pool must show up often, got " + hits + "/60");
+    }
+
+    /** 个股级触发的三级池并集：该股专属 → 所属板块 → 全局类别。 */
+    private static boolean inStockFlavor(String danmu, long stockId, List<String> globalPool) {
+        return StockPersonas.byId(stockId).danmu().contains(danmu)
+                || DanmuTexts.sectorPool(StockDefs.byId(stockId).sector()).contains(danmu)
+                || globalPool.contains(danmu);
     }
 
     // ---- 软依赖投递与不落库 ----

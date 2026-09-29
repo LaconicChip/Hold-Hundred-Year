@@ -51,6 +51,11 @@
 - **事件系统**：`EventFactory.maybeRoll` 单 salt 掷骰（`"event{day}.{tick}"`），PendingAction 入队时预填文案，flush 阶段零掷骰；消息三态 PENDING → CONFIRMED/DENIED。
 - **WS 四通道**：`/user/queue/{quotes,messages,notifications,danmu}`，握手 token 走 STOMP connectHeaders；**调度器只推进 WS 在线用户的世界**（刷新页面后必须补连，见 `user store ensureWsConnected`）。
 - **前后端口径陷阱**：① WS 推送的 `changePct` 是小数比率（0.0998），前端 store 统一 ×100 后再用（封板阈值 9.8、`fmtPct` 都依赖这点）；② `MarketSnapshot` 只有 `{tickIndex,indexValue,quotes:[{stockId,current,changePct}]}`，行情表的封板/停牌/ST/连板来自 REST 而非 WS，不要凭空造列；③ 统一响应 `R{code,msg,data}`，`code=0` 成功，401 清 token 跳登录；④ NPC 头像由 `NpcAvatar` 用 `import.meta.glob` 按 code 小写取图，JUSHI/LAOQIAN/XINJIMIN/CHENGXUYUAN 无 PNG、走姓氏色块兜底属正常。
+- **文案三级池（反重复）**：弹幕按"个股专属 → 板块 → 全局"混抽——`game/constants/StockPersonas.java`（24 股 × 绰号/股性/5 条专属弹幕/3 条专属事件文案）、`DanmuTexts.SECTOR_FLAVOR`（21 板块 × 4 条）、`DanmuTexts` 九个全局类别池。个股级触发先掷一个 double 决定层级（50/25/25），大盘级与横盘只走全局池。
+- **事件文案按股定制**：`EventFactory` 在 STOCK 级事件命中目标股后，45% 用该股 `persona.news` 模板替换通用正文（仍走 `{stock}` 槽位渲染）。掷骰固定在该位置消费，快进与逐跳等价。
+- **重要消息"当面"提醒**：前端 `GameLayout` 每 5 秒拉一次未读（`stores/messages.js#pollAndPresent`），按 `constants/messageMeta.js#channelOf` 分流——AUTHORITY 或标题含千股跌停/涨停/熔断/救市/崩盘/制裁/黑7月/强平/停牌核查 → **头条大弹幕**（`HeadlineDanmu.vue`，`pointer-events:none`，飘过即走）；SYSTEM/INSIDER 与传闻追报 → **右下角浮层**（`NoticePopup.vue`，6 秒自动收起，可点进消息中心）；其余只留在消息中心。首轮静默（`primed`），刷新页面不会把历史未读全弹一遍。
+  **为什么用轮询而不是 WS**：`PushService.pushMessage` 全仓没有任何生产调用点（消息只落库不推送），补齐要动 10 个写入方的构造器；5 秒拉未读一处解决且覆盖所有来源。要改回 WS，就把 `MessageService.publish()` 接上推送并删掉 `pollAndPresent` 的定时器。
+- **票名重起过 7 个**（鸱夷酒业→九坛老窖、片爷科技→芯火半导体、极乐传媒→造梦传媒、智算无穷→天算算力、阡陌商社→万家商社、百丈钢铁→炉火钢铁、通天信联→千里信联）：`StockDefs.java` 与 `frontend/src/constants/stocks.js` 必须同步，存量库的 `stock_info` 也要 UPDATE（新库由 WorldSeeder 重播）。
 - **前端菜单/路由**：`GameLayout.vue` 竖排菜单；`/market /stock/:id /assets /messages /leaderboard /summary /result`；涨跌与金额格式化统一在 `frontend/src/utils/format.js`。
 
 ## 4. 环境与运维
@@ -73,13 +78,14 @@
 ## 5. 验收状态
 
 - **Phase 0-13 全部完成并通过验收**（后端引擎/调度/交易/融资/事件/NPC/剧本/打新/WS/REST → 前端 8 页 + 组件 → 终局验收）。
-- 后端全量 **357 tests，0 Failures / 0 Errors**；前端 `npm run build` 通过，入口主包 15.39 kB（vendor 按 echarts / element-plus / vue 拆块）。
+- 后端全量 **364 tests，0 Failures / 0 Errors**（含人设完整性/反重复校验 4 条、弹幕三级池 2 条）；一局 72 交易日约 2 小时；前端 `npm run build` 通过，入口主包 15.39 kB（vendor 按 echarts / element-plus / vue 拆块）。
 - 验收图集：`docs/design/shots/01-login … 08-result`（另含 03b 封板、05b 已买入两张状态图）。
 - 后续维护轮次（2026-09-29）：资产页三类流水接口与接入 → 结构整理与占位文案清理 → `prev_index` 根治 → 规格 §11 对齐 → 前端拆包。
 
 ## 6. 还值得做的事（都不是缺陷）
 
-0. **倍速按钮（1x/2x/4x）**：`TICK_MS` 目前是编译期常量，要做运行期可切换需把它变成每账户的运行时参数，并让午休计时（`lunchStartedNanos` 用挂钟）与状态栏倒计时一起跟着档位走。随机序列按跳消费，倍速**不影响**同种子可复现性。
+0. **把"当面提醒"改回 WS 推送**：见 §3 最后一条，目前靠前端 5 秒轮询兜住，实时性差 0~5 秒。
+1. **倍速按钮（1x/2x/4x）**：`TICK_MS` 目前是编译期常量，要做运行期可切换需把它变成每账户的运行时参数，并让午休计时（`lunchStartedNanos` 用挂钟）与状态栏倒计时一起跟着档位走。随机序列按跳消费，倍速**不影响**同种子可复现性。
 
 1. **Element Plus 按需引入**：`main.js` 目前 `app.use(ElementPlus)` + 注册全部图标，而全站只用到 `el-dialog`、`el-input-number` 与 `ElMessage`/`ElMessageBox`，白担约 960 kB（min）。改按需引入需逐页核对弹窗与提示样式。
 2. **生产化打包/部署说明**：当前只有开发模式运行手册，无部署文档。

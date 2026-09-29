@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.holdhunderdyear.game.constants.EventSkeletons;
 import com.holdhunderdyear.game.constants.GameConstants;
 import com.holdhunderdyear.game.constants.StockDefs;
+import com.holdhunderdyear.game.constants.StockPersonas;
 import com.holdhunderdyear.game.constants.StockDefs.StockDef;
 import com.holdhunderdyear.game.model.enums.EraCode;
 import com.holdhunderdyear.market.entity.GameEvent;
@@ -158,7 +159,14 @@ public class EventFactory {
 
         String stockName = targetStockId != null ? StockDefs.byId(targetStockId).name() : null;
         String title = fillSlots(variant.title(), stockName, rng);
-        String content = fillSlots(variant.text(), stockName, rng);
+        // STOCK 级事件 45% 改用该股专属事件文案：每只票有自己的新闻口径，
+        // 而不是白酒和钢铁共用一套"业绩超预期"。掷骰固定在此处消费，顺序可复现。
+        String textTemplate = variant.text();
+        if (targetStockId != null && rng.nextDouble() < 0.45) {
+            List<String> custom = StockPersonas.byId(targetStockId).news();
+            textTemplate = custom.get(rng.nextInt(custom.size()));
+        }
+        String content = fillSlots(textTemplate, stockName, rng);
         String followupContent = null;
         if (!skeleton.followupTexts().isEmpty()) {
             followupContent = fillSlots(

@@ -119,10 +119,10 @@ class EventFactoryTest {
         Random rng = new Random(20260905L);
         for (EventSkeleton skeleton : EventSkeletons.ALL) {
             for (EventSkeleton.Variant variant : skeleton.variants()) {
-                assertFalse(EventFactory.fillSlots(variant.text(), "鸱夷酒业", rng).contains("{"),
+                assertFalse(EventFactory.fillSlots(variant.text(), "九坛老窖", rng).contains("{"),
                         "unresolved slot in " + skeleton.code());
                 for (String followup : skeleton.followupTexts()) {
-                    assertFalse(EventFactory.fillSlots(followup, "鸱夷酒业", rng).contains("{"),
+                    assertFalse(EventFactory.fillSlots(followup, "九坛老窖", rng).contains("{"),
                             "unresolved slot in followup of " + skeleton.code());
                 }
             }
