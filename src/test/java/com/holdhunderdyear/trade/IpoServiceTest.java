@@ -1,10 +1,8 @@
 package com.holdhunderdyear.trade;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhunderdyear.common.BizException;
 import com.holdhunderdyear.game.model.enums.EraCode;
-import com.holdhunderdyear.market.MarketStateService;
-import com.holdhunderdyear.market.QuoteBoardRegistry;
+import com.holdhunderdyear.game.model.enums.GameMode;
 import com.holdhunderdyear.market.entity.SysUser;
 import com.holdhunderdyear.market.entity.UserGameState;
 import com.holdhunderdyear.market.entity.UserIpoRecord;
@@ -17,12 +15,14 @@ import com.holdhunderdyear.market.mapper.UserIpoRecordMapper;
 import com.holdhunderdyear.market.mapper.UserMessageMapper;
 import com.holdhunderdyear.market.mapper.UserScriptDayMapper;
 import com.holdhunderdyear.market.mapper.UserStockStateMapper;
+import com.holdhunderdyear.market.MarketStateService;
 import com.holdhunderdyear.market.quote.QuoteBoard;
+import com.holdhunderdyear.market.QuoteBoardRegistry;
 import com.holdhunderdyear.world.EraScheduler.EraInstance;
 import com.holdhunderdyear.world.WorldRandom;
 import com.holdhunderdyear.world.WorldSeeder;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.junit.jupiter.api.Test;
-import com.holdhunderdyear.game.constants.GameConstants;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -401,7 +401,7 @@ class IpoServiceTest {
     }
 
     private void forceEra(long userId, EraCode code) {
-        board(userId).setCurrentEra(new EraInstance(1, code, 1, GameConstants.TOTAL_DAYS, 0.0, Map.of()));
+        board(userId).setCurrentEra(new EraInstance(1, code, 1, GameMode.STANDARD.totalDays(), 0.0, Map.of()));
     }
 
     private QuoteBoard board(long userId) {

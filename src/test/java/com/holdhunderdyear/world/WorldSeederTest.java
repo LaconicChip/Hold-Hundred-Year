@@ -1,8 +1,8 @@
 package com.holdhunderdyear.world;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhunderdyear.game.constants.NpcDefs;
 import com.holdhunderdyear.game.constants.StockDefs;
+import com.holdhunderdyear.game.model.enums.GameMode;
 import com.holdhunderdyear.market.entity.StockInfo;
 import com.holdhunderdyear.market.entity.SysUser;
 import com.holdhunderdyear.market.entity.UserDailySnapshot;
@@ -17,8 +17,7 @@ import com.holdhunderdyear.market.mapper.UserEraMapper;
 import com.holdhunderdyear.market.mapper.UserGameStateMapper;
 import com.holdhunderdyear.market.mapper.UserScriptDayMapper;
 import com.holdhunderdyear.market.mapper.UserStockStateMapper;
-import com.holdhunderdyear.game.constants.GameConstants;
-import com.holdhunderdyear.game.model.enums.GameMode;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -219,7 +218,7 @@ class WorldSeederTest {
             assertEquals(userEras.get(i).getEndDay() + 1, userEras.get(i + 1).getStartDay(),
                     "era boundaries must be consecutive between era " + (i + 1) + " and " + (i + 2));
         }
-        assertEquals(GameConstants.DAYS_PER_YEAR + 1, userEras.get(4).getStartDay(),
+        assertEquals(GameMode.STANDARD.getDaysPerYear() + 1, userEras.get(4).getStartDay(),
                 "era5 must open year 2");
     }
 

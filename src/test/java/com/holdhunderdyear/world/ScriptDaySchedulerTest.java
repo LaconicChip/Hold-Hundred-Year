@@ -6,7 +6,6 @@ import com.holdhunderdyear.game.model.enums.ScriptType;
 import com.holdhunderdyear.world.EraScheduler.EraInstance;
 import com.holdhunderdyear.world.ScriptDayScheduler.ScriptDayInstance;
 import org.junit.jupiter.api.Test;
-import com.holdhunderdyear.game.constants.GameConstants;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -234,8 +233,8 @@ class ScriptDaySchedulerTest {
 
     @Test
     void ipoRunsTwoToThreeTimesPerYearWithUniqueNamesAndBoundedPrices() {
-        int dyp = GameConstants.DAYS_PER_YEAR;
-        int[][] yearRanges = {{1, dyp}, {dyp + 1, dyp * 2}, {dyp * 2 + 1, GameConstants.TOTAL_DAYS}};
+        int dyp = GameMode.STANDARD.getDaysPerYear();
+        int[][] yearRanges = {{1, dyp}, {dyp + 1, dyp * 2}, {dyp * 2 + 1, GameMode.STANDARD.totalDays()}};
         for (long seed = 1; seed <= MAX_SEED; seed++) {
             List<ScriptDayInstance> ipos = ofType(scheduler.roll(seed, eraScheduler.roll(seed)), ScriptType.IPO);
             assertTrue(ipos.size() >= 6 && ipos.size() <= 9, "seed " + seed + " IPO total " + ipos.size());
@@ -267,8 +266,8 @@ class ScriptDaySchedulerTest {
     void allDaysStayWithinHorizonAndSealRatiosStayBounded() {
         for (long seed = 1; seed <= MAX_SEED; seed++) {
             for (ScriptDayInstance d : scheduler.roll(seed, eraScheduler.roll(seed))) {
-                assertTrue(d.gameDay() >= 1 && d.gameDay() <= GameConstants.TOTAL_DAYS,
-                        "seed " + seed + " gameDay " + d.gameDay() + " outside 1.." + GameConstants.TOTAL_DAYS);
+                assertTrue(d.gameDay() >= 1 && d.gameDay() <= GameMode.STANDARD.totalDays(),
+                        "seed " + seed + " gameDay " + d.gameDay() + " outside 1.." + GameMode.STANDARD.totalDays());
                 if (d.type() == ScriptType.LIMIT_UP_ALL || d.type() == ScriptType.LIMIT_DOWN_ALL
                         || d.type() == ScriptType.CRASH_WEEK) {
                     JsonNode params = MAPPER.readTree(d.paramsJson());

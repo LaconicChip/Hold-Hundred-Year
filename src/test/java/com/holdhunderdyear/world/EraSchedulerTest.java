@@ -6,7 +6,6 @@ import com.holdhunderdyear.game.model.enums.EraCode;
 import com.holdhunderdyear.game.model.enums.GameMode;
 import com.holdhunderdyear.world.EraScheduler.EraInstance;
 import org.junit.jupiter.api.Test;
-import com.holdhunderdyear.game.constants.GameConstants;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -52,7 +51,7 @@ class EraSchedulerTest {
         for (long seed = 1; seed <= 1000; seed++) {
             List<EraInstance> eras = scheduler.roll(seed);
             assertEquals(1, eras.get(0).startDay(), "seed " + seed + " first era must start at day 1");
-            assertEquals(GameConstants.TOTAL_DAYS, eras.get(10).endDay(),
+            assertEquals(GameMode.STANDARD.totalDays(), eras.get(10).endDay(),
                 "seed " + seed + " last era must end on the final trading day");
             for (int i = 0; i < 10; i++) {
                 assertEquals(eras.get(i).endDay() + 1, eras.get(i + 1).startDay(),
@@ -63,9 +62,9 @@ class EraSchedulerTest {
 
     @Test
     void everyEraLastsAtLeastThreeDaysAndStaysWithinItsYear() {
-        // 纪元 1-4 属年1、5-7 属年2、8-11 属年3；年长由 GameConstants.DAYS_PER_YEAR 决定
+        // 纪元 1-4 属年1、5-7 属年2、8-11 属年3；年长由 GameMode.STANDARD.getDaysPerYear() 决定
         int[] eraYear = {0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 2};
-        int dyp = GameConstants.DAYS_PER_YEAR;
+        int dyp = GameMode.STANDARD.getDaysPerYear();
         for (long seed = 1; seed <= 1000; seed++) {
             List<EraInstance> eras = scheduler.roll(seed);
             for (int i = 0; i < 11; i++) {
@@ -84,7 +83,7 @@ class EraSchedulerTest {
         for (long seed = 1; seed <= 1000; seed++) {
             EraInstance era5 = scheduler.roll(seed).get(4);
             assertEquals(EraCode.CIRCUIT_BREAKER, era5.code());
-            assertEquals(GameConstants.DAYS_PER_YEAR + 1, era5.startDay(),
+            assertEquals(GameMode.STANDARD.getDaysPerYear() + 1, era5.startDay(),
                     "seed " + seed + " era 5 must open year 2");
             int len = era5.endDay() - era5.startDay() + 1;
             assertTrue(len >= 3 && len <= 5, "seed " + seed + " era 5 length " + len);

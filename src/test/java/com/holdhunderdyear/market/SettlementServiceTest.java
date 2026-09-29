@@ -1,18 +1,18 @@
 package com.holdhunderdyear.market;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhunderdyear.game.constants.StockDefs;
+import com.holdhunderdyear.game.model.enums.GameMode;
 import com.holdhunderdyear.market.entity.LoanRecord;
-import com.holdhunderdyear.market.entity.SysUser;
 import com.holdhunderdyear.market.entity.StockDailyBar;
+import com.holdhunderdyear.market.entity.SysUser;
 import com.holdhunderdyear.market.entity.UserDailySnapshot;
 import com.holdhunderdyear.market.entity.UserGameState;
 import com.holdhunderdyear.market.entity.UserMessage;
 import com.holdhunderdyear.market.entity.UserPosition;
 import com.holdhunderdyear.market.entity.UserStockState;
 import com.holdhunderdyear.market.mapper.LoanRecordMapper;
-import com.holdhunderdyear.market.mapper.SysUserMapper;
 import com.holdhunderdyear.market.mapper.StockDailyBarMapper;
+import com.holdhunderdyear.market.mapper.SysUserMapper;
 import com.holdhunderdyear.market.mapper.UserDailySnapshotMapper;
 import com.holdhunderdyear.market.mapper.UserGameStateMapper;
 import com.holdhunderdyear.market.mapper.UserMessageMapper;
@@ -20,8 +20,8 @@ import com.holdhunderdyear.market.mapper.UserPositionMapper;
 import com.holdhunderdyear.market.mapper.UserStockStateMapper;
 import com.holdhunderdyear.market.quote.QuoteBoard;
 import com.holdhunderdyear.world.WorldSeeder;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.junit.jupiter.api.Test;
-import com.holdhunderdyear.game.constants.GameConstants;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
@@ -165,7 +165,7 @@ class SettlementServiceTest {
 
         settlementService.settle(userId);
 
-        // 日息 = 10000 × 8% / DAYS_PER_YEAR(24) = 33.33（年化不变，一年交易日变少则单日计提更多）
+        // 日息 = 10000 × 8% / 一年交易日数(标准模式 24) = 33.33（年化不变，一年交易日变少则单日计提更多）
         assertEquals(0, sysUser(userId).getDebt().compareTo(new BigDecimal("10033.33")));
         List<LoanRecord> records = loans(userId);
         assertEquals(1, records.size());
@@ -328,14 +328,14 @@ class SettlementServiceTest {
     @Test
     void settleFinishesGameAtFinalDay() {
         long userId = worldSeeder.seedUser("st_fin1", "$2a$10$bcrypthash");
-        toSettling(userId, GameConstants.TOTAL_DAYS, 1100.0, null, null);
+        toSettling(userId, GameMode.STANDARD.totalDays(), 1100.0, null, null);
 
         settlementService.settle(userId);
 
         UserGameState after = gameState(userId);
         assertEquals("FINISHED", after.getMarketState());
         assertEquals("NORMAL_FINISH", after.getEndReason());
-        assertEquals(GameConstants.TOTAL_DAYS, after.getEndDay());
+        assertEquals(GameMode.STANDARD.totalDays(), after.getEndDay());
         assertTrue(messages(userId).stream().noneMatch(m -> "收盘结算".equals(m.getTitle())));
     }
 

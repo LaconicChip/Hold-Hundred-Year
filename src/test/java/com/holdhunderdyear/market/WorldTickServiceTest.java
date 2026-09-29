@@ -1,7 +1,8 @@
 package com.holdhunderdyear.market;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.holdhunderdyear.game.constants.GameConstants;
 import com.holdhunderdyear.game.constants.StockDefs;
+import com.holdhunderdyear.game.model.enums.GameMode;
 import com.holdhunderdyear.game.model.enums.SealState;
 import com.holdhunderdyear.market.entity.UserGameState;
 import com.holdhunderdyear.market.entity.UserStockState;
@@ -10,8 +11,8 @@ import com.holdhunderdyear.market.mapper.UserStockStateMapper;
 import com.holdhunderdyear.market.quote.Quote;
 import com.holdhunderdyear.market.quote.QuoteBoard;
 import com.holdhunderdyear.world.WorldSeeder;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.junit.jupiter.api.Test;
-import com.holdhunderdyear.game.constants.GameConstants;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
@@ -193,7 +194,7 @@ class WorldTickServiceTest {
     void circuitBreakerDayClosesMarketEarlyInMorningSession() {
         long userId = worldSeeder.seedUser("tick_cb1", "$2a$10$bcrypthash");
         UserGameState gs = gameState(userId);
-        gs.setCurrentDay(GameConstants.DAYS_PER_YEAR); // 下一天即熔断纪元首日
+        gs.setCurrentDay(GameMode.STANDARD.getDaysPerYear()); // 下一天即熔断纪元首日
         gs.setMarketState("CLOSED");
         userGameStateMapper.updateById(gs);
 

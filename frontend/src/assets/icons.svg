@@ -1,5 +1,5 @@
 <!-- 贴纸风 SVG 图标 sprite：墨色描边，currentColor 继承主题色。全站无 emoji
-     说明：flame / bull / bear / bank 为吉祥物类图标，保留自身配色；
+     说明：flame / bull / bear 为吉祥物类图标，保留自身配色；
      其余线性图标统一 currentColor，随所处文本色变化。 -->
 <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute;" aria-hidden="true">
   <symbol id="chart" viewBox="0 0 24 24">
@@ -83,15 +83,6 @@
     <path d="M12 16.3 V16.6 M12 16.6 Q11.3 17.2 10.8 16.7 M12 16.6 Q12.7 17.2 13.2 16.7"
       fill="none" stroke="#2b2620" stroke-width="1.25" stroke-linecap="round"/>
   </symbol>
-  <symbol id="bank" viewBox="0 0 24 24">
-    <path d="M12 2.5 L21 8.5 H3 Z" fill="#fffdf7" stroke="#2b2620"/>
-    <path d="M12 2.5 V1" stroke="#2b2620"/><path d="M12 1 H16 L12 3.5 Z" fill="#ff2436" stroke="#2b2620"/>
-    <rect x="5.8" y="10.5" width="2" height="6.5" fill="#fffdf7" stroke="#2b2620"/>
-    <rect x="11" y="10.5" width="2" height="6.5" fill="#fffdf7" stroke="#2b2620"/>
-    <rect x="16.2" y="10.5" width="2" height="6.5" fill="#fffdf7" stroke="#2b2620"/>
-    <rect x="4" y="17.5" width="16" height="1.8" fill="#fffdf7" stroke="#2b2620"/>
-    <rect x="2.8" y="20" width="18.4" height="1.8" fill="#fffdf7" stroke="#2b2620"/>
-  </symbol>
 
   <!-- ============ 线性工具图标（currentColor 继承） ============ -->
   <!-- 个股：K 线蜡烛 -->
@@ -134,12 +125,6 @@
     <path d="M17 5.2 H19.4 V7.8 a2.6 2.6 0 0 1-2.6 2.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
     <path d="M12 14 V17.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
     <path d="M8.6 20.6 H15.4 L16.6 17.4 H7.4 Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
-  </symbol>
-  <!-- 资金：硬币 -->
-  <symbol id="coin" viewBox="0 0 24 24">
-    <circle cx="12" cy="12" r="8.6" fill="none" stroke="currentColor" stroke-width="1.8"/>
-    <path d="M12 8.2 V15.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-    <path d="M9.8 10.4 H13.4 a1.8 1.8 0 0 1 0 3.6 H9.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
   </symbol>
   <!-- 借款：钞票 -->
   <symbol id="banknote" viewBox="0 0 24 24">
@@ -193,25 +178,10 @@
   <symbol id="arrow-down" viewBox="0 0 24 24">
     <path d="M12 4.6 V18.8 M6 12.8 L12 18.8 L18 12.8" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
   </symbol>
-  <!-- 刷新 -->
-  <symbol id="refresh" viewBox="0 0 24 24">
-    <path d="M20 12 a8 8 0 1 1-2.6-5.9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
-    <path d="M20.4 3.6 V7.8 H16.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
-  </symbol>
-  <!-- 搜索 -->
-  <symbol id="search" viewBox="0 0 24 24">
-    <circle cx="10.6" cy="10.6" r="6.4" fill="none" stroke="currentColor" stroke-width="1.9"/>
-    <path d="M15.4 15.4 L20.4 20.4" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/>
-  </symbol>
   <!-- 用户 / 密码 -->
   <symbol id="user" viewBox="0 0 24 24">
     <circle cx="12" cy="8.2" r="4.2" fill="none" stroke="currentColor" stroke-width="1.9"/>
     <path d="M4.6 20.4 a7.4 7.4 0 0 1 14.8 0" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
-  </symbol>
-  <symbol id="lock" viewBox="0 0 24 24">
-    <rect x="4.8" y="10.4" width="14.4" height="9.8" rx="2" fill="none" stroke="currentColor" stroke-width="1.9"/>
-    <path d="M8.2 10.4 V7.6 a3.8 3.8 0 0 1 7.6 0 V10.4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
-    <circle cx="12" cy="15.2" r="1.3" fill="currentColor" stroke="none"/>
   </symbol>
   <!-- 信息 -->
   <symbol id="info" viewBox="0 0 24 24">
