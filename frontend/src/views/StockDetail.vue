@@ -153,6 +153,7 @@ import SealStamp from '@/components/SealStamp.vue'
 import SvgIcon from '@/components/SvgIcon.vue'
 import DanmuBar from '@/components/DanmuBar.vue'
 import { priceCls, fmtPct, fmtPrice, fmtMoney } from '@/utils/format'
+import { TICK_MS } from '@/constants/rhythm'
 
 const route = useRoute()
 const router = useRouter()
@@ -276,7 +277,7 @@ async function loadMessages() {
 
 // 市场状态轮询（午休↔下午盘切换时交易面板随动，与 Market.vue 同款兜底）
 let statePoll = null
-// 分时轮询：3 秒一跳，与引擎节奏对齐（收盘态拉到完整 90 点，开销可忽略）
+// 分时轮询：一跳一拉，间隔与引擎跳速对齐（收盘态拉到完整 90 点，开销可忽略）
 let intradayPoll = null
 
 onMounted(async () => {
@@ -296,7 +297,7 @@ onMounted(async () => {
   await loadChartData()
   intradayPoll = setInterval(() => {
     loadChartData()
-  }, 3000)
+  }, TICK_MS)
   await loadPosition()
   await user.fetchAssets().catch(() => {})
   await loadMessages()

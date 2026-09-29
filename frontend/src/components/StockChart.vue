@@ -19,7 +19,7 @@
       <span class="empty-desc">
         {{ closed
           ? '分时曲线只活在内存里，服务重启后从快照价重新累积；收盘价与日K不受影响'
-          : '开盘后这里会跑出分时曲线，3 秒一跳实时延伸' }}
+          : `开盘后这里会跑出分时曲线，${TICK_SECONDS} 秒一跳实时延伸` }}
       </span>
     </div>
 
@@ -40,6 +40,7 @@ import {
 } from 'echarts/components'
 import VChart from 'vue-echarts'
 import { token } from '@/styles/theme'
+import { TICK_SECONDS } from '@/constants/rhythm'
 import SvgIcon from './SvgIcon.vue'
 
 // 按需注册 ECharts 模块（vue-echarts 要求显式 use）

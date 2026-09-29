@@ -14,7 +14,7 @@
     <div v-else-if="!result" class="empty state-card">
       <SvgIcon name="bear" class="state-mascot" />
       <span class="empty-title">终局数据尚未生成</span>
-      <span class="empty-desc">爆仓或走完 108 天，这里才会出结果</span>
+      <span class="empty-desc">爆仓或走完 {{ TOTAL_DAYS }} 天，这里才会出结果</span>
       <button class="btn btn-sm" @click="goMarket">回大盘</button>
     </div>
 
@@ -25,7 +25,7 @@
           <h2 class="cert-title">通关奖状</h2>
           <p class="cert-body">
             兹证明 股民<b>{{ user.username || '无名氏' }}</b>
-            历时 <span class="num">{{ result.endDay || 108 }}</span> 个交易日，
+            历时 <span class="num">{{ result.endDay || TOTAL_DAYS }}</span> 个交易日，
             总收益率 <span class="num up">{{ fmtPct(result.totalReturnPct) }}</span>、
             百年指数涨幅 <span class="num" :class="pctCls(result.indexGainPct)">{{ fmtPct(result.indexGainPct) }}</span>、
             最终段位<b>{{ result.finalTierName || '散户' }}</b>，特发此状，以资鼓励。
@@ -63,7 +63,7 @@
         </div>
       </section>
 
-      <!-- 108 天净资产 vs 指数曲线 -->
+      <!-- 全剧净资产 vs 指数曲线 -->
       <section class="card block-card">
         <div class="sec-head">
           <span class="card-title">
@@ -166,6 +166,7 @@ import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
 import VChart from 'vue-echarts'
 import { fmtPctDash as fmtPct, fmtMoneyDash as fmtMoney } from '@/utils/format'
+import { TOTAL_DAYS } from '@/constants/rhythm'
 
 // 按需注册 ECharts 模块（与 Assets 页一致）
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent])

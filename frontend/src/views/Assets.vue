@@ -262,11 +262,11 @@
       </template>
     </section>
 
-    <!-- 108 天资产 vs 指数曲线 -->
+    <!-- 全剧资产 vs 指数曲线 -->
     <section class="card">
       <div class="sec-head">
         <span class="card-title">
-          <SvgIcon name="chart" class="title-ic-sm" />108 天资产 vs 百年指数
+          <SvgIcon name="chart" class="title-ic-sm" />{{ TOTAL_DAYS }} 天资产 vs 百年指数
         </span>
       </div>
       <div v-if="!curveHasData" class="empty curve-empty">
@@ -321,6 +321,7 @@ import { ElMessage } from 'element-plus'
 import bullImg from '@/assets/img/bull.png'
 import pandaImg from '@/assets/img/panda.png'
 import { priceCls, fmtPct, fmtMoney } from '@/utils/format'
+import { TOTAL_DAYS } from '@/constants/rhythm'
 
 // 按需注册 ECharts 模块（与 StockChart 一致）
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent])
