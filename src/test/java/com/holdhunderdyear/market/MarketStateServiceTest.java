@@ -5,6 +5,7 @@ import com.holdhunderdyear.common.BizException;
 import com.holdhunderdyear.common.ErrorCode;
 import com.holdhunderdyear.game.constants.GameConstants;
 import com.holdhunderdyear.game.constants.StockDefs;
+import com.holdhunderdyear.game.model.enums.EraCode;
 import com.holdhunderdyear.game.model.enums.ScriptType;
 import com.holdhunderdyear.game.model.enums.SealState;
 import com.holdhunderdyear.game.model.enums.VolRegime;
@@ -239,8 +240,9 @@ class MarketStateServiceTest {
         assertFalse(msg.getIsRead());
         assertNull(msg.getTruthStatus());
         assertTrue(msg.getTitle().contains("BULL_START"), "title must contain era code, title=" + msg.getTitle());
-        assertNotNull(msg.getContent());
-        assertFalse(msg.getContent().isEmpty());
+        assertEquals(EraCode.BULL_START.getNarrative(), msg.getContent(),
+                "era notice must carry the era narrative, not a placeholder");
+        assertFalse(msg.getContent().contains("占位"), "no placeholder copy may reach players");
     }
 
     @Test
@@ -270,6 +272,8 @@ class MarketStateServiceTest {
         assertEquals("SYSTEM", msg.getSource());
         assertEquals("NOTIFY", msg.getType());
         assertTrue(msg.getTitle().contains(era2.getEraCode()), "title=" + msg.getTitle());
+        assertEquals(EraCode.valueOf(era2.getEraCode()).getNarrative(), msg.getContent(),
+                "era-switch notice must read the new era's narrative");
     }
 
     @Test

@@ -472,7 +472,7 @@ public class MarketStateService {
     }
 
     /** 纪元切换检测：newDay 所在纪元 != prevDay 所在纪元（prevDay=0 视为无纪元，首日常开）时
-     *  推送一条 SYSTEM/NOTIFY 消息（占位叙事，文案 Phase 8 替换）。 */
+     *  推送一条 SYSTEM/NOTIFY 消息，正文取 {@link EraCode#getNarrative()} 的纪元叙事。 */
     private void detectEraSwitchAndNotify(long userId, int newDay, int prevDay) {
         UserEra current = eraForDay(userId, newDay);
         if (current == null) {
@@ -488,7 +488,7 @@ public class MarketStateService {
         message.setSource("SYSTEM");
         message.setType("NOTIFY");
         message.setTitle("纪元切换：" + code.getName() + "（" + code.name() + "）");
-        message.setContent("新纪元开启，市场的空气都变了味道。（纪元叙事占位，Phase 8 替换）");
+        message.setContent(code.getNarrative());
         message.setGameDay(newDay);
         message.setIsRead(false);
         userMessageMapper.insert(message);

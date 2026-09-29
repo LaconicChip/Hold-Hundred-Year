@@ -9,12 +9,12 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 实时推送服务（Phase 8.3 占位 → Task 10.2 完整四通道）：基于 STOMP per-user 队列
+ * 实时推送服务（spec §13 四通道）：基于 STOMP per-user 队列
  * ({@code /user/{userId}/queue/*}) 下发行情/消息/通知/弹幕。destination 皆为
  * {@code /user/queue/{通道}}，经 {@link SimpMessagingTemplate#convertAndSendToUser} 投递。
  *
  * <p>过滤与悬挂：行情通道仅在用户在线且未处于快进悬挂({@link #suspendQuotes})时下发；
- * 消息/通知/弹幕一般为尽力而为，不做过您在过滤（前端决定是否展示）。
+ * 消息/通知/弹幕一般为尽力而为，不做在线过滤（前端决定是否展示）。
  * 全部推送均为尽力而为——失败仅记日志、绝不影响主流程（spec §13）。
  */
 @Slf4j
