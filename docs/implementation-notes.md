@@ -31,8 +31,9 @@
 1. **无 Redis / 无 MQ**；状态内存权威 + MySQL Checkpoint 落库。
 2. **随机唯一入口**：引擎/结算路径禁止 `new Random()` / `Math.random()`，一律 `WorldRandom.of(seed, salt)`；同 seed 同结果，快进与正常推进等价。
 3. **并发协议**：`QuoteBoardRegistry.worldLock(userId)` 覆盖调度/快进/交易，且"锁内开启事务、锁内提交"；`sys_user`/`user_position` 悲观锁 FOR UPDATE；`user_stock_state.version` 乐观锁。
-4. **节奏常量**（`GameConstants`）：45+45 跳、`TICK_MS=1000`、`LUNCH_MS=10000`、`DAYS_PER_YEAR=24`、`TOTAL_DAYS=72`。
-   纪元边界写在"36 交易日/年"基准日历里、由 `EraScheduler.scale()` 按当前年长等比映射，剧本撒点的三年区间同样推导——**想再调一局长度，只改 `DAYS_PER_YEAR`/`TICK_MS` 两个数**，前端镜像常量在 `frontend/src/constants/rhythm.js`（改后端记得同步）。
+4. **一局一档案，节奏只有 `GameMode` 一个真源**：跳数固定 45+45=90（波动标定按跳消费，改墙钟不动行情）；年长、跳毫秒、午休、涨跌停幅度、最短纪元长度都在 `game/model/enums/GameMode.java`（标准 24 天/年·1000ms·10s·±10%·纪元≥3 天；快速 12 天/年·500ms·5s·±20%·纪元≥2 天）。
+   纪元边界写在"36 交易日/年"基准日历里、由 `EraScheduler.scale()` 按本局年长等比映射，剧本撒点的区间同样推导——**加一档节奏 = GameMode 加一行**，不要往 `GameConstants` 里再加"当前节奏"常量（`TICK_MS/LUNCH_MS/DAYS_PER_YEAR/TOTAL_DAYS` 已于 2026-09-29 删除，它们和每局档案并存必然漂移）。
+   前端也不镜像节奏：倒计时与轮询读 `/api/market/state` 的 `tickMs/daySeconds/totalDays`，模式选择器读 `/api/game/modes`（原 `constants/rhythm.js` 已删）。
 5. **交易规则**：红涨绿跌、T+1、涨停只可卖不可买、普通股 ±10%（ST ±5%）——**快速模式档案下为 ±20%（ST ±10%）**，涨跌停幅度由 `Quote.limitPct` 承载（行情板恢复时按本局 `GameMode` 下发），ST 恒取本局幅度的一半、所以戴帽摘帽不用回改；佣金万 3 最低 5 元、印花税千 1（仅卖出）、追保 140% / 强平 120%、年化 8%（日息 = 年化/36）。
 6. **指数口径**：等权（`IndexCalculator`）；**开盘管线在所有价格变动完成后必须统一重算开盘指数**（跳空/复牌/剧本钉板全部计入，`e6fbc19` 修复，不得回退）。
 7. **视觉**：贴纸风三件套（2px 墨描边 / 硬阴影 / 圆角）、标题用 `--font-fun`、全站禁 emoji、图标走 sprite + currentColor、色值只走 `tokens.css` 令牌（唯一例外 `styles/theme.js`）。
@@ -48,21 +49,21 @@
 - **结算 12 步**：`SettlementService.settle` —— prev_close 双写、T+1 解冻、融资计息、追保/强平/爆仓、日评、段位、快照、**日K落库（在重置 OHL 之前）**、OHL 重置、状态落位。
 - **指数两个口径**：`user_game_state.prev_index` = 当日开盘基准（昨收，开盘写入、盘中只读）；`index_value` = 当前指数（每跳 checkpoint 覆盖）。熔断判定与弹幕触发读 `board.prevIndex`，盘中重启靠 prev_index 恢复基准（迁移 `V20260929_01`）。
 - **收盘涨跌幅**：结算写 `user_stock_state.day_change_pct`；收盘态行情用当日日K bar 还原 OHLC 与昨收（`9e22f14`）。原因：结算把 prev_close 双写成收盘价，实时口径恒 0。
-- **分时与日K**：`GET /api/stocks/{id}/quotes`、`GET /api/market/index` 返回**固定 90 点时间轴**（未到点为 null、午休断轴），前端按 `TICK_MS` 轮询；`GET /api/stocks/{id}/kline?limit=60` 读 `stock_daily_bar`（快进与正常推进同路径落库）。
+- **分时与日K**：`GET /api/stocks/{id}/quotes`、`GET /api/market/index` 返回**固定 90 点时间轴**（未到点为 null、午休断轴），前端按本局 `tickMs` 轮询；`GET /api/stocks/{id}/kline?limit=60` 读 `stock_daily_bar`（快进与正常推进同路径落库）。
 - **事件系统**：`EventFactory.maybeRoll` 单 salt 掷骰（`"event{day}.{tick}"`），PendingAction 入队时预填文案，flush 阶段零掷骰；消息三态 PENDING → CONFIRMED/DENIED。
 - **WS 四通道**：`/user/queue/{quotes,messages,notifications,danmu}`，握手 token 走 STOMP connectHeaders；**调度器只推进 WS 在线用户的世界**（刷新页面后必须补连，见 `user store ensureWsConnected`）。
 - **前后端口径陷阱**：① WS 推送的 `changePct` 是小数比率（0.0998），前端 store 统一 ×100 后再用（封板阈值 9.8、`fmtPct` 都依赖这点）；② `MarketSnapshot` 只有 `{tickIndex,indexValue,quotes:[{stockId,current,changePct}]}`，行情表的封板/停牌/ST/连板来自 REST 而非 WS，不要凭空造列；③ 统一响应 `R{code,msg,data}`，`code=0` 成功，401 清 token 跳登录；④ NPC 头像由 `NpcAvatar` 用 `import.meta.glob` 按 code 小写取图，JUSHI/LAOQIAN/XINJIMIN/CHENGXUYUAN 无 PNG、走姓氏色块兜底属正常。
-- **文案三级池（反重复）**：弹幕按"个股专属 → 板块 → 全局"混抽——`game/constants/StockPersonas.java`（24 股 × 绰号/股性/5 条专属弹幕/3 条专属事件文案）、`DanmuTexts.SECTOR_FLAVOR`（21 板块 × 4 条）、`DanmuTexts` 九个全局类别池。个股级触发先掷一个 double 决定层级（50/25/25），大盘级与横盘只走全局池。
+- **文案三级池（反重复）**：弹幕按"个股专属 → 板块 → 全局"混抽——`stock-personas.txt`（24 股 × 绰号/股性/8 条专属弹幕/6 条专属事件文案）、`danmu.txt` 的 21 板块池（×6）与 9 个全局类别池。个股级触发先掷一个 double 决定层级（50/25/25），大盘级与横盘只走全局池。
 - **事件文案按股定制**：`EventFactory` 在 STOCK 级事件命中目标股后，45% 用该股 `persona.news` 模板替换通用正文（仍走 `{stock}` 槽位渲染）。掷骰固定在该位置消费，快进与逐跳等价。
 - **重要消息"当面"提醒**：前端 `GameLayout` 每 5 秒拉一次未读（`stores/messages.js#pollAndPresent`），按 `constants/messageMeta.js#channelOf` 分流——AUTHORITY 或标题含千股跌停/涨停/熔断/救市/崩盘/制裁/黑7月/强平/停牌核查 → **头条大弹幕**（`HeadlineDanmu.vue`，`pointer-events:none`，飘过即走）；SYSTEM/INSIDER 与传闻追报 → **右下角浮层**（`NoticePopup.vue`，6 秒自动收起，可点进消息中心）；其余只留在消息中心。首轮静默（`primed`），刷新页面不会把历史未读全弹一遍。
   **为什么用轮询而不是 WS**：`PushService.pushMessage` 全仓没有任何生产调用点（消息只落库不推送），补齐要动 10 个写入方的构造器；5 秒拉未读一处解决且覆盖所有来源。要改回 WS，就把 `MessageService.publish()` 接上推送并删掉 `pollAndPresent` 的定时器。
-- **票名重起过 7 个**（鸱夷酒业→九坛老窖、片爷科技→芯火半导体、极乐传媒→造梦传媒、智算无穷→天算算力、阡陌商社→万家商社、百丈钢铁→炉火钢铁、通天信联→千里信联）：`StockDefs.java` 与 `frontend/src/constants/stocks.js` 必须同步，存量库的 `stock_info` 也要 UPDATE（新库由 WorldSeeder 重播）。
+- **票名重起过 7 个**（鸱夷酒业→九坛老窖、片爷科技→芯火半导体、极乐传媒→造梦传媒、智算无穷→天算算力、阡陌商社→万家商社、百丈钢铁→炉火钢铁、通天信联→千里信联）：股票档案只有后端一份 `StockDefs.java`（前端那份手抄表 `constants/stocks.js` 已删，板块名曾长期漂移），页面显示的名称/板块/发行价全部来自 `GET /api/stocks`；改名后存量库的 `stock_info` 也要 UPDATE（新库由 WorldSeeder 重播）。
 - **弹幕黑板（前端）**：`DanmuBar.vue` 5 条道 + 限速队列（240ms 一拍、道忙就等），按 `stores/messages.js` 的 `danmuVersion/danmuSeq` 取增量——**不要 watch 数组长度**，环形缓冲封顶到 30 条后长度不再变化，监听器会永久失效（就是历史上"不开关一次不飘、一开关糊一屏"的病根）。默认开启，重新开启时把游标推到最新，不回放过期积压。
 - **倒计时口径**：`MarketStateDTO.countdownTicks` 是**本会话剩余跳数**（早盘 `45 - tick_index`、午盘 `90 - tick_index`、非交易态 0、越界夹到 0），不是全天剩余跳数——早盘拿 90 做基准会让早盘倒计时正好是午盘的两倍。前端 `StatusBar` 用"截止时间戳"而不是本地每秒 -1：快速模式每跳 0.5 秒，倒计时是小数，`-1` 会跨过 0 变成 `-01:-0.5` 那种负数。
 - **重开一局清表**：`GameEndService.doRestart` 必须连 `stock_daily_bar` 一起清——它是日K数据源，漏清会让新的一局开局就带着上一局的蜡烛图。以后加"按用户"维度的新表，记得同步进这份清单。
 - **个股历史消息**：`MessageService.list` 的第 6/7 个参数是 `stockId` + `includeSector`。个股页用 `stockId&includeSector=true`，一次拿回"本票专属（stock_id 命中）+ 本票所属板块（sector 命中且 stock_id 为空）"；板块名由后端按 `StockDefs` 反查，前端不需要知道。板块级消息的 `sector` 由 `EventFactory` 在 SECTOR 级事件落库时写入（迁移 `V20260929_02`）。历史存量消息的 sector 为 NULL，只有升级后新产生的板块消息能被个股页捞到。
-- **文案库三处**：`StockPersonas`（24 股 × 8 弹幕 + 6 事件）、`SectorFlavor`（21 板块 + 大盘 × 权威/媒体/传闻含追报/玩梗各 2）、`NpcLines`（4 场景 × 5 + 8 NPC × 5 闲聊），加上 `DanmuTexts` 的九个全局池与 21 板块池，全部被 `StockPersonasTest` 的"全局零重复"总校验覆盖——任何一处抄重直接红。
-- **一局一档案（GameMode）**：标准/快速两套节奏在 `game/model/enums/GameMode.java` 里各自带值（年长、跳毫秒、午休、涨跌停、最短纪元长度），建局时选定写进 `user_game_state.game_mode`，**一局一选、本局进行中不可改**：注册不绑模式，开局前（大盘页状态条的模式选择器）与终局后（"再来一局"旁的选择器）都走 `POST /api/game/restart {mode}`；restart 允许"终局后"与"从未开过局"两种时机，其余一律拒绝。**不要**再用 `GameConstants.TICK_MS/DAYS_PER_YEAR/TOTAL_DAYS` 做运行时判定——那些只是标准模式的默认值，运行时一律 `GameMode.of(gs.getGameMode())`。调度器改成 500ms 心跳（`SCHEDULER_HEARTBEAT_MS`）+ 每账户按本局 `tickMs` 门控（`QuoteBoard.lastTickAtNanos`）；快进与测试直接调 `tickOne`，不看墙钟，所以"快进=逐跳"等价与同种子可复现都不受影响。前端从 `/api/market/state` 读 `mode/tickMs/daySeconds/totalDays/limitPct`，注册页可选模式。
+- **文案库五份文件**（`src/main/resources/content/`，见 §7）：`stock-personas.txt`（24 股 × 8 弹幕 + 6 事件）、`sector-flavor.txt`（21 板块 + 大盘 × 权威/媒体/传闻含追报/玩梗各 2）、`npc-lines.txt`（4 场景 × 5 + 8 NPC × 5 闲聊）、`danmu.txt`（9 全局池 + 21 板块池）、`event-copy.txt`（75 条事件骨架的标题/正文变体与追报）。前四份被 `StockPersonasTest` 的"全局零重复"总校验覆盖（≥700 条唯一），任何一处抄重直接红。
+- **一局一档案（GameMode）**：标准/快速两套节奏在 `game/model/enums/GameMode.java` 里各自带值（年长、跳毫秒、午休、涨跌停、最短纪元长度），建局时选定写进 `user_game_state.game_mode`，**一局一选、本局进行中不可改**：注册不绑模式，开局前（大盘页状态条的模式选择器）与终局后（"再来一局"旁的选择器）都走 `POST /api/game/restart {mode}`；restart 允许"终局后"与"从未开过局"两种时机，其余一律拒绝。**不要**再用 `GameConstants.TICK_MS/DAYS_PER_YEAR/TOTAL_DAYS` 做运行时判定——那些只是标准模式的默认值，运行时一律 `GameMode.of(gs.getGameMode())`。调度器改成 500ms 心跳（`SCHEDULER_HEARTBEAT_MS`）+ 每账户按本局 `tickMs` 门控（`QuoteBoard.lastTickAtNanos`）；快进与测试直接调 `tickOne`，不看墙钟，所以"快进=逐跳"等价与同种子可复现都不受影响。前端从 `/api/market/state` 读 `mode/tickMs/daySeconds/totalDays/limitPct`，模式清单（代码/名称/一句话说明/天数）由 `GET /api/game/modes` 下发给 `ModePicker`，注册不绑模式。
 - **前端菜单/路由**：`GameLayout.vue` 竖排菜单；`/market /stock/:id /assets /messages /leaderboard /summary /result`；涨跌与金额格式化统一在 `frontend/src/utils/format.js`。
 
 ## 4. 环境与运维
@@ -85,23 +86,39 @@
 ## 5. 验收状态
 
 - **Phase 0-13 全部完成并通过验收**（后端引擎/调度/交易/融资/事件/NPC/剧本/打新/WS/REST → 前端 8 页 + 组件 → 终局验收）。
-- 后端全量 **367 tests，0 Failures / 0 Errors**（人设与板块/NPC 文案零重复总校验、板块消息 includeSector、剧本日撒点不死循环、prev_index 基准、三类流水查询）；一局 72 交易日约 2 小时；前端 `npm run build` 通过，入口主包 15.39 kB（vendor 按 echarts / element-plus / vue 拆块）。
+- 后端全量 **388 tests，0 Failures / 0 Errors**（同种子可复现、快进=逐跳、人设与板块/NPC 文案零重复总校验、事件骨架 75 条与 event-copy.txt 一一对应、文案文件全部登记、剧本日撒点不死循环、prev_index 基准、三类流水查询、模式档案与 /api/game/modes）；标准局 72 交易日约 2 小时、快速局 36 天约 30 分钟；前端 `npm run build` 通过，入口主包 17.6 kB（vendor 按 echarts / element-plus / vue 拆块）。
 - 验收图集：`docs/design/shots/01-login … 08-result`（另含 03b 封板、05b 已买入两张状态图）。
-- 后续维护轮次（2026-09-29）：资产页三类流水接口与接入 → 结构整理与占位文案清理 → `prev_index` 根治 → 规格 §11 对齐 → 前端拆包。
+- 后续维护轮次（2026-09-29）：资产页三类流水接口与接入 → 结构整理与占位文案清理 → `prev_index` 根治 → 规格 §11 对齐 → 前端拆包 → 节奏压缩与弹幕/消息体验重做 → 一局一档案 GameMode → 倒计时三连修 → 涨跌停价由后端按本局下发 → **全部游戏文案外置到 `resources/content/`、删掉前端手抄的股票表与节奏镜像、清掉死常量/死配置/未用图标**。
 
 ## 6. 还值得做的事（都不是缺陷）
 
-0. ~~快速模式~~ **已完成**：`GameMode.QUICK` = 12 交易日/年 × 3 年 = 36 天、500ms/跳、午休 5 秒、涨跌停 ±20%（ST ±10%），建局时在注册页选择、整局不变。实机验证：QUICK 号 60 秒内出现 -20.00% 的单票日内跌幅（±10% 下不可能），state 回传 `QUICK / 1 of 36 / 500ms / 0.2`。
-0. **快速模式的两个已知余味**：① 收官前 4 天内申购的新股可能来不及走完 D+4 上市就终局（标准模式同样存在，短局更容易撞上）；② 快速模式下部分纪元只有 2 天，千股跌停链（跌停→救市→次日涨停）会顶到纪元边界。都不影响机制完整性，想更讲究可以给快速模式单独调剧本窗口。
-0. **（旧）快速模式方案存档**：再加一档短局——**36 个交易日**（`DAYS_PER_YEAR` 对半开：24→12，三年=36 天）+ **每天时长再减半**（`TICK_MS` 与 `LUNCH_MS` 各减半），整局约 30 分钟。落地要点：
-   ① 纪元边界已按 `DAYS_PER_YEAR` 等比缩放，但 12 天/年装 11 个纪元时 `MIN_ERA_LEN=3` 会顶不住，需要允许 2 天短纪元或合并纪元；
-   ② `ScriptDayScheduler` 的撒点夹逼与打新 D+2/D+4 窗口要按新年长重新校核（历史上这里就因窗口太小死循环过）；
-   ③ **必须做成"新建局时选模式"**而不是全局改常量：`user_game_state` 要记录本局的年长/跳毫秒，否则同种子复现与"快进=逐跳"等价会被破坏；
-   ④ 段位、称号、按天计息（年化 ÷ 年长）与晚报口径都要跟着本局模式走。
+- **快速模式的两个已知余味**：① 收官前 4 天内申购的新股可能来不及走完 D+4 上市就终局（标准模式同样存在，短局更容易撞上）；② 快速模式下部分纪元只有 2 天，千股跌停链（跌停→救市→次日涨停）会顶到纪元边界。都不影响机制完整性，想更讲究可以给快速模式单独调剧本窗口。
+- **把"当面提醒"改回 WS 推送**：见 §3，目前靠前端 5 秒轮询兜住，实时性差 0~5 秒。
+- **倍速按钮（1x/2x/4x）**：跳毫秒已经是每局档案里的值（`GameMode.getTickMs()`），再做倍速只需把它降级成"每账户运行时参数 + 档案默认值"，并让午休计时（`lunchStartedNanos` 用挂钟）与状态栏倒计时随动。随机序列按跳消费，倍速**不影响**同种子可复现性。
+- **Element Plus 按需引入**：`main.js` 目前 `app.use(ElementPlus)` + 注册全部图标，而全站只用到 `el-dialog`、`el-input-number` 与 `ElMessage`/`ElMessageBox`，白担约 960 kB（min）。改按需引入需逐页核对弹窗与提示样式。
+- **生产化打包/部署说明**：当前只有开发模式运行手册，无部署文档。
+- **纪元叙事文案**：11 条在 `game/model/enums/EraCode.java` 的 `narrative` 字段，是唯一还留在 Java 里的产品文案（测试断言"通知正文等于该字段"，改起来也安全）。
 
-0. **把"当面提醒"改回 WS 推送**：见 §3 最后一条，目前靠前端 5 秒轮询兜住，实时性差 0~5 秒。
-1. **倍速按钮（1x/2x/4x）**：`TICK_MS` 目前是编译期常量，要做运行期可切换需把它变成每账户的运行时参数，并让午休计时（`lunchStartedNanos` 用挂钟）与状态栏倒计时一起跟着档位走。随机序列按跳消费，倍速**不影响**同种子可复现性。
+## 7. 文案维护（改文案不用改代码）
 
-2. **Element Plus 按需引入**：`main.js` 目前 `app.use(ElementPlus)` + 注册全部图标，而全站只用到 `el-dialog`、`el-input-number` 与 `ElMessage`/`ElMessageBox`，白担约 960 kB（min）。改按需引入需逐页核对弹窗与提示样式。
-2. **生产化打包/部署说明**：当前只有开发模式运行手册，无部署文档。
-3. **纪元叙事文案**：11 条在 `game/model/enums/EraCode.java` 的 `narrative` 字段，属产品文案，可随时改（测试只断言"通知正文等于该字段"）。
+全部游戏文案在 `src/main/resources/content/` 五个纯文本文件里，**中文一行一条**，改完重启后端即生效；格式故意不用 JSON/YAML，避免引号与转义把文案搞成代码。
+
+| 文件 | 管什么 | 分组写法 |
+| --- | --- | --- |
+| `danmu.txt` | 股吧弹幕：9 个全局类别池（涨停/跌停/急拉/跳水/大跌/大涨/横盘…）+ 21 个板块池 | `@LIMIT_UP`、`@SECTOR:白酒` |
+| `stock-personas.txt` | 24 只票的绰号、股性、专属弹幕（8 条）、专属事件文案（6 条） | `@5:DANMU`（数字 = 股票 id） |
+| `sector-flavor.txt` | 21 板块 + 大盘的权威公告/媒体报道/股吧传闻/玩梗 | `@白酒:RUMOR`，条目 `标题\|正文[\|追报]` |
+| `npc-lines.txt` | 4 个角色线场景台词 + 8 位 NPC 的性格闲聊 | `@SCENE:DAMA_RECOMMEND`、`@CHATTER:DAMA` |
+| `event-copy.txt` | 75 条事件骨架的标题/正文变体与证实·辟谣追报 | `@fund-big-order`，条目 `标题\|正文` / `sector:白酒\|标题\|正文` / `>追报` |
+
+规则：`#` 开头是注释、空行忽略、`@分组名` 开一个分组、其余每行一条。**分组缺失或为空会在启动时直接抛错**（宁可起不来，也不要运行时静默没文案）。
+
+槽位：`{stock}` 换成股票名（仅个股类可用）、`{amount}` 换成金额、`{user}` 换成 NPC 或玩家名。禁 emoji（有测试拦）。
+
+改完必跑 `mvn test`，这些测试就是文案的 lint：
+
+- `ContentCatalogTest`：目录里每个 .txt 都必须已在 `ContentCatalog.loadAll()` 登记（新增文件忘了登记会红）。
+- `StockPersonasTest`：股数/板块覆盖齐、跨全部文案池**零重复**（重复凑数会红）、无 emoji、无"占位/TODO"。
+- `EventSkeletonsTest`：骨架与 `event-copy.txt` 分组**一一对应**、每条骨架 ≥2 变体、槽位白名单、追报与来源匹配。
+
+注意：**增删文案条目会改变同种子下的抽取结果**（随机数按序消费）。引擎行为、可复现性与"快进=逐跳"等价都不受影响，但老存档用同一个种子 replay 出的事件/弹幕序列会和以前不同——这是改文案的预期代价，不必为它做兼容分支。

@@ -1,7 +1,7 @@
 # 你持有一百年看看
 
 A 股模拟炒股游戏：一局 72 个交易日（3 年 × 24 天），约 1 分 40 秒一个交易日、**整局约 2 小时**，11 个历史纪元剧本；
-开户时也可选**快速模式**（36 个交易日、约 30 分钟、涨跌停 ±20%），
+开每一局时可选**快速模式**（36 个交易日、约 30 分钟、涨跌停 ±20%）——模式一局一选，注册不绑定，
 世界种子可复现，支持保证金交易与强平，双结局（爆仓天台 / 通关成绩单）。单机多用户。
 
 - 后端：Spring Boot 4.1.1 / Java 17 / MySQL / MyBatis-Plus / WebSocket(STOMP)，**不使用 Redis 与 MQ**
@@ -22,8 +22,9 @@ src/main/java/com/holdhunderdyear/
              HaltService、ProgressService）
   ws/        实时推送四通道 /user/queue/{quotes,messages,notifications,danmu}
   web/       REST 控制器（Auth/Stock/Trade/Loan/Ipo/Market/Message/Me/Game）
-  game/      constants（GameConstants、StockDefs、EraDefs、EventSkeletons、DanmuTexts、NpcDefs、Titles）
-             model/dto（接口出参）、model/enums（状态机与纪元等枚举）
+  game/      constants（引擎标定 GameConstants、静态档案 StockDefs/EraDefs/NpcDefs/Titles、事件骨架结构 EventSkeletons）
+             content（全部游戏文案的读取入口：ContentCatalog + DanmuTexts/StockPersonas/SectorFlavor/NpcLines/EventCopy）
+             model/dto（接口出参）、model/enums（状态机、纪元、一局模式 GameMode 等枚举）
   market/entity/ + market/mapper/  MyBatis-Plus 实体与 Mapper（15 张表）
   config/ + common/  安全与 JWT、WebSocket、统一响应 R / PageResult / BizException
 
@@ -31,13 +32,18 @@ src/main/resources/db/
   schema.sql                        全量建表（新库直接执行这一个文件）
   V20260914_01__*.sql 等            旧库增量迁移脚本（需手工执行，见 docs/db-migrations.md）
 
+src/main/resources/content/
+  danmu.txt / stock-personas.txt / sector-flavor.txt / npc-lines.txt / event-copy.txt
+  全部游戏文案（弹幕、24 股人设、板块与大盘消息、NPC 台词、75 条事件骨架的标题正文与追报）
+  —— 改文案只改这五个 txt，不动 Java；格式与校验见 docs/implementation-notes.md §7
+
 frontend/src/
   views/        8 个页面（Login/Market/StockDetail/Assets/Messages/Leaderboard/DailySummary/GameResult）
-  components/   17 个组件（GameLayout 竖向菜单、StockChart 分时、KlineChart 日K、QuoteTable 等）
+  components/   19 个组件（GameLayout 竖向菜单、StockChart 分时、KlineChart 日K、QuoteTable 等）
   api/          axios 接口层 + ws.js（STOMP 四通道，握手带 JWT）
   stores/       Pinia（user/market/quotes/messages）
   utils/        通用格式化（涨跌配色与金额/百分比展示，跨页面共用）
-  constants/    消息来源与三态元数据、股票常量
+  constants/    messageMeta.js（消息来源/三态/呈现通道的展示元数据）——股票档案与节奏都不在前端镜像
   styles/       tokens.css（全部设计令牌）+ theme.js（ECharts 令牌镜像，唯一允许出现色值的文件）
   assets/       icons.svg（贴纸风图标 sprite）+ img/*.png（吉祥物与 NPC 头像）
 
@@ -79,7 +85,7 @@ cd frontend; npm run build
 1. **`mvnw.cmd` 在某些机器上会直接失败**（报 `Cannot index into a null array` / `Cannot start maven from wrapper`）：
    它内部固定调用 Windows PowerShell 5.1 解析 `~/.m2`。绕法＝直接用 wrapper 已下载好的 Maven：
    `& "$env:USERPROFILE\.m2\wrapper\dists\apache-maven-<ver>\*\apache-maven-<ver>\bin\mvn.cmd" test`（需先设 `$env:JAVA_HOME` 指向 JDK 17）。
-2. **测试没有 H2 兜底**：`hold_year_test` 不存在会直接 227 条 `Unknown database` 报错，按上面第 1 步建库即可。
+2. **测试没有 H2 兜底**：`hold_year_test` 不存在会直接大面积 `Unknown database` 报错，按上面第 1 步建库即可。
 3. **旧库必须手工执行迁移脚本**（`docs/db-migrations.md`），否则「收盘涨跌幅 / 日K / 指数昨收」相关功能报错。
 4. 前端页面依赖后端 8080，**先起后端再起前端**。
 
@@ -93,6 +99,7 @@ cd frontend; npm run build
 | 实现备忘 | `docs/implementation-notes.md` |
 | 视觉基准 | `docs/design/style-tile.html` |
 | 数据库迁移 | `docs/db-migrations.md` |
+| 游戏文案 | `src/main/resources/content/`（5 个 .txt，改文案不用改代码） |
 | 验收截图 | `docs/design/shots/` |
 
 ## 改动前必读的硬约束
@@ -102,6 +109,6 @@ cd frontend; npm run build
 - 引擎/结算路径禁用 `new Random()` / `Math.random()`，一律 `WorldRandom.of(seed, salt)`；同 seed 必同结果，快进与正常推进等价。
 - 并发：`QuoteBoardRegistry.worldLock(userId)` 覆盖调度/快进/交易；`sys_user`、`user_position` 悲观锁；`user_stock_state.version` 乐观锁。
 - 开盘管线在所有价格变动完成后**必须统一重算开盘指数**（`e6fbc19` 修复，不得回退）。
-- 交易规则：T+1、涨停只可卖不可买、±10%（ST ±5%）、佣金万 3 最低 5 元、印花税千 1（卖出）、追保 140% / 强平 120%、年化 8%。
+- 交易规则：T+1、涨停只可卖不可买、涨跌停按本局模式（标准 ±10%/ST ±5%，快速 ±20%/ST ±10%）、佣金万 3 最低 5 元、印花税千 1（卖出）、追保 140% / 强平 120%、年化 8%。
 - 视觉：色值只走 `tokens.css` 令牌（仅 `styles/theme.js` 例外）、全站禁 emoji、图标走 SVG sprite。
 - 任何触及开盘管线/结算/引擎的改动，必跑 `VolatilityEngineTest`、`FastForwardServiceTest`、`TradeConcurrencyTest`、`WorldTickServiceTest`。
