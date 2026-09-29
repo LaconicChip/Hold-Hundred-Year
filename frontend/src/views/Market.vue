@@ -80,9 +80,8 @@ function viewResult() {
 }
 
 onMounted(async () => {
-  // 无行情数据时用基准价初始化，避免表格空白
-  if (!quotes.rows || !Object.keys(quotes.rows).length) quotes.initFromDefs()
-  // 全量行情兜底（已收盘/WS 未推时展示最新落库价），失败不阻塞大盘
+  // 全量行情：顺带把股票静态档案（名称/板块/发行价）灌进 store；
+  // 已收盘或 WS 未推时展示最新落库价，失败不阻塞大盘
   try {
     quotes.applyStockList(await fetchStockList())
   } catch {

@@ -142,7 +142,6 @@ import { useQuotesStore } from '@/stores/quotes'
 import { useMarketStore } from '@/stores/market'
 import { useUserStore } from '@/stores/user'
 import { useMessagesStore } from '@/stores/messages'
-import { getStockById } from '@/constants/stocks'
 import { fetchStockList, fetchStockQuotes, fetchStockKline } from '@/api/stocks'
 import StockChart from '@/components/StockChart.vue'
 import KlineChart from '@/components/KlineChart.vue'
@@ -168,7 +167,7 @@ const stockId = computed(() => {
   return isNaN(id) ? 0 : id
 })
 const stock = computed(
-  () => getStockById(stockId.value) || { id: 0, name: '未知', code: '', sector: '', basePrice: 0 }
+  () => quotes.defOf(stockId.value) || { id: 0, name: '未知', code: '', sector: '', basePrice: 0 }
 )
 
 // 实时行情：quotes store rows[stockId]（WS 快照 + REST 全量兜底）
@@ -276,9 +275,8 @@ let statePoll = null
 let intradayPoll = null
 
 onMounted(async () => {
-  // 无行情数据时用基准价初始化，避免现价空白
-  if (!quotes.rows || !Object.keys(quotes.rows).length) quotes.initFromDefs()
-  // 全量行情兜底：收盘/WS 未推时展示最新落库价而非基准价（与 Market.vue 同款）
+  // 全量行情兜底：收盘/WS 未推时展示最新落库价而非基准价（与 Market.vue 同款），
+  // 顺带补齐静态档案——直接刷新进本页时 store 里可能一条都没有
   try {
     quotes.applyStockList(await fetchStockList())
   } catch {
