@@ -41,15 +41,15 @@ frontend/src/
   assets/       icons.svg（贴纸风图标 sprite）+ img/*.png（吉祥物与 NPC 头像）
 
 docs/
-  superpowers/specs/  设计规格（最高权威）
-  superpowers/plans/  实现计划（Phase 0-13 已全部完成）
-  design/             style-tile.html 视觉基准、mascot-*.jpg 吉祥物定稿、shots/ 验收截图
-  db-migrations.md    旧库升级说明
+  spec.md                  设计规格（最高权威：架构/数值/API/视觉）
+  implementation-notes.md  实现备忘（冻结决策、机制速查、运维手册、验收状态）
+  db-migrations.md         旧库升级说明
+  design/                  style-tile.html 视觉基准、mascot-*.jpg 吉祥物定稿、shots/ 验收截图
 ```
 
 ## 快速开始
 
-前置：JDK 17、Node.js、MySQL 8（开发库 `hold_year`、测试库 `hold_year_test`，账号见
+前置：PowerShell 7、JDK 17、Node.js、MySQL 8（开发库 `hold_year`、测试库 `hold_year_test`，账号见
 `src/main/resources/application.properties`）。
 
 ```powershell
@@ -88,13 +88,15 @@ cd frontend; npm run build
 
 | 文档 | 路径 |
 | --- | --- |
-| 设计规格 | `docs/superpowers/specs/2026-09-04-stock-sim-game-design.md` |
-| 实现计划 | `docs/superpowers/plans/2026-09-04-stock-sim-game-implementation.md` |
+| 设计规格 | `docs/spec.md` |
+| 实现备忘 | `docs/implementation-notes.md` |
 | 视觉基准 | `docs/design/style-tile.html` |
 | 数据库迁移 | `docs/db-migrations.md` |
 | 验收截图 | `docs/design/shots/` |
 
 ## 改动前必读的硬约束
+
+完整清单见 `docs/implementation-notes.md`（§1 痛点结论 P1-P15、§2 硬约束、§3 机制速查）。要点：
 
 - 引擎/结算路径禁用 `new Random()` / `Math.random()`，一律 `WorldRandom.of(seed, salt)`；同 seed 必同结果，快进与正常推进等价。
 - 并发：`QuoteBoardRegistry.worldLock(userId)` 覆盖调度/快进/交易；`sys_user`、`user_position` 悲观锁；`user_stock_state.version` 乐观锁。
