@@ -28,6 +28,9 @@ public class UserMessage {
 
     private Long stockId;
 
+    /** 板块级消息的归属板块（与 StockDefs.sector 同集合）；单票与全市场消息为 null。 */
+    private String sector;
+
     private Long followupOf;
 
     private Boolean isRead;

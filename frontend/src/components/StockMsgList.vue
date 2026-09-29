@@ -24,6 +24,8 @@
           <span class="src" :class="srcCls(m.source)">{{ srcLabel(m.source) }}</span>
           <b class="msg-name">{{ m.name || m.author || '市场' }}</b>
           <span class="time">{{ m.time || '' }}</span>
+          <!-- 板块级消息：不是点名这只票，而是它所在的板块 -->
+          <span v-if="!m.stockId && m.sector" class="tag">{{ m.sector }}板块</span>
           <!-- 三态文字徽章：未证实/已证实/已辟谣 -->
           <span v-if="m.truthStatus" class="truth" :class="truthCls(m.truthStatus)">
             {{ truthLabel(m.truthStatus) }}

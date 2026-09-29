@@ -29,6 +29,9 @@ public class MessageDTO {
 
     private Long stockId;
 
+    /** 板块级消息的归属板块；单票/全市场消息为 null */
+    private String sector;
+
     /** 追报原消息 id；普通消息为 null */
     private Long followupOf;
 

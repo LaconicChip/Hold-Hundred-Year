@@ -2,18 +2,19 @@
 import http from './http'
 
 // 消息列表（分页 + 过滤）
-// GET /api/messages?source=&truthStatus=&unreadOnly=&gameDay=&stockId=&page=1&size=20
+// GET /api/messages?source=&truthStatus=&unreadOnly=&gameDay=&stockId=&includeSector=&page=1&size=20
 export function fetchMessages({
   source = '',
   truthStatus = '',
   unreadOnly = false,
   gameDay = '',
   stockId = '',
+  includeSector = false,
   page = 1,
   size = 20
 } = {}) {
   return http.get('/api/messages', {
-    params: { source, truthStatus, unreadOnly, gameDay, stockId, page, size }
+    params: { source, truthStatus, unreadOnly, gameDay, stockId, includeSector, page, size }
   })
 }
 

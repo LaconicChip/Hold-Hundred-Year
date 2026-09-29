@@ -270,7 +270,8 @@ function fmtSigned(v) {
 // 之前是拉全局最新 100 条再在前端挑，一天产 3~6 条消息，十几天前的个股新闻就再也翻不到了。
 async function loadMessages() {
   try {
-    await messages.fetchMessages({ stockId: stockId.value, size: 60 })
+    // includeSector：本票专属 + 本票所属板块的新闻一起要（板块级消息没有 stockId）
+    await messages.fetchMessages({ stockId: stockId.value, includeSector: true, size: 60 })
   } catch {
     // 消息接口失败不阻塞个股详情
   }

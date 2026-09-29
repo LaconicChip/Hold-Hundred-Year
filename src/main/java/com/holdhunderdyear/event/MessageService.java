@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.holdhunderdyear.common.BizException;
 import com.holdhunderdyear.common.ErrorCode;
 import com.holdhunderdyear.common.PageResult;
+import com.holdhunderdyear.game.constants.StockDefs;
 import com.holdhunderdyear.game.model.dto.MessageDTO;
 import com.holdhunderdyear.market.entity.UserMessage;
 import com.holdhunderdyear.market.mapper.UserMessageMapper;
@@ -31,13 +32,14 @@ public class MessageService {
 
     /**
      * 分页查询某用户消息。可选筛选：source（须为 Source 枚举名，否则 400）、
-     * truthStatus、unreadOnly（仅未读）、gameDay、stockId（只看某只票的历史消息，个股详情页用）；
+     * truthStatus、unreadOnly（仅未读）、gameDay、stockId（只看某只票的历史消息，个股详情页用）、
+     * includeSector（配合 stockId：连同本票所属板块的板块级消息一起返回）；
      * 按 createdAt,id 倒序。page 默认 1、size 默认 20。
      */
     @Transactional(readOnly = true)
     public PageResult<MessageDTO> list(long userId, String source, String truthStatus,
                                        boolean unreadOnly, Integer gameDay, Long stockId,
-                                       int page, int size) {
+                                       boolean includeSector, int page, int size) {
         if (source != null && !source.isBlank()
                 && Arrays.stream(EventSkeleton.Source.values()).noneMatch(s -> s.name().equals(source))) {
             throw new BizException(ErrorCode.PARAM_ERROR);
@@ -48,9 +50,13 @@ public class MessageService {
                 .eq(truthStatus != null && !truthStatus.isBlank(), UserMessage::getTruthStatus, truthStatus)
                 .eq(unreadOnly, UserMessage::getIsRead, false)
                 .eq(gameDay != null, UserMessage::getGameDay, gameDay)
-                .eq(stockId != null, UserMessage::getStockId, stockId)
+                .eq(stockId != null && !includeSector, UserMessage::getStockId, stockId)
                 .orderByDesc(UserMessage::getCreatedAt)
                 .orderByDesc(UserMessage::getId);
+
+        if (stockId != null && includeSector) {
+            applyStockOrSector(wrapper, stockId);
+        }
 
         List<UserMessage> all = userMessageMapper.selectList(wrapper);
         long total = all.size();
@@ -62,6 +68,21 @@ public class MessageService {
         List<MessageDTO> records = all.subList(from, to).stream()
                 .map(this::toDto).collect(Collectors.toList());
         return new PageResult<>(records, total);
+    }
+
+    /**
+     * 个股页口径：本票专属消息（stock_id 命中）+ 本票所属板块的板块级消息
+     * （sector 命中且 stock_id 为空）。板块名由后端按 StockDefs 反查，前端不必知道。
+     */
+    private void applyStockOrSector(LambdaQueryWrapper<UserMessage> wrapper, long stockId) {
+        String sector;
+        try {
+            sector = StockDefs.byId(stockId).sector();
+        } catch (IllegalArgumentException e) {
+            throw new BizException(ErrorCode.PARAM_ERROR);
+        }
+        wrapper.and(w -> w.eq(UserMessage::getStockId, stockId)
+                .or(o -> o.isNull(UserMessage::getStockId).eq(UserMessage::getSector, sector)));
     }
 
     /** 标记该用户一条消息为已读；不存在（或不属于该用户）抛 NOT_FOUND。 */
@@ -96,6 +117,7 @@ public class MessageService {
         dto.setTitle(m.getTitle());
         dto.setContent(m.getContent());
         dto.setStockId(m.getStockId());
+        dto.setSector(m.getSector());
         dto.setFollowupOf(m.getFollowupOf());
         dto.setIsRead(m.getIsRead());
         dto.setGameDay(m.getGameDay());

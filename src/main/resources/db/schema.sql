@@ -113,6 +113,7 @@ CREATE TABLE IF NOT EXISTS user_message (
     title VARCHAR(128) NOT NULL,
     content TEXT NULL,
     stock_id BIGINT NULL,
+    sector VARCHAR(16) NULL,
     followup_of BIGINT NULL,
     is_read TINYINT(1) NOT NULL DEFAULT 0,
     game_day INT NOT NULL,
