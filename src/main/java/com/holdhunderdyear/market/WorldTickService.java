@@ -128,6 +128,9 @@ public class WorldTickService {
             if (state != MarketState.MORNING_OPEN && state != MarketState.AFTERNOON_OPEN) {
                 return;
             }
+            // 心跳门控的时间戳必须"每跳"打一次：放到 persistSnapshot 里就变成每 5 跳才更新，
+            // 中间几拍调度器都以为早到点了，会以心跳速度连冲 5 跳，倒计时于是突然掉好几秒。
+            board.setLastTickAtNanos(System.nanoTime());
             if (board.getCurrentEra() == null) {
                 marketStateService.rederiveDayContext(userId, board);
             }
@@ -235,7 +238,6 @@ public class WorldTickService {
             state.setLowPrice(BigDecimal.valueOf(quote.getLow()));
             userStockStateMapper.updateById(state);
         }
-        board.setLastTickAtNanos(System.nanoTime());
         gs.setTickIndex(board.getTickIndex());
         gs.setIndexValue(board.getIndexValue());
         userGameStateMapper.updateById(gs);

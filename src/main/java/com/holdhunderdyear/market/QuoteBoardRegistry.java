@@ -56,6 +56,11 @@ public class QuoteBoardRegistry {
         });
     }
 
+    /** 只读已缓存的行情板；没有缓存返回 null（绝不顺手查库加载，供高频心跳做廉价预判）。 */
+    public QuoteBoard peek(long userId) {
+        return boards.get(userId);
+    }
+
     /** 丢弃缓存板（开盘前强制重载 / 重开 / 登出清理用）。 */
     public void evict(long userId) {
         boards.remove(userId);

@@ -174,6 +174,22 @@ class WorldTickServiceTest {
     }
 
     @Test
+    void everyTickStampsTheHeartbeatGateEvenWhenItDoesNotPersist() {
+        // 门控时间戳必须"每跳"打：一旦跟着 persistSnapshot（每 5 跳一次）走，
+        // 中间几拍调度器会以为早到点、以心跳速度连冲 5 跳，倒计时就突然掉好几秒。
+        long userId = worldSeeder.seedUser("tick_gate1", "$2a$10$bcrypthash");
+        marketStateService.startDay(userId);
+        QuoteBoard board = quoteBoardRegistry.getOrLoad(userId);
+        assertEquals(0L, board.getLastTickAtNanos(), "fresh board has no tick stamp yet");
+
+        worldTickService.tickOne(userId); // tick 0 -> 1：不是落库节拍（(tick+1) % 5 != 0）
+
+        assertEquals(1, board.getTickIndex(), "one tick advanced");
+        assertTrue(board.getLastTickAtNanos() > 0L,
+                "the tick must stamp the gate even on a tick that does not persist a snapshot");
+    }
+
+    @Test
     void circuitBreakerDayClosesMarketEarlyInMorningSession() {
         long userId = worldSeeder.seedUser("tick_cb1", "$2a$10$bcrypthash");
         UserGameState gs = gameState(userId);

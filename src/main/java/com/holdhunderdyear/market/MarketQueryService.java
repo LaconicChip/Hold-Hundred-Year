@@ -136,12 +136,13 @@ public class MarketQueryService {
             dto.setEraName(EraCode.valueOf(era.getEraCode()).getName());
         }
         dto.setTier(gameState.getTier());
-        dto.setTickIndex(gameState.getTickIndex());
+        int liveTick = liveTickIndex(userId, gameState);
+        dto.setTickIndex(liveTick);
         MarketState marketState = MarketState.valueOf(gameState.getMarketState());
         boolean trading = marketState == MarketState.MORNING_OPEN || marketState == MarketState.AFTERNOON_OPEN;
         // 倒计时按"当前这一段还剩几跳"算：早盘只有 45 跳，用全天 90 跳做基准会让早盘
         // 显示成午盘的两倍长（tick_index 是全天绝对跳号 0..90）。
-        dto.setCountdownTicks(remainingTicksInSession(marketState, gameState.getTickIndex()));
+        dto.setCountdownTicks(remainingTicksInSession(marketState, liveTick));
         dto.setWorldSeed(String.valueOf(gameState.getWorldSeed()));
         // 指数块当日涨跌幅（大盘页 StatusBar）：昨收取前日快照，无前日快照按基期 1000
         double prevIndex = GameConstants.INITIAL_INDEX;
@@ -488,6 +489,15 @@ public class MarketQueryService {
                 .eq(UserMessage::getUserId, userId)
                 .eq(UserMessage::getGameDay, day)
                 .orderByAsc(UserMessage::getId));
+    }
+
+    /**
+     * 当前跳号以内存行情板为准（P9 内存权威）：user_game_state.tick_index 每 5 跳才落一次库，
+     * 用它做倒计时会让前端"停一下、然后突然跳好几秒"。板子未缓存（离线/刚重启）时退回库值。
+     */
+    private int liveTickIndex(long userId, UserGameState gs) {
+        QuoteBoard board = quoteBoardRegistry.peek(userId);
+        return board != null ? board.getTickIndex() : gs.getTickIndex();
     }
 
     /**

@@ -26,11 +26,12 @@ public final class GameConstants {
     public static final int LUNCH_MS = 10000;
 
     /**
-     * 调度器心跳毫秒：取所有模式里最快的跳间隔。调度线程按它空转，
-     * 每个账户再按自己的 {@code GameMode.tickMs} 判定是否真的推进一跳，
+     * 调度器心跳毫秒：远快于任何模式的跳间隔（100ms 对 500ms），否则"到点判定"本身
+     * 就有半秒级的量化误差，实际跳距会被拉长、倒计时看起来会突然跳几秒。心跳只做一次
+     * 内存预判（没到点的账户不抢锁、不查库），到点才真正推进一跳，
      * 因此多模式并存时互不影响，快进与测试仍直接调 tickOne、不受墙钟约束。
      */
-    public static final int SCHEDULER_HEARTBEAT_MS = 500;
+    public static final int SCHEDULER_HEARTBEAT_MS = 100;
 
     // ---- 三层因子基准波动（spec §5.2，每跳 σ）----
     /** 个股特质波动。 */

@@ -54,6 +54,11 @@ public class MarketScheduler {
     public void tickOnlineWorlds() {
         for (long userId : wsSessionRegistry.onlineUserIds()) {
             try {
+                // 100ms 一拍，但绝大多数拍在这一步就被内存预判挡掉：不抢世界锁、不查库。
+                // 只有真的到了本局跳间隔（或板子还没缓存、午休待恢复）才往下走。
+                if (!dueForBeat(userId)) {
+                    continue;
+                }
                 ReentrantLock lock = quoteBoardRegistry.worldLock(userId);
                 if (!lock.tryLock()) {
                     continue;
@@ -85,7 +90,20 @@ public class MarketScheduler {
         }
     }
 
-    /** 本账户是否已经到了该推进下一跳的时刻（按本局模式的 tickMs 判定）。 */
+    /**
+     * 心跳级预判：板子还没缓存（首次/刚重启）必须放行去加载；已缓存则按本局 tickMs
+     * 判定是否到点。午休期间由 resumeLunchIfDue 打一次 lastTickAtNanos 戳，把午休
+     * 检查也节流到"每跳一次"，避免 100ms 心跳变成每 100ms 查一次库。
+     */
+    private boolean dueForBeat(long userId) {
+        QuoteBoard board = quoteBoardRegistry.peek(userId);
+        if (board == null) {
+            return true;
+        }
+        return board.tickElapsedMillis() >= board.getGameMode().getTickMs();
+    }
+
+    /** 锁内二次确认：拿锁期间可能已被别的线程推进过（快进/交易/上一拍）。 */
     private boolean dueToTick(long userId) {
         QuoteBoard board = quoteBoardRegistry.getOrLoad(userId);
         return board.tickElapsedMillis() >= board.getGameMode().getTickMs();
@@ -95,6 +113,8 @@ public class MarketScheduler {
     private void resumeLunchIfDue(long userId) {
         QuoteBoard board = quoteBoardRegistry.getOrLoad(userId);
         if (board.lunchElapsedMillis() < board.getGameMode().getLunchMs()) {
+            // 午休没到点：打一拍戳，让 100ms 的心跳把午休检查也节流成每跳一次
+            board.setLastTickAtNanos(System.nanoTime());
             return;
         }
         marketStateService.resumeAfternoon(userId);
