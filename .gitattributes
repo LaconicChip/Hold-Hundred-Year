@@ -1,2 +1,17 @@
-/mvnw text eol=lf
+# 换行符统一：仓库与工作区都用 LF。
+# Windows 上 git 默认 core.autocrlf=true 会把签出的源码换成 CRLF，
+# 而 IDE/脚本产物多为 LF，两者来回打架（每次改写都报 "LF will be replaced by CRLF"）。
+* text=auto eol=lf
+
+# Windows 批处理必须是 CRLF
 *.cmd text eol=crlf
+*.bat text eol=crlf
+
+# 二进制不转换
+*.jar binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
