@@ -320,6 +320,7 @@ import SvgIcon from '@/components/SvgIcon.vue'
 import { ElMessage } from 'element-plus'
 import bullImg from '@/assets/img/bull.png'
 import pandaImg from '@/assets/img/panda.png'
+import { priceCls, fmtPct, fmtMoney } from '@/utils/format'
 
 // 按需注册 ECharts 模块（与 StockChart 一致）
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent])
@@ -458,16 +459,6 @@ const curveOption = computed(() => {
 })
 
 // ---- 工具函数 ----
-function priceCls(v) {
-  if (v > 0) return 'up'
-  if (v < 0) return 'down'
-  return 'flat'
-}
-function fmtPct(v) {
-  const n = +v
-  if (!n) return '0.00%'
-  return (n > 0 ? '+' : '') + n.toFixed(2) + '%'
-}
 // 融资流水类型：后端 loan_record.loan_type 原文 -> 中文标签 / 配色类
 const LOAN_LABEL = { BORROW: '借款', REPAY: '还款', INTEREST: '结息', LIQUIDATE: '强平还款' }
 const LOAN_CLS = { BORROW: 'loan-borrow', REPAY: 'loan-repay', INTEREST: 'loan-interest', LIQUIDATE: 'loan-liquidate' }
@@ -489,11 +480,6 @@ function ipoCls(s) {
 // 盈利只在结算后有意义：未结算显示占位，避免把 0 当成"没赚"
 function settledProfitText(r) {
   return r.status === 'SETTLED' ? fmtMoney(r.profit) : '--'
-}
-function fmtMoney(v) {
-  const n = +v
-  if (!isFinite(n)) return '0.00'
-  return n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 // ---- 融资动作 ----

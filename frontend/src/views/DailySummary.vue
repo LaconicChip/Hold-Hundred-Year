@@ -123,6 +123,7 @@ import { ElMessage } from 'element-plus'
 import { useMarketStore } from '@/stores/market'
 import SealStamp from '@/components/SealStamp.vue'
 import SvgIcon from '@/components/SvgIcon.vue'
+import { fmtPctDash as fmtPct } from '@/utils/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -176,11 +177,7 @@ function pctCls(v) {
   const n = +v
   return n > 0 ? 'up' : n < 0 ? 'down' : 'flat'
 }
-function fmtPct(v) {
-  const n = +v
-  if (!isFinite(n)) return '--'
-  return (n > 0 ? '+' : '') + n.toFixed(2) + '%'
-}
+// 晚报金额按整数显示（与其它页面口径不同），故保留本地版、不用 utils/format 的两位小数版
 function fmtMoney(v) {
   const n = +v
   if (!isFinite(n)) return '--'

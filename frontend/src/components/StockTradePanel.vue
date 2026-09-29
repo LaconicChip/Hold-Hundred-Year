@@ -111,6 +111,7 @@ import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { buy, sell } from '@/api/trade'
 import SvgIcon from './SvgIcon.vue'
+import { priceCls, fmtMoney } from '@/utils/format'
 
 const props = defineProps({
   stockId: { type: Number, required: true },
@@ -143,11 +144,6 @@ watch(
   }
 )
 // 红涨绿跌（现价块按当日涨跌幅着色，闪烁按逐跳方向）
-function priceCls(v) {
-  if (v > 0) return 'up'
-  if (v < 0) return 'down'
-  return 'flat'
-}
 
 // 涨停/跌停阈值（按价格推断，非后端字段，与行情表展示口径一致）
 const LIMIT_UP = 9.8
@@ -206,12 +202,6 @@ const sellAmount = computed(() => +(qty.value * props.price).toFixed(2))
 const sellCommission = computed(() => +commissionOf(sellAmount.value).toFixed(2))
 const sellTax = computed(() => +(sellAmount.value * 0.001).toFixed(2))
 const sellTotal = computed(() => +(sellAmount.value - sellCommission.value - sellTax.value).toFixed(2))
-
-function fmtMoney(v) {
-  const n = +v
-  if (!isFinite(n)) return '0.00'
-  return n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
 
 async function submit(side) {
   // 非整手前端拦截（理论上按钮已禁用，二次保险）

@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-// 占位路由：Task 12.1 起将正式实现各页面
+// 路由表：8 个页面（spec §12.1 竖向菜单顺序）；无路由守卫，未登录由 http.js 的 401 拦截兜底跳 /login
 const routes = [
   { path: '/', redirect: '/login' },
   {

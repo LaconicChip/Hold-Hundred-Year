@@ -23,7 +23,7 @@ export const useUserStore = defineStore('user', {
     token: getToken(),
     userId: 0,
     username: '',
-    assets: null, // 资产对象（mock 或真实）
+    assets: null, // 资产看板（GET /api/me/assets：现金/市值/负债/净资产/担保比例）
     positions: [] // 持仓列表（GET /api/me/positions）：行情表持仓高亮与个股页共用
   }),
 
@@ -84,7 +84,7 @@ export const useUserStore = defineStore('user', {
       }
     },
 
-    // 拉取资产（mock 开关在 me.js 内）
+    // 拉取资产看板（侧栏与个股面板共用的可用资金口径）
     async fetchAssets() {
       try {
         this.assets = await fetchAssets()

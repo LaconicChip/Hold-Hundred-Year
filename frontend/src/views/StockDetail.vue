@@ -152,6 +152,7 @@ import StickerTag from '@/components/StickerTag.vue'
 import SealStamp from '@/components/SealStamp.vue'
 import SvgIcon from '@/components/SvgIcon.vue'
 import DanmuBar from '@/components/DanmuBar.vue'
+import { priceCls, fmtPct, fmtPrice, fmtMoney } from '@/utils/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -212,7 +213,7 @@ const isClosed = computed(() =>
   ['CLOSED', 'SETTLING', 'BANKRUPT', 'FINISHED'].includes(market.marketState)
 )
 
-// 资产：user.assets（mock 或真实）取可用资金
+// 可用资金：取 user store 资产看板的 cash（与买卖面板同源）
 const balance = computed(() => (user.assets ? user.assets.cash : 0))
 
 // 持仓：复用 user store 的持仓列表（行情表高亮同一份，成交后统一刷新）
@@ -258,28 +259,10 @@ function goBack() {
 }
 
 // 红涨绿跌：涨红 / 跌绿 / 平墨色
-function priceCls(v) {
-  if (v > 0) return 'up'
-  if (v < 0) return 'down'
-  return 'flat'
-}
-function fmtPct(v) {
-  const n = +v
-  if (!n) return '0.00%'
-  return (n > 0 ? '+' : '') + n.toFixed(2) + '%'
-}
 function fmtSigned(v) {
   const n = +v
   if (!n) return '0.00'
   return (n > 0 ? '+' : '') + n.toFixed(2)
-}
-function fmtPrice(v) {
-  return v == null ? '—' : Number(v).toFixed(2)
-}
-function fmtMoney(v) {
-  const n = +v
-  if (!isFinite(n)) return '0.00'
-  return n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 // 进入页面：补充拉取消息（size:100），并按当前股过滤展示

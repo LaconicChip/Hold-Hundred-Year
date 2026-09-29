@@ -81,6 +81,7 @@ import { useMarketStore } from '@/stores/market'
 import NpcAvatar from '@/components/NpcAvatar.vue'
 import SvgIcon from '@/components/SvgIcon.vue'
 import { resolveNpcCode } from '@/constants/messageMeta'
+import { fmtPct, fmtMoneyDash as fmtMoney } from '@/utils/format'
 
 const market = useMarketStore()
 
@@ -115,16 +116,6 @@ function retPct(r) {
 function pctCls(v) {
   const n = +v
   return n > 0 ? 'up' : n < 0 ? 'down' : 'flat'
-}
-function fmtPct(v) {
-  const n = +v
-  if (!isFinite(n)) return '0.00%'
-  return (n > 0 ? '+' : '') + n.toFixed(2) + '%'
-}
-function fmtMoney(v) {
-  const n = +v
-  if (!isFinite(n)) return '--'
-  return n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 async function load(gameDay) {

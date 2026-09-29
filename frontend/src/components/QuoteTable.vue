@@ -100,6 +100,7 @@ import { useMarketStore } from '@/stores/market'
 import { useUserStore } from '@/stores/user'
 import SealStamp from './SealStamp.vue'
 import SvgIcon from './SvgIcon.vue'
+import { priceCls, fmtPrice, fmtPct } from '@/utils/format'
 
 const quotes = useQuotesStore()
 const market = useMarketStore()
@@ -122,20 +123,6 @@ const isClosed = computed(() =>
 const flashMap = ref({})
 let initialized = false
 
-// 红涨绿跌：涨红 / 跌绿 / 平墨色
-function priceCls(pct) {
-  if (pct > 0) return 'up'
-  if (pct < 0) return 'down'
-  return 'flat'
-}
-function fmtPrice(v) {
-  return v == null ? '—' : Number(v).toFixed(2)
-}
-function fmtPct(pct) {
-  const v = +pct
-  if (!v) return '0.00%'
-  return (v > 0 ? '+' : '') + v.toFixed(2) + '%'
-}
 function isLimitUp(q) {
   return q.sealed === 'UP' || q.changePct >= 9.8
 }

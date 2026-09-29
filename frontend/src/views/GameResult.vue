@@ -165,6 +165,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
 import VChart from 'vue-echarts'
+import { fmtPctDash as fmtPct, fmtMoneyDash as fmtMoney } from '@/utils/format'
 
 // 按需注册 ECharts 模块（与 Assets 页一致）
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent])
@@ -299,16 +300,6 @@ function statusText(r) {
 function pctCls(v) {
   const n = +v
   return n > 0 ? 'up' : n < 0 ? 'down' : 'flat'
-}
-function fmtPct(v) {
-  const n = +v
-  if (!isFinite(n)) return '--'
-  return (n > 0 ? '+' : '') + n.toFixed(2) + '%'
-}
-function fmtMoney(v) {
-  const n = +v
-  if (!isFinite(n)) return '--'
-  return n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 // 强平记录字段不定，容错拼接展示
 function liqText(l) {
