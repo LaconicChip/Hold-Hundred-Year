@@ -108,7 +108,9 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElInputNumber } from 'element-plus/es/components/input-number/index.mjs'
+import { ElMessage } from 'element-plus/es/components/message/index.mjs'
+import 'element-plus/es/components/input-number/style/css'
 import { buy, sell } from '@/api/trade'
 import SvgIcon from './SvgIcon.vue'
 import { priceCls, fmtMoney } from '@/utils/format'

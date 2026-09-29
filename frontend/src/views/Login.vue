@@ -72,7 +72,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index.mjs'
 import { useUserStore } from '@/stores/user'
 import SvgIcon from '@/components/SvgIcon.vue'
 import bankDoor from '@/assets/img/bank-door.png'

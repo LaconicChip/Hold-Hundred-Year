@@ -111,7 +111,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useMessagesStore } from '@/stores/messages'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index.mjs'
 import NpcAvatar from '@/components/NpcAvatar.vue'
 import SvgIcon from '@/components/SvgIcon.vue'
 import {

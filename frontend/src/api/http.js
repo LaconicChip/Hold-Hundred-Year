@@ -6,7 +6,7 @@
 //   4. HTTP 401 -> 清 token 并跳 /login；HTTP 400 业务失败 -> reject(msg)
 
 import axios from 'axios'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index.mjs'
 import router from '@/router'
 
 const TOKEN_KEY = 'hold-year-token'

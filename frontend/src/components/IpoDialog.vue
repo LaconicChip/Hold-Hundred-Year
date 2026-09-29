@@ -23,7 +23,9 @@
 
 <script setup>
 import { ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElDialog } from 'element-plus/es/components/dialog/index.mjs'
+import { ElMessage } from 'element-plus/es/components/message/index.mjs'
+import 'element-plus/es/components/dialog/style/css'
 import { useMessagesStore } from '@/stores/messages'
 import { subscribe as apiSubscribe } from '@/api/ipo'
 import SvgIcon from './SvgIcon.vue'
