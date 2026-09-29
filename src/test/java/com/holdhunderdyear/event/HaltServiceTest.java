@@ -15,6 +15,10 @@ import com.holdhunderdyear.market.quote.Quote;
 import com.holdhunderdyear.market.quote.QuoteBoard;
 import com.holdhunderdyear.world.WorldRandom;
 import com.holdhunderdyear.world.WorldSeeder;
+
+import java.util.Set;
+import java.util.stream.Collectors;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -167,11 +171,23 @@ class HaltServiceTest {
         userScriptDayMapper.insert(scriptDay);
     }
 
-    /** 自选 resume 日：要求 resume{day} 盐的复牌方向为下杀（roll &gt; 0.15 免妖股一字），
-     *  保证断言 "复牌补跌" 不因 15% 妖股分支翻绿。seed 相同则结果确定。 */
+    /**
+     * 自选 resume 日，两个条件缺一不可：
+     * ① resume{day} 盐的复牌方向是下杀（roll &gt; 0.15），避开 15% 的"妖股出关一字涨停"分支；
+     * ② 当天没有任何剧本日行——剧本日（如千股涨停）会把全市场钉在涨跌停上，
+     *    复牌跳空会被它覆盖，于是"补跌"断言随机性地变成 +10%。
+     * 条件 ② 必须查库：本测试在 seedUser 之后才改 worldSeed，注册时按随机种子撒下的
+     * 剧本日仍在表里，只看种子推不出来。
+     */
     private int pickDownGapResumeDay(long userId) {
         long seed = gameState(userId).getWorldSeed();
-        for (int day = SANCTION_DAY + 1; day <= SANCTION_DAY + 20; day++) {
+        Set<Integer> scripted = userScriptDayMapper.selectList(new LambdaQueryWrapper<UserScriptDay>()
+                        .eq(UserScriptDay::getUserId, userId))
+                .stream().map(UserScriptDay::getGameDay).collect(Collectors.toSet());
+        for (int day = SANCTION_DAY + 1; day <= SANCTION_DAY + 40; day++) {
+            if (scripted.contains(day)) {
+                continue;
+            }
             if (WorldRandom.of(seed, "resume" + day).nextDouble() > 0.15) {
                 return day;
             }

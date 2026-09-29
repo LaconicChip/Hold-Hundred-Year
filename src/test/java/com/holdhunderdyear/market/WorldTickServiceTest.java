@@ -190,24 +190,33 @@ class WorldTickServiceTest {
                     "circuit open gap must be -6%~-8%, stock " + q.getStockId() + " chg=" + chg);
         }
 
-        // 世界种子每次注册都随机，熔断到底落在上午第几跳（甚至开盘即触发）并不固定：
-        // 这里断言的是机制本身——熔断日必须在走满 90 跳之前提前收盘，而不是硬编码某一跳数。
+        // 世界种子每次注册都是随机的：熔断日既可能开盘即达标，也可能全天都不到 -7%。
+        // 所以断言机制本身的双向不变式——达标就必须提前收盘，未达标就必须走满 90 跳，
+        // 而不是赌某个种子恰好触发了熔断。
         int ticks = 0;
-        while (!"CLOSED".equals(gameState(userId).getMarketState()) && ticks < GameConstants.TOTAL_TICKS) {
-            String state = gameState(userId).getMarketState();
-            if ("LUNCH_BREAK".equals(state)) {
-                marketStateService.resumeAfternoon(userId); // 跨过午休继续推进，午休不该被算作"提前收盘"
+        for (int i = 0; i < GameConstants.TOTAL_TICKS * 3
+                && !"CLOSED".equals(gameState(userId).getMarketState()); i++) {
+            if ("LUNCH_BREAK".equals(gameState(userId).getMarketState())) {
+                marketStateService.resumeAfternoon(userId); // 午休是正常过场，不算"提前收盘"
             } else {
                 worldTickService.tickOne(userId);
+                ticks++;
             }
-            ticks++;
         }
         UserGameState after = gameState(userId);
-        assertEquals("CLOSED", after.getMarketState(), "circuit-breaker day must close early, not run the full session");
-        assertTrue(board.getTickIndex() < GameConstants.TOTAL_TICKS, "early close must stop before full 90 ticks");
-        assertTrue(after.getTickIndex() < GameConstants.TOTAL_TICKS, "persisted tickIndex must reflect the early close");
-        assertTrue(board.getIndexValue() / board.getPrevIndex() - 1 <= -0.07 + 1e-9,
-                "early close must be triggered by a >=7% index drawdown");
+        assertEquals("CLOSED", after.getMarketState(), "the day must settle");
+        double drawdown = board.getIndexValue() / board.getPrevIndex() - 1;
+        boolean breached = drawdown <= -GameConstants.CIRCUIT_BREAKER_DROP + 1e-9;
+        if (breached) {
+            assertTrue(after.getTickIndex() < GameConstants.TOTAL_TICKS,
+                    "a >=7% index drawdown must close the day early, tickIndex=" + after.getTickIndex()
+                            + " drawdown=" + drawdown);
+            assertTrue(board.getTickIndex() < GameConstants.TOTAL_TICKS,
+                    "board tick count must reflect the early close");
+        } else {
+            assertEquals(GameConstants.TOTAL_TICKS, after.getTickIndex(),
+                    "without a 7% breach the circuit breaker must not fire, drawdown=" + drawdown);
+        }
     }
 
     @Test
