@@ -51,9 +51,9 @@ export const useUserStore = defineStore('user', {
       return data
     },
 
-    // 注册：选定本局模式（STANDARD/QUICK，整局不可改），成功后自动登录
-    async register(username, password, gameMode) {
-      await apiRegister(username, password, gameMode)
+    // 注册：只建账号；模式在开每一局时选
+    async register(username, password) {
+      await apiRegister(username, password)
       return this.login(username, password)
     },
 

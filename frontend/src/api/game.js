@@ -6,7 +6,7 @@ export function fetchGameResult() {
   return http.get('/api/game/result')
 }
 
-// 重新开局（重新播种）：POST /api/game/restart
-export function restartGame() {
-  return http.post('/api/game/restart')
+// 开新的一局（清数据 + 重新播种）：POST /api/game/restart，body 可带 mode
+export function restartGame(gameMode) {
+  return http.post('/api/game/restart', gameMode ? { mode: gameMode } : {})
 }

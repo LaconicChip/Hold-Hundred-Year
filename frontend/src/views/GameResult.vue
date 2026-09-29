@@ -139,9 +139,13 @@
           <span class="seed-lab">本局种子号</span>
           <span class="num seed-val">{{ result.worldSeed || '—' }}</span>
         </div>
-        <button class="btn btn-primary btn-lg" :disabled="restarting" @click="onRestart">
-          <SvgIcon name="play" />{{ restarting ? '播种中…' : '再来一局' }}
-        </button>
+        <div class="reroll">
+          <!-- 模式一局一选：重开前可以换一种打法 -->
+          <ModePicker v-model="nextMode" compact />
+          <button class="btn btn-primary btn-lg" :disabled="restarting" @click="onRestart">
+            <SvgIcon name="play" />{{ restarting ? '播种中…' : '再来一局' }}
+          </button>
+        </div>
       </section>
     </template>
   </div>
@@ -152,6 +156,9 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { fetchGameResult, restartGame } from '@/api/game'
+import ModePicker from '@/components/ModePicker.vue'
+
+const nextMode = ref('STANDARD')
 import { useUserStore } from '@/stores/user'
 import { token } from '@/styles/theme'
 import NpcAvatar from '@/components/NpcAvatar.vue'
@@ -341,7 +348,7 @@ async function onRestart() {
   }
   restarting.value = true
   try {
-    await restartGame()
+    await restartGame(nextMode.value)
     ElMessage.success('新世界已播种')
     router.push('/market')
   } catch (e) {
@@ -355,6 +362,12 @@ onMounted(load)
 </script>
 
 <style scoped>
+.reroll {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
 .page {
   display: flex;
   flex-direction: column;

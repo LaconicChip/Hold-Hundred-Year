@@ -42,6 +42,8 @@
       </div>
 
       <div class="ops">
+        <!-- 开局前选模式：注册不绑模式，每一局自己挑 -->
+        <ModePicker v-if="showModePicker" v-model="pickedMode" compact />
         <button
           v-if="showStart"
           class="btn btn-primary btn-sm"
@@ -91,6 +93,8 @@ import { useQuotesStore } from '@/stores/quotes'
 import { useMessagesStore } from '@/stores/messages'
 import SvgIcon from './SvgIcon.vue'
 import TierBadge from './TierBadge.vue'
+import ModePicker from './ModePicker.vue'
+import { restartGame } from '@/api/game'
 
 const emit = defineEmits(['skipped'])
 const router = useRouter()
@@ -154,21 +158,33 @@ const showSkip = computed(() => !market.isEnded && DURING_DAY.includes(market.ma
 const startText = computed(() =>
   market.marketState === 'NOT_STARTED' ? '开始第 1 天' : '开始下一交易日'
 )
+// 模式选择器只在"还没开局"时出现（第 1 天 NOT_STARTED）；开局后本局模式就定了
+const pickedMode = ref(market.mode || 'STANDARD')
+const showModePicker = computed(() => market.marketState === 'NOT_STARTED')
+watch(() => market.mode, (m) => { if (m) pickedMode.value = m })
+
 // 跳过按钮只在盘中/午休出现，文案恒为"跳过当日"
 const skipText = computed(() => '跳过当日')
 
-// ---- 倒计时（本地每秒递减，fetchState / WS 快照刷新时校正）----
-const remaining = ref(0)
+// ---- 倒计时 ----
+// 用"截止时间戳"而不是本地每秒 -1：快速模式每跳 0.5 秒，倒计时本来就是小数，
+// 靠 -1 递减会跨过 0 变成 -0.5，显示成负时间；这里每次刷新对齐到目标时刻，
+// 之后按真实流逝时间反推，永远不会为负。
+const deadline = ref(0)
 let timer = null
 function fmt(s) {
-  const m = Math.floor(s / 60)
-  const sec = s % 60
+  const whole = Math.max(0, Math.floor(s))
+  const m = Math.floor(whole / 60)
+  const sec = whole % 60
   return String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0')
 }
+const remaining = computed(() => Math.max(0, (deadline.value - Date.now()) / 1000))
 const countdownText = computed(() => fmt(remaining.value))
 
 function recalibrate() {
-  if (market.isOpen) remaining.value = (market.countdownTicks || 0) * market.tickSeconds
+  if (market.isOpen) {
+    deadline.value = Date.now() + (market.countdownTicks || 0) * market.tickSeconds * 1000
+  }
 }
 watch(() => market.countdownTicks, recalibrate)
 watch(() => market.isOpen, recalibrate)
@@ -176,8 +192,9 @@ watch(() => market.isOpen, recalibrate)
 onMounted(() => {
   recalibrate()
   timer = setInterval(() => {
-    if (market.isOpen && remaining.value > 0) remaining.value--
-  }, 1000)
+    // 只负责让显示走动；真实校准来自 WS 快照与状态轮询
+    if (!market.isOpen) deadline.value = 0
+  }, 500)
 })
 onUnmounted(() => {
   if (timer) clearInterval(timer)
@@ -187,6 +204,11 @@ onUnmounted(() => {
 async function onStart() {
   if (market.loading) return
   try {
+    // 选的模式与本局不同就先按新模式重开一局（模式一局一选，开局前可改）
+    if (pickedMode.value && pickedMode.value !== market.mode) {
+      await restartGame(pickedMode.value)
+      await market.fetchState()
+    }
     await market.start()
   } catch (e) {
     ElMessage.error(e?.message || '开始失败')
