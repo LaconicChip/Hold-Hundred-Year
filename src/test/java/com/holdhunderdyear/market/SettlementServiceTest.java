@@ -21,6 +21,7 @@ import com.holdhunderdyear.market.mapper.UserStockStateMapper;
 import com.holdhunderdyear.market.quote.QuoteBoard;
 import com.holdhunderdyear.world.WorldSeeder;
 import org.junit.jupiter.api.Test;
+import com.holdhunderdyear.game.constants.GameConstants;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
@@ -164,13 +165,14 @@ class SettlementServiceTest {
 
         settlementService.settle(userId);
 
-        assertEquals(0, sysUser(userId).getDebt().compareTo(new BigDecimal("10022.22")));
+        // 日息 = 10000 × 8% / DAYS_PER_YEAR(24) = 33.33（年化不变，一年交易日变少则单日计提更多）
+        assertEquals(0, sysUser(userId).getDebt().compareTo(new BigDecimal("10033.33")));
         List<LoanRecord> records = loans(userId);
         assertEquals(1, records.size());
         LoanRecord record = records.get(0);
         assertEquals("INTEREST", record.getLoanType());
-        assertEquals(0, record.getAmount().compareTo(new BigDecimal("22.22")));
-        assertEquals(0, record.getDebtAfter().compareTo(new BigDecimal("10022.22")));
+        assertEquals(0, record.getAmount().compareTo(new BigDecimal("33.33")));
+        assertEquals(0, record.getDebtAfter().compareTo(new BigDecimal("10033.33")));
         assertEquals(2, record.getGameDay());
         assertTrue(messages(userId).stream().noneMatch(m -> "追保通知".equals(m.getTitle())),
                 "担保比例充足时不得发追保警告");
@@ -215,21 +217,21 @@ class SettlementServiceTest {
         assertNotNull(snapshot);
         assertEquals(0, snapshot.getCash().compareTo(new BigDecimal("100000.00")));
         assertEquals(0, snapshot.getMarketValue().compareTo(new BigDecimal("36960.00")));
-        assertEquals(0, snapshot.getDebt().compareTo(new BigDecimal("10022.22")));
-        assertEquals(0, snapshot.getNetAsset().compareTo(new BigDecimal("126937.78")));
-        assertEquals(26.93778, snapshot.getDayReturnPct(), 1e-6);
+        assertEquals(0, snapshot.getDebt().compareTo(new BigDecimal("10033.33")));
+        assertEquals(0, snapshot.getNetAsset().compareTo(new BigDecimal("126926.67")));
+        assertEquals(26.92667, snapshot.getDayReturnPct(), 1e-6);
         assertEquals(1050.0, snapshot.getIndexValue(), 1e-9);
         assertEquals(5.0, snapshot.getIndexDayPct(), 1e-6, "昨收指数取前日快照（day-0 播种 1000）");
         assertEquals(0.0, stockState(userId, 1L).getGapPct(), 1e-9,
                 "结算不掷盘后消息，gap_pct 必须保持 0");
         assertNotNull(snapshot.getNpcAssetsJson(), "Task 8.4 fills the NPC assets json at settlement");
-        assertEquals(0, gameState(userId).getPrevTotalAsset().compareTo(new BigDecimal("126937.78")),
+        assertEquals(0, gameState(userId).getPrevTotalAsset().compareTo(new BigDecimal("126926.67")),
                 "结算尾部 prevTotalAsset 回写本次净资产");
         UserMessage review = messages(userId).stream()
                 .filter(m -> "日收益评价".equals(m.getTitle()))
                 .findFirst().orElse(null);
         assertNotNull(review);
-        assertTrue(review.getContent().contains("26.94"));
+        assertTrue(review.getContent().contains("26.93"));
         assertTrue(review.getContent().contains("跑赢"));
     }
 
@@ -326,14 +328,14 @@ class SettlementServiceTest {
     @Test
     void settleFinishesGameAtFinalDay() {
         long userId = worldSeeder.seedUser("st_fin1", "$2a$10$bcrypthash");
-        toSettling(userId, 108, 1100.0, null, null);
+        toSettling(userId, GameConstants.TOTAL_DAYS, 1100.0, null, null);
 
         settlementService.settle(userId);
 
         UserGameState after = gameState(userId);
         assertEquals("FINISHED", after.getMarketState());
         assertEquals("NORMAL_FINISH", after.getEndReason());
-        assertEquals(108, after.getEndDay());
+        assertEquals(GameConstants.TOTAL_DAYS, after.getEndDay());
         assertTrue(messages(userId).stream().noneMatch(m -> "收盘结算".equals(m.getTitle())));
     }
 

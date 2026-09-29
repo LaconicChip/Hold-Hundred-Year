@@ -11,6 +11,7 @@ import com.holdhunderdyear.market.quote.Quote;
 import com.holdhunderdyear.market.quote.QuoteBoard;
 import com.holdhunderdyear.world.WorldSeeder;
 import org.junit.jupiter.api.Test;
+import com.holdhunderdyear.game.constants.GameConstants;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
@@ -176,7 +177,7 @@ class WorldTickServiceTest {
     void circuitBreakerDayClosesMarketEarlyInMorningSession() {
         long userId = worldSeeder.seedUser("tick_cb1", "$2a$10$bcrypthash");
         UserGameState gs = gameState(userId);
-        gs.setCurrentDay(36);
+        gs.setCurrentDay(GameConstants.DAYS_PER_YEAR); // 下一天即熔断纪元首日
         gs.setMarketState("CLOSED");
         userGameStateMapper.updateById(gs);
 

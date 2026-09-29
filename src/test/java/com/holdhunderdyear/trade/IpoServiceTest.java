@@ -22,6 +22,7 @@ import com.holdhunderdyear.world.EraScheduler.EraInstance;
 import com.holdhunderdyear.world.WorldRandom;
 import com.holdhunderdyear.world.WorldSeeder;
 import org.junit.jupiter.api.Test;
+import com.holdhunderdyear.game.constants.GameConstants;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -400,7 +401,7 @@ class IpoServiceTest {
     }
 
     private void forceEra(long userId, EraCode code) {
-        board(userId).setCurrentEra(new EraInstance(1, code, 1, 108, 0.0, Map.of()));
+        board(userId).setCurrentEra(new EraInstance(1, code, 1, GameConstants.TOTAL_DAYS, 0.0, Map.of()));
     }
 
     private QuoteBoard board(long userId) {

@@ -3,7 +3,7 @@ package com.holdhunderdyear.game.model.enums;
 import lombok.Getter;
 
 /**
- * 108 天的 11 个纪元（spec §3）。声明顺序即 eraIndex 顺序：ordinal + 1 == eraIndex。
+ * 全剧 11 个纪元（spec §3），铺满 1..TOTAL_DAYS。声明顺序即 eraIndex 顺序：ordinal + 1 == eraIndex。
  */
 @Getter
 public enum EraCode {

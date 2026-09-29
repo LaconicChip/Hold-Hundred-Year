@@ -5,6 +5,7 @@ import com.holdhunderdyear.game.model.enums.ScriptType;
 import com.holdhunderdyear.world.EraScheduler.EraInstance;
 import com.holdhunderdyear.world.ScriptDayScheduler.ScriptDayInstance;
 import org.junit.jupiter.api.Test;
+import com.holdhunderdyear.game.constants.GameConstants;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -173,8 +174,42 @@ class ScriptDaySchedulerTest {
     }
 
     @Test
+    void compressedCalendarNeverExhaustsScriptDayPools() {
+        // 24 交易日/年后短纪元变多（纪元10 可能只有 4 天，前半段只剩 2 天），
+        // 撒点数一旦超过窗口容量，pickDay 就会无界重掷把注册线程卡死。
+        // 现在掷骰后按容量夹逼、池子见底直接抛——扫 2000 个种子保证既不抛也不超量。
+        for (long seed = 1; seed <= 2000; seed++) {
+            List<EraInstance> eras = eraScheduler.roll(seed);
+            List<ScriptDayInstance> days;
+            try {
+                days = scheduler.roll(seed, eras);
+            } catch (RuntimeException e) {
+                throw new AssertionError("seed " + seed + " roller exhausted a script day pool", e);
+            }
+
+            int era10FirstHalf = (eras.get(9).endDay() - eras.get(9).startDay() + 1 + 1) / 2;
+            int crashes = ofType(days, ScriptType.CRASH_WEEK).size();
+            assertTrue(crashes >= 2 && crashes <= era10FirstHalf,
+                    "seed " + seed + " CRASH_WEEK count " + crashes + " vs era10 first half " + era10FirstHalf);
+
+            int len3 = eras.get(2).endDay() - eras.get(2).startDay() + 1;
+            int downs = ofType(days, ScriptType.LIMIT_DOWN_ALL).size();
+            assertTrue(downs >= 2 && downs <= len3 - 1,
+                    "seed " + seed + " LIMIT_DOWN_ALL count " + downs + " vs era3 length " + len3);
+
+            int upDays = ofType(days, ScriptType.LIMIT_UP_ALL).size();
+            assertTrue(upDays >= 2 && upDays <= 3,
+                    "seed " + seed + " LIMIT_UP_ALL count " + upDays);
+
+            long ipoDays = ofType(days, ScriptType.IPO).stream().map(ScriptDayInstance::gameDay).distinct().count();
+            assertTrue(ipoDays >= 6 && ipoDays <= 9, "seed " + seed + " IPO count " + ipoDays);
+        }
+    }
+
+    @Test
     void ipoRunsTwoToThreeTimesPerYearWithUniqueNamesAndBoundedPrices() {
-        int[][] yearRanges = {{1, 36}, {37, 72}, {73, 108}};
+        int dyp = GameConstants.DAYS_PER_YEAR;
+        int[][] yearRanges = {{1, dyp}, {dyp + 1, dyp * 2}, {dyp * 2 + 1, GameConstants.TOTAL_DAYS}};
         for (long seed = 1; seed <= MAX_SEED; seed++) {
             List<ScriptDayInstance> ipos = ofType(scheduler.roll(seed, eraScheduler.roll(seed)), ScriptType.IPO);
             assertTrue(ipos.size() >= 6 && ipos.size() <= 9, "seed " + seed + " IPO total " + ipos.size());
@@ -206,8 +241,8 @@ class ScriptDaySchedulerTest {
     void allDaysStayWithinHorizonAndSealRatiosStayBounded() {
         for (long seed = 1; seed <= MAX_SEED; seed++) {
             for (ScriptDayInstance d : scheduler.roll(seed, eraScheduler.roll(seed))) {
-                assertTrue(d.gameDay() >= 1 && d.gameDay() <= 108,
-                        "seed " + seed + " gameDay " + d.gameDay() + " outside 1..108");
+                assertTrue(d.gameDay() >= 1 && d.gameDay() <= GameConstants.TOTAL_DAYS,
+                        "seed " + seed + " gameDay " + d.gameDay() + " outside 1.." + GameConstants.TOTAL_DAYS);
                 if (d.type() == ScriptType.LIMIT_UP_ALL || d.type() == ScriptType.LIMIT_DOWN_ALL
                         || d.type() == ScriptType.CRASH_WEEK) {
                     JsonNode params = MAPPER.readTree(d.paramsJson());

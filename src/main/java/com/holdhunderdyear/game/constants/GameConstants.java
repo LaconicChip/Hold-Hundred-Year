@@ -17,10 +17,13 @@ public final class GameConstants {
     public static final int TICKS_PER_SESSION = 45;
     /** 一交易日总跳数。 */
     public static final int TOTAL_TICKS = 90;
-    /** 引擎跳间隔毫秒。 */
-    public static final int TICK_MS = 3000;
+    /**
+     * 引擎跳间隔毫秒。随机序列按"跳"消费、不按秒，所以改这里只改墙钟流速，
+     * 不动任何行情结果、封板时长、日内形态与"同种子同结果"保证。
+     */
+    public static final int TICK_MS = 1000;
     /** 午休时长毫秒。 */
-    public static final int LUNCH_MS = 30000;
+    public static final int LUNCH_MS = 10000;
 
     // ---- 三层因子基准波动（spec §5.2，每跳 σ）----
     /** 个股特质波动。 */
@@ -117,8 +120,13 @@ public final class GameConstants {
     public static final double LIQUIDATION_TARGET = 1.3;
     /** 融资年化利率。 */
     public static final double ANNUAL_INTEREST = 0.08;
-    /** 一游戏年交易日数。 */
-    public static final int DAYS_PER_YEAR = 36;
+    /**
+     * 一游戏年交易日数。三年 = 72 个交易日，一局约 2 小时
+     * （90 跳 × TICK_MS + LUNCH_MS = 100 秒/天）。
+     * 同时是融资日息分母（年化 8% / DAYS_PER_YEAR），改这里等于改"一年多长"，
+     * 年化语义不变；纪元与剧本撒点按本值等比缩放（EraScheduler/ScriptDayScheduler）。
+     */
+    public static final int DAYS_PER_YEAR = 24;
     /** 游戏总交易日数（3 年收官，spec §3）。 */
     public static final int TOTAL_DAYS = DAYS_PER_YEAR * 3;
     /** 熔断阈值：指数日内自昨收跌幅（spec §3/§4.4）。 */

@@ -17,6 +17,7 @@ import com.holdhunderdyear.market.mapper.UserEraMapper;
 import com.holdhunderdyear.market.mapper.UserGameStateMapper;
 import com.holdhunderdyear.market.mapper.UserScriptDayMapper;
 import com.holdhunderdyear.market.mapper.UserStockStateMapper;
+import com.holdhunderdyear.game.constants.GameConstants;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -196,7 +197,8 @@ class WorldSeederTest {
             assertEquals(userEras.get(i).getEndDay() + 1, userEras.get(i + 1).getStartDay(),
                     "era boundaries must be consecutive between era " + (i + 1) + " and " + (i + 2));
         }
-        assertEquals(37, userEras.get(4).getStartDay(), "era5 must start at day 37");
+        assertEquals(GameConstants.DAYS_PER_YEAR + 1, userEras.get(4).getStartDay(),
+                "era5 must open year 2");
     }
 
     @Test

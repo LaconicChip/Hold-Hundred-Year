@@ -8,7 +8,7 @@
 
 | # | 痛点 | 结论/约束 |
 | --- | --- | --- |
-| P1 | 节奏太慢 | 1 天 = 5 分钟 = 90 跳（3s/跳），上午 45 跳 → 午休 30s → 下午 45 跳；36 天/年 × 3 = 108 天 |
+| P1 | 节奏太慢 | 1 天 = 90 跳（上午 45 → 午休 → 下午 45）；跳数与波动标定不变，墙钟由"3 秒/跳 × 108 天 ≈ 9 小时"压到"1 秒/跳 × 72 天 ≈ 2 小时"（2026-09-29） |
 | P2 | 纯随机无叙事、纯剧本太公式 | 11 纪元顺序与全覆盖硬保证，边界 ±1~3 天抖动、强度区间随机，注册时掷点入库 |
 | P3 | 随机游走不像股市 | 三层因子（市场/板块/个股 β）+ GARCH-lite 波动聚集 + 肥尾跳跃 + 日内 U 型 + 涨跌停磁吸/封板/炸板 |
 | P4 | 多冲击源叠加成 if-else 地狱 | 统一 `PriceShock` 队列：冲击只入队，引擎每跳统一消费（衰减曲线决定反应模式） |
@@ -31,7 +31,8 @@
 1. **无 Redis / 无 MQ**；状态内存权威 + MySQL Checkpoint 落库。
 2. **随机唯一入口**：引擎/结算路径禁止 `new Random()` / `Math.random()`，一律 `WorldRandom.of(seed, salt)`；同 seed 同结果，快进与正常推进等价。
 3. **并发协议**：`QuoteBoardRegistry.worldLock(userId)` 覆盖调度/快进/交易，且"锁内开启事务、锁内提交"；`sys_user`/`user_position` 悲观锁 FOR UPDATE；`user_stock_state.version` 乐观锁。
-4. **节奏常量**（`GameConstants`）：45+45 跳、3 秒/跳、30 秒午休、36 天/年、108 天。
+4. **节奏常量**（`GameConstants`）：45+45 跳、`TICK_MS=1000`、`LUNCH_MS=10000`、`DAYS_PER_YEAR=24`、`TOTAL_DAYS=72`。
+   纪元边界写在"36 交易日/年"基准日历里、由 `EraScheduler.scale()` 按当前年长等比映射，剧本撒点的三年区间同样推导——**想再调一局长度，只改 `DAYS_PER_YEAR`/`TICK_MS` 两个数**，前端镜像常量在 `frontend/src/constants/rhythm.js`（改后端记得同步）。
 5. **交易规则**：红涨绿跌、T+1、涨停只可卖不可买、±10%（ST ±5%）、佣金万 3 最低 5 元、印花税千 1（仅卖出）、追保 140% / 强平 120%、年化 8%（日息 = 年化/36）。
 6. **指数口径**：等权（`IndexCalculator`）；**开盘管线在所有价格变动完成后必须统一重算开盘指数**（跳空/复牌/剧本钉板全部计入，`e6fbc19` 修复，不得回退）。
 7. **视觉**：贴纸风三件套（2px 墨描边 / 硬阴影 / 圆角）、标题用 `--font-fun`、全站禁 emoji、图标走 sprite + currentColor、色值只走 `tokens.css` 令牌（唯一例外 `styles/theme.js`）。
@@ -46,7 +47,7 @@
 - **结算 12 步**：`SettlementService.settle` —— prev_close 双写、T+1 解冻、融资计息、追保/强平/爆仓、日评、段位、快照、**日K落库（在重置 OHL 之前）**、OHL 重置、状态落位。
 - **指数两个口径**：`user_game_state.prev_index` = 当日开盘基准（昨收，开盘写入、盘中只读）；`index_value` = 当前指数（每跳 checkpoint 覆盖）。熔断判定与弹幕触发读 `board.prevIndex`，盘中重启靠 prev_index 恢复基准（迁移 `V20260929_01`）。
 - **收盘涨跌幅**：结算写 `user_stock_state.day_change_pct`；收盘态行情用当日日K bar 还原 OHLC 与昨收（`9e22f14`）。原因：结算把 prev_close 双写成收盘价，实时口径恒 0。
-- **分时与日K**：`GET /api/stocks/{id}/quotes`、`GET /api/market/index` 返回**固定 90 点时间轴**（未到点为 null、午休断轴），前端 3 秒轮询；`GET /api/stocks/{id}/kline?limit=60` 读 `stock_daily_bar`（快进与正常推进同路径落库）。
+- **分时与日K**：`GET /api/stocks/{id}/quotes`、`GET /api/market/index` 返回**固定 90 点时间轴**（未到点为 null、午休断轴），前端按 `TICK_MS` 轮询；`GET /api/stocks/{id}/kline?limit=60` 读 `stock_daily_bar`（快进与正常推进同路径落库）。
 - **事件系统**：`EventFactory.maybeRoll` 单 salt 掷骰（`"event{day}.{tick}"`），PendingAction 入队时预填文案，flush 阶段零掷骰；消息三态 PENDING → CONFIRMED/DENIED。
 - **WS 四通道**：`/user/queue/{quotes,messages,notifications,danmu}`，握手 token 走 STOMP connectHeaders；**调度器只推进 WS 在线用户的世界**（刷新页面后必须补连，见 `user store ensureWsConnected`）。
 - **前后端口径陷阱**：① WS 推送的 `changePct` 是小数比率（0.0998），前端 store 统一 ×100 后再用（封板阈值 9.8、`fmtPct` 都依赖这点）；② `MarketSnapshot` 只有 `{tickIndex,indexValue,quotes:[{stockId,current,changePct}]}`，行情表的封板/停牌/ST/连板来自 REST 而非 WS，不要凭空造列；③ 统一响应 `R{code,msg,data}`，`code=0` 成功，401 清 token 跳登录；④ NPC 头像由 `NpcAvatar` 用 `import.meta.glob` 按 code 小写取图，JUSHI/LAOQIAN/XINJIMIN/CHENGXUYUAN 无 PNG、走姓氏色块兜底属正常。
@@ -77,6 +78,8 @@
 - 后续维护轮次（2026-09-29）：资产页三类流水接口与接入 → 结构整理与占位文案清理 → `prev_index` 根治 → 规格 §11 对齐 → 前端拆包。
 
 ## 6. 还值得做的事（都不是缺陷）
+
+0. **倍速按钮（1x/2x/4x）**：`TICK_MS` 目前是编译期常量，要做运行期可切换需把它变成每账户的运行时参数，并让午休计时（`lunchStartedNanos` 用挂钟）与状态栏倒计时一起跟着档位走。随机序列按跳消费，倍速**不影响**同种子可复现性。
 
 1. **Element Plus 按需引入**：`main.js` 目前 `app.use(ElementPlus)` + 注册全部图标，而全站只用到 `el-dialog`、`el-input-number` 与 `ElMessage`/`ElMessageBox`，白担约 960 kB（min）。改按需引入需逐页核对弹窗与提示样式。
 2. **生产化打包/部署说明**：当前只有开发模式运行手册，无部署文档。

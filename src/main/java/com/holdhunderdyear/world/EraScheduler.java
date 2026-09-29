@@ -1,6 +1,7 @@
 package com.holdhunderdyear.world;
 
 import com.holdhunderdyear.game.constants.EraDefs;
+import com.holdhunderdyear.game.constants.GameConstants;
 import com.holdhunderdyear.game.model.enums.EraCode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -12,7 +13,9 @@ import java.util.Map;
 import java.util.Random;
 
 /**
- * 纪元掷骰器：给定 seed 生成 108 天的 11 个纪元时间表与强度参数（纯函数、无状态）。
+ * 纪元掷骰器：给定 seed 生成全剧（{@code GameConstants.TOTAL_DAYS} 天）的 11 个纪元
+ * 时间表与强度参数（纯函数、无状态）。分界点写在"36 交易日/年"的基准日历里，
+ * 掷点时按当前 {@code DAYS_PER_YEAR} 等比映射，改年长只需动 GameConstants 一个数。
  * 随机数消费顺序固定：年分界点（年1 b1,b2,b3 → 年2 len5,b → 年3 c1,c2,c3），
  * 再按纪元 1..11 依次掷 muMkt 与各板块系数（按 EraDefs 声明顺序）。
  */
@@ -20,11 +23,10 @@ public class EraScheduler {
 
     private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
-    private static final int YEAR1_END = 36;
-    private static final int YEAR2_START = 37;
-    private static final int YEAR2_END = 72;
-    private static final int YEAR3_START = 73;
-    private static final int YEAR3_END = 108;
+    /** 基准日历（EraDefs 纪元表所用）的一年天数与其三年起点。 */
+    private static final int BASE_YEAR_DAYS = 36;
+    private static final int BASE_YEAR2_START = 37;
+    private static final int BASE_YEAR3_START = 73;
     private static final int MIN_ERA_LEN = 3;
 
     public record EraInstance(int eraIndex, EraCode code, int startDay, int endDay,
@@ -41,34 +43,39 @@ public class EraScheduler {
     public List<EraInstance> roll(long seed) {
         Random r = WorldRandom.of(seed, "era");
 
-        // 年1 分界基准 11/21/29，抖动 ±3/±2/±2
-        int[] y1 = clampBoundaries(1, YEAR1_END,
-                11 + r.nextInt(7) - 3,
-                21 + r.nextInt(5) - 2,
-                29 + r.nextInt(5) - 2);
-        // 年2：熔断固定 start=37、长度 3~5；蓝筹/贸易战分界基准 56 抖动 ±3
+        int dyp = GameConstants.DAYS_PER_YEAR;
+        int year1Start = 1, year1End = dyp;
+        int year2Start = dyp + 1, year2End = dyp * 2;
+        int year3Start = dyp * 2 + 1, year3End = GameConstants.TOTAL_DAYS;
+
+        // 年1 分界基准 11/21/29，抖动 ±3/±2/±2（掷点形状不变，只把结果日等比映射）
+        int[] y1 = clampBoundaries(year1Start, year1End,
+                scale(11 + r.nextInt(7) - 3),
+                scale(21 + r.nextInt(5) - 2),
+                scale(29 + r.nextInt(5) - 2));
+        // 年2：熔断纪元长度 3~5 天（不随年长缩放，它本就是"几天"）；蓝筹/贸易战分界基准 56 抖动 ±3
         int len5 = 3 + r.nextInt(3);
-        int[] y2 = clampBoundaries(YEAR2_START, YEAR2_END,
-                YEAR2_START + len5,
-                56 + r.nextInt(7) - 3);
+        int[] y2 = clampBoundaries(year2Start, year2End,
+                year2Start + len5,
+                scale(56 + r.nextInt(7) - 3));
         // 年3 分界基准 84/96/104，抖动 ±2/±2/±1
-        int[] y3 = clampBoundaries(YEAR3_START, YEAR3_END,
-                84 + r.nextInt(5) - 2,
-                96 + r.nextInt(5) - 2,
-                104 + r.nextInt(3) - 1);
+        int[] y3 = clampBoundaries(year3Start, year3End,
+                scale(84 + r.nextInt(5) - 2),
+                scale(96 + r.nextInt(5) - 2),
+                scale(104 + r.nextInt(3) - 1));
 
         int[][] spans = {
-                {1, y1[0] - 1},
+                {year1Start, y1[0] - 1},
                 {y1[0], y1[1] - 1},
                 {y1[1], y1[2] - 1},
-                {y1[2], YEAR1_END},
-                {YEAR2_START, y2[0] - 1},
+                {y1[2], year1End},
+                {year2Start, y2[0] - 1},
                 {y2[0], y2[1] - 1},
-                {y2[1], YEAR2_END},
-                {YEAR3_START, y3[0] - 1},
+                {y2[1], year2End},
+                {year3Start, y3[0] - 1},
                 {y3[0], y3[1] - 1},
                 {y3[1], y3[2] - 1},
-                {y3[2], YEAR3_END}};
+                {y3[2], year3End}};
 
         List<EraInstance> eras = new ArrayList<>(11);
         for (int i = 0; i < spans.length; i++) {
@@ -87,6 +94,27 @@ public class EraScheduler {
      * 安全网：按升序裁剪分界点，保证每段长度 >= MIN_ERA_LEN 且末段也 >= MIN_ERA_LEN。
      * 在当前抖动幅度下数学上恒为恒等变换，仅作防御。
      */
+    /**
+     * 把基准日历（{@value #BASE_YEAR_DAYS} 交易日/年）里的某一天，等比映射到当前年长
+     * 日历中同一相对位置。抖动在映射前叠加，故随机数消费顺序与基准版本完全一致。
+     */
+    private static int scale(int baseDay) {
+        int dyp = GameConstants.DAYS_PER_YEAR;
+        int baseYearStart, yearStart;
+        if (baseDay < BASE_YEAR2_START) {
+            baseYearStart = 1;
+            yearStart = 1;
+        } else if (baseDay < BASE_YEAR3_START) {
+            baseYearStart = BASE_YEAR2_START;
+            yearStart = dyp + 1;
+        } else {
+            baseYearStart = BASE_YEAR3_START;
+            yearStart = dyp * 2 + 1;
+        }
+        double fraction = (baseDay - baseYearStart) / (double) (BASE_YEAR_DAYS - 1);
+        return yearStart + (int) Math.round(fraction * (dyp - 1));
+    }
+
     private static int[] clampBoundaries(int yearStart, int yearEnd, int... raw) {
         int[] boundaries = new int[raw.length];
         int prev = yearStart;

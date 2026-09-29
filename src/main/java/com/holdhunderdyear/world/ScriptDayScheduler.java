@@ -1,5 +1,6 @@
 package com.holdhunderdyear.world;
 
+import com.holdhunderdyear.game.constants.GameConstants;
 import com.holdhunderdyear.game.constants.StockDefs;
 import com.holdhunderdyear.game.model.enums.ScriptType;
 import tools.jackson.databind.json.JsonMapper;
@@ -41,8 +42,10 @@ import java.util.Set;
  *       issuePrice = round2(5+25*nextDouble)。</li>
  * </ol>
  * pickDay 命中已用日期时的重掷循环同样由该 Random 驱动，天然确定；各候选区间长度均严格
- * 大于所需天数（EraScheduler 保证 era3 长度 >= 4、era10 长度 >= 5、era2/era7 长度 >= 5/14、
- * 每年 36 天），故重掷必然终止，不存在病态循环。
+ * 每类剧本日的请求数都在掷骰后按窗口容量夹逼（千股跌停还额外扣除救市日及其次日），且
+ * pickDay 在池子耗尽时直接抛 IllegalStateException，绝不出现无界重掷：年长被压缩到
+ * 24 交易日/年时，短纪元（如纪元10 只有 4 天）也不会把撒点循环卡死。
+ * 每年 DAYS_PER_YEAR 天），重掷空间始终宽裕。
  */
 public class ScriptDayScheduler {
 
@@ -104,7 +107,9 @@ public class ScriptDayScheduler {
         blocked.add(first);
         List<Integer> downDays = new ArrayList<>();
         downDays.add(first);
-        for (int i = 0; i < n - 1; i++) {
+        // 掷骰后按真实可用天数限量：跌停日数不能超过"纪元3 减去救市日及其次日与首日"的余量
+        int downPickable = Math.min(n - 1, availableDays(start3, end3, blocked));
+        for (int i = 0; i < downPickable; i++) {
             downDays.add(pickDay(r, start3, end3, blocked));
         }
         Collections.sort(downDays);
@@ -119,7 +124,7 @@ public class ScriptDayScheduler {
         // 4. 千股涨停：救市次日 + 纪元2 内 1~2 天
         out.add(new ScriptDayInstance(rescueDay + 1, ScriptType.LIMIT_UP_ALL,
                 params("sealRatio", 0.85 + 0.10 * r.nextDouble())));
-        int m = 1 + r.nextInt(2);
+        int m = Math.min(1 + r.nextInt(2), era2.endDay() - era2.startDay() + 1);
         Set<Integer> upUsed = new HashSet<>();
         List<Integer> upDays = new ArrayList<>();
         for (int i = 0; i < m; i++) {
@@ -131,7 +136,7 @@ public class ScriptDayScheduler {
         }
 
         // 5. 制裁闪崩（纪元7，目标为科技股池）
-        int s = 1 + r.nextInt(2);
+        int s = Math.min(1 + r.nextInt(2), era7.endDay() - era7.startDay() + 1);
         Set<Integer> sanctionUsed = new HashSet<>();
         List<Integer> sanctionDays = new ArrayList<>();
         for (int i = 0; i < s; i++) {
@@ -145,7 +150,8 @@ public class ScriptDayScheduler {
         // 6. 黑7月崩盘（纪元10 前半段）
         int len10 = era10.endDay() - era10.startDay() + 1;
         int half = (len10 + 1) / 2;
-        int c = 2 + r.nextInt(2);
+        // 崩盘日只能落在纪元10 前半段：短纪元（压缩日历后可能只有 4 天）时按前半段容量夹逼
+        int c = Math.min(2 + r.nextInt(2), half);
         Set<Integer> crashUsed = new HashSet<>();
         List<Integer> crashDays = new ArrayList<>();
         for (int i = 0; i < c; i++) {
@@ -160,9 +166,10 @@ public class ScriptDayScheduler {
         List<String> names = new ArrayList<>(IPO_NAME_POOL);
         Collections.shuffle(names, r);
         int nameIdx = 0;
-        int[][] yearRanges = {{1, 36}, {37, 72}, {73, 108}};
+        int dyp = GameConstants.DAYS_PER_YEAR;
+        int[][] yearRanges = {{1, dyp}, {dyp + 1, dyp * 2}, {dyp * 2 + 1, GameConstants.TOTAL_DAYS}};
         for (int[] range : yearRanges) {
-            int k = 2 + r.nextInt(2);
+            int k = Math.min(2 + r.nextInt(2), range[1] - range[0] + 1);
             Set<Integer> ipoUsed = new HashSet<>();
             List<Integer> ipoDays = new ArrayList<>();
             for (int i = 0; i < k; i++) {
@@ -182,12 +189,27 @@ public class ScriptDayScheduler {
 
     /** 在 [lo, hi] 内掷一天，命中已用日期则重掷（确定性），最终登记并返回。 */
     private static int pickDay(Random r, int lo, int hi, Set<Integer> used) {
+        if (availableDays(lo, hi, used) <= 0) {
+            throw new IllegalStateException(
+                    "script day pool exhausted: range [" + lo + "," + hi + "] already holds " + used.size() + " used days");
+        }
         int day;
         do {
             day = lo + r.nextInt(hi - lo + 1);
         } while (used.contains(day));
         used.add(day);
         return day;
+    }
+
+    /** [lo, hi] 内还能掷到几天（总天数减去已用且落在区间内的天数）。 */
+    private static int availableDays(int lo, int hi, Set<Integer> used) {
+        int free = hi - lo + 1;
+        for (int day = lo; day <= hi; day++) {
+            if (used.contains(day)) {
+                free--;
+            }
+        }
+        return free;
     }
 
     /** {rescueDay, rescueDay+1} 中落在 [lo, hi] 内的天数。 */

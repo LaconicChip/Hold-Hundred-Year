@@ -17,6 +17,7 @@ import com.holdhunderdyear.market.mapper.UserScriptDayMapper;
 import com.holdhunderdyear.market.mapper.UserStockStateMapper;
 import com.holdhunderdyear.world.WorldSeeder;
 import org.junit.jupiter.api.Test;
+import com.holdhunderdyear.game.constants.GameConstants;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 快进服务集成测试（hold_year_test 库）。skip 与手动逐跳同为单线程全程持世界锁推进，
  * 与 {@code @Transactional} 测试事务兼容（tickOne/startDay 的 TransactionTemplate 加入
  * 测试事务，结束回滚，无需清理）。覆盖：盘中 skip 直接收官、CLOSED 态 skip 只开一日、
- * NOT_STARTED 直接收官第 1 日、第 108 天收官 FINISHED、熔断日提前收盘，以及同 seed 下
+ * NOT_STARTED 直接收官第 1 日、最后一天（TOTAL_DAYS）收官 FINISHED、熔断日提前收盘，以及同 seed 下
  * skip 与手动逐跳的世界等价性（快进不得引入任何随机性偏差）。
  */
 @SpringBootTest
@@ -100,30 +101,31 @@ class FastForwardServiceTest {
     void skipOnFinalDayFinishesTheGame() {
         long userId = worldSeeder.seedUser("ff_final1", "$2a$10$bcrypthash");
         UserGameState gs = gameState(userId);
-        gs.setCurrentDay(107);
+        gs.setCurrentDay(GameConstants.TOTAL_DAYS - 1);
         gs.setMarketState("CLOSED");
         userGameStateMapper.updateById(gs);
 
         fastForwardService.skip(userId);
 
         UserGameState after = gameState(userId);
-        assertEquals("FINISHED", after.getMarketState(), "closing day 108 must finish the game");
-        assertEquals("NORMAL_FINISH", after.getEndReason(), "surviving to day 108 is a normal finish");
-        assertEquals(108, after.getEndDay(), "finish day must record the final trading day");
+        assertEquals("FINISHED", after.getMarketState(), "closing the final trading day must finish the game");
+        assertEquals("NORMAL_FINISH", after.getEndReason(), "surviving to the final day is a normal finish");
+        assertEquals(GameConstants.TOTAL_DAYS, after.getEndDay(), "finish day must record the final trading day");
     }
 
     @Test
     void skipOnCircuitBreakerDayClosesEarly() {
         long userId = worldSeeder.seedUser("ff_cb1", "$2a$10$bcrypthash");
         UserGameState gs = gameState(userId);
-        gs.setCurrentDay(36);
+        gs.setCurrentDay(GameConstants.DAYS_PER_YEAR); // 下一天即熔断纪元首日
         gs.setMarketState("CLOSED");
         userGameStateMapper.updateById(gs);
 
         fastForwardService.skip(userId);
 
         UserGameState after = gameState(userId);
-        assertEquals(37, after.getCurrentDay(), "era5 first day is 37");
+        assertEquals(GameConstants.DAYS_PER_YEAR + 1, after.getCurrentDay(),
+                "skip must land on era5 opening day (year 2 day 1)");
         assertEquals("CLOSED", after.getMarketState(), "circuit-breaker day must still settle to closed");
         assertTrue(after.getTickIndex() < 90, "circuit-breaker early close must stop before full 90 ticks");
         assertTrue(quoteBoardRegistry.getOrLoad(userId).getTickIndex() < 90,

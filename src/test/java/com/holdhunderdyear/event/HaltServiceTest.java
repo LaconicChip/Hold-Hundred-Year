@@ -108,6 +108,13 @@ class HaltServiceTest {
                 "halted target must be frozen during SANCTION day");
 
         // 推进到复牌日：自选一个下杀补跌的 seed 保证 "复牌补跌"（规避 15% 妖股 +10% 一字分支）
+        // 复牌随机数是按 stockId 升序共享一个盐消费的：其它股票若同日复牌会先吃掉第一个 double，
+        // 目标股（id=5）就拿不到 pickDownGapResumeDay 预判的那个数。这里只留目标股复牌。
+        userStockStateMapper.update(null, new UpdateWrapper<UserStockState>()
+                .eq("user_id", userId)
+                .ne("stock_id", TARGET_STOCK_ID)
+                .set("halted", false)
+                .set("halt_until_day", null));
         int resumeDay = pickDownGapResumeDay(userId);
         userStockStateMapper.update(null, new UpdateWrapper<UserStockState>()
                 .eq("user_id", userId)

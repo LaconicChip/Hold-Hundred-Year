@@ -8,7 +8,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 11 个纪元的基准时间表与强度区间（spec §3/§4，108 游戏日）。
+ * 11 个纪元的基准时间表与强度区间（spec §3/§4）。baseStartDay/baseEndDay 是
+ * "36 交易日/年、共 108 天"基准日历下的参考排期，仅供人读；实际排期由
+ * EraScheduler 按当前 GameConstants.DAYS_PER_YEAR 等比缩放，不读取这两个字段。
  * μ 为每跳市场漂移；sectorRanges 为板块相对市场的额外系数区间。
  * sectorRanges 使用 LinkedHashMap，保证 EraScheduler 消费随机数的顺序确定。
  */

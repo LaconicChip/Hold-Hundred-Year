@@ -439,11 +439,11 @@ class MarketStateServiceTest {
     void startDayOnCircuitBreakerDaySetsBoardFlag() {
         long userId = worldSeeder.seedUser("mkt_cb1", "$2a$10$bcrypthash");
 
-        QuoteBoard day36 = startDayAt(userId, 36);
-        assertFalse(day36.isCircuitBreakerDay(), "day 36 (era4 tail) is not a circuit breaker day");
+        QuoteBoard lastDayOfYear1 = startDayAt(userId, GameConstants.DAYS_PER_YEAR);
+        assertFalse(lastDayOfYear1.isCircuitBreakerDay(), "era4 tail is not a circuit breaker day");
 
-        QuoteBoard day37 = startDayAt(userId, 37);
-        assertTrue(day37.isCircuitBreakerDay(), "era5 always starts day 37 with CIRCUIT_BREAKER script rows");
+        QuoteBoard firstDayOfYear2 = startDayAt(userId, GameConstants.DAYS_PER_YEAR + 1);
+        assertTrue(firstDayOfYear2.isCircuitBreakerDay(), "era5 always starts year 2 with CIRCUIT_BREAKER script rows");
     }
 
     @Test
@@ -588,10 +588,11 @@ class MarketStateServiceTest {
         assertEquals(1, day1.getCurrentEra().eraIndex());
         assertEquals(1, day1.getCurrentEra().startDay());
 
-        QuoteBoard day37 = startDayAt(userId, 37);
-        assertEquals(5, day37.getCurrentEra().eraIndex());
-        assertEquals(37, day37.getCurrentEra().startDay());
-        assertEquals(37, gameState(userId).getCurrentDay());
+        int era5Start = GameConstants.DAYS_PER_YEAR + 1;
+        QuoteBoard onEra5 = startDayAt(userId, era5Start);
+        assertEquals(5, onEra5.getCurrentEra().eraIndex());
+        assertEquals(era5Start, onEra5.getCurrentEra().startDay());
+        assertEquals(era5Start, gameState(userId).getCurrentDay());
     }
 
     private UserGameState gameState(long userId) {
@@ -667,7 +668,7 @@ class MarketStateServiceTest {
                 .stream()
                 .map(UserScriptDay::getGameDay)
                 .collect(Collectors.toSet());
-        for (int day = 2; day <= 108; day++) {
+        for (int day = 2; day <= GameConstants.TOTAL_DAYS; day++) {
             if (!scripted.contains(day)) {
                 return day;
             }

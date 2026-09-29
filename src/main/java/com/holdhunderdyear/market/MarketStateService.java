@@ -468,7 +468,7 @@ public class MarketStateService {
     }
 
     /** day 所属纪元（EraScheduler 按 worldSeed 重掷——与 WorldSeeder 播种的 user_era 行
-     *  同 seed 同结果，11 个纪元恰好铺满 1..108）。 */
+     *  同 seed 同结果，11 个纪元恰好铺满 1..TOTAL_DAYS）。 */
     private EraScheduler.EraInstance eraInstanceForDay(long worldSeed, int day) {
         for (EraScheduler.EraInstance era : new EraScheduler().roll(worldSeed)) {
             if (era.startDay() <= day && day <= era.endDay()) {
