@@ -519,7 +519,12 @@ BANKRUPT / FINISHED（终局：冻结一切操作，展示结局结算页）
 
 ## 11. REST API 概览
 
+> 本节为**已交付接口清单**，2026-09-29 逐条对照 `web/` 下控制器核验（29 个端点）。
+> 新增/变更接口时同步改本节，勿让规格与实现漂移。
+
 - `POST /api/auth/register`、`POST /api/auth/login`（返回 JWT）
+
+- `GET  /api/me`：当前登录用户（userId、username），前端刷新后恢复身份用
 
 - `GET  /api/me/assets`：现金、市值、总资产、总盈亏、当日收益率
 
@@ -533,13 +538,15 @@ BANKRUPT / FINISHED（终局：冻结一切操作，展示结局结算页）
 
 - `GET  /api/me/titles`：已解锁称号与挑战徽章（kind 区分）
 
-- `GET  /api/me/equity-curve`：108 天净资产 vs 百年指数曲线（来自 user\_daily\_snapshot，终局页/资产页用）
+- `GET  /api/market/equity-curve`：108 天净资产 vs 百年指数曲线（来自 user\_daily\_snapshot，终局页/资产页用）
 
-- `GET  /api/game/leaderboard?gameDay={n}`：营业部排行榜（玩家 + NPC 当日资产、排名、状态）；默认最新结算日
+- `GET  /api/market/leaderboard?gameDay={n}`：营业部排行榜（玩家 + NPC 当日资产、排名、状态）；默认最新结算日
 
 - `GET  /api/stocks`：24 只股票静态信息 + 本账户最新行情
 
-- `GET  /api/stocks/{id}/quotes`：当日分时点序列
+- `GET  /api/stocks/{id}/quotes`：当日分时点序列（固定 90 点时间轴，未到点为 null、午休断轴）
+
+- `GET  /api/stocks/{id}/kline?limit=60`：日K蜡烛数据（来自 stock\_daily\_bar，快进与正常推进同路径落库）
 
 - `GET  /api/market/index`：百年指数当日分时与收盘历史
 
@@ -561,7 +568,7 @@ BANKRUPT / FINISHED（终局：冻结一切操作，展示结局结算页）
 
 - `GET  /api/market/daily-summary?gameDay={n}`：某日收盘总结数据（默认最近结算日）：日收益率、指数日涨跌幅、资产快照、担保比例、当日要闻列表、T+1 解冻/追保/强平/停牌提示、玩梗评语、当前纪元与明日风险提示。
 
-- `GET  /api/messages`（按来源/三态/已读筛选）、`PUT /api/messages/{id}/read`
+- `GET  /api/messages`（按来源/三态/已读筛选）、`PUT /api/messages/{id}/read`、`PUT /api/messages/read-all`（全部已读，铃铛清红点）
 
 ## 12. 前端页面（Vue 3 + Element Plus）
 
