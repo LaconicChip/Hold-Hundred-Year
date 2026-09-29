@@ -123,11 +123,16 @@ const isClosed = computed(() =>
 const flashMap = ref({})
 let initialized = false
 
+// 是否钉在涨/跌停：优先看封板状态机，其次用服务端下发的本局涨跌停价比对。
+// 原来写死 9.8%，快速模式（±20%）下会把 +10% 的票误标成涨停。
+function atPrice(price, limit) {
+  return limit != null && limit > 0 && Math.abs(price - limit) < 0.005
+}
 function isLimitUp(q) {
-  return q.sealed === 'UP' || q.changePct >= 9.8
+  return q.sealed === 'UP' || atPrice(q.current, q.limitUp)
 }
 function isLimitDown(q) {
-  return q.sealed === 'DOWN' || q.changePct <= -9.8
+  return q.sealed === 'DOWN' || atPrice(q.current, q.limitDown)
 }
 function onRow(q) {
   router.push(`/stock/${q.stockId}`).catch(() => {})

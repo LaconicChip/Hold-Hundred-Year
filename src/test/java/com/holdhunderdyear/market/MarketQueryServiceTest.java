@@ -11,6 +11,7 @@ import com.holdhunderdyear.game.model.dto.KlinePointDTO;
 import com.holdhunderdyear.game.model.dto.LeaderboardDTO;
 import com.holdhunderdyear.game.model.dto.MarketStateDTO;
 import com.holdhunderdyear.game.model.dto.StockQuoteDTO;
+import com.holdhunderdyear.game.model.enums.GameMode;
 import com.holdhunderdyear.game.model.enums.MarketState;
 import com.holdhunderdyear.market.entity.UserDailySnapshot;
 import com.holdhunderdyear.market.entity.UserGameState;
@@ -121,6 +122,29 @@ class MarketQueryServiceTest {
         assertEquals(0, state.getTickIndex());
         // 早盘只有 45 跳：倒计时必须是"本会话剩余跳数"，用全天 90 跳会让早盘看起来比午盘长一倍
         assertEquals(45, state.getCountdownTicks(), "morning countdown must be the 45 ticks left in that session");
+    }
+
+    @Test
+    void limitPricesInEveryQuoteRowFollowTheRunGameMode() {
+        long standard = worldSeeder.seedUser("mq_limit_std", BCRYPT_HASH);
+        marketStateService.startDay(standard);
+        StockQuoteDTO std = marketQueryService.stocksWithQuotes(standard).get(0);
+        assertEquals(round2(std.getPrevClose() * 1.10), std.getLimitUp(), 0.011,
+                "standard mode must publish +10% limit price");
+        assertEquals(round2(std.getPrevClose() * 0.90), std.getLimitDown(), 0.011,
+                "standard mode must publish -10% limit price");
+
+        long quick = worldSeeder.seedUser("mq_limit_quick", BCRYPT_HASH, GameMode.QUICK);
+        marketStateService.startDay(quick);
+        StockQuoteDTO q = marketQueryService.stocksWithQuotes(quick).get(0);
+        assertEquals(round2(q.getPrevClose() * 1.20), q.getLimitUp(), 0.011,
+                "quick mode must publish +20% limit price, not the frontend's hardcoded 10%");
+        assertEquals(round2(q.getPrevClose() * 0.80), q.getLimitDown(), 0.011,
+                "quick mode must publish -20% limit price");
+    }
+
+    private static double round2(double v) {
+        return Math.round(v * 100) / 100.0; // 除数必须是 100.0：Math.round 返回 long，/100 会做整数除法
     }
 
     @Test

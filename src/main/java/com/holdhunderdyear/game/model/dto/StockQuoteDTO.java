@@ -33,6 +33,12 @@ public class StockQuoteDTO {
     /** 当日涨跌幅比率（0.04 = +4%）。 */
     private double changePct;
 
+    /** 本局涨停价（按 GameMode 幅度与 ST 标志算好下发，前端不再自己乘 1.1） */
+    private double limitUp;
+
+    /** 本局跌停价 */
+    private double limitDown;
+
     private int limitUpStreak;
 
     private boolean halted;

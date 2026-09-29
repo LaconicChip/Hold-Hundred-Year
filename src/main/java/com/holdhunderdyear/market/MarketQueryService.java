@@ -310,7 +310,12 @@ public class MarketQueryService {
                 row.setLow(bar != null ? bar.getLow().doubleValue() : quote.getLow());
                 row.setChangePct(closed && quote.getLastClosePct() != null
                         ? quote.getLastClosePct() : quote.dayChangePct());
-                row.setLimitUpStreak(quote.getLimitUpStreak());
+                // 涨跌停价按"展示用的昨收"算：收盘态昨收取当日日K bar，与 prevClose 字段同源
+        double limitPct = quote.effectiveLimitPct();
+        double shownPrevClose = row.getPrevClose();
+        row.setLimitUp(Quote.limitPrice(shownPrevClose, limitPct, true));
+        row.setLimitDown(Quote.limitPrice(shownPrevClose, limitPct, false));
+        row.setLimitUpStreak(quote.getLimitUpStreak());
                 row.setHalted(quote.isHalted());
                 row.setSt(quote.isSt());
                 row.setSealed(quote.getSealed().name());

@@ -59,12 +59,21 @@ public class Quote {
 
     /** 涨停价：按本局幅度（ST 减半）上浮 prevClose，HALF_UP 保留 2 位。 */
     public double limitUpPrice() {
-        return round2(prevClose * (1 + effectiveLimitPct()));
+        return limitPrice(prevClose, effectiveLimitPct(), true);
     }
 
     /** 跌停价：按本局幅度（ST 减半）下调 prevClose，HALF_UP 保留 2 位。 */
     public double limitDownPrice() {
-        return round2(prevClose * (1 - effectiveLimitPct()));
+        return limitPrice(prevClose, effectiveLimitPct(), false);
+    }
+
+    /**
+     * 涨跌停价的唯一算法：prevClose × (1 ± pct)，HALF_UP 保留 2 位。
+     * 行情展示（下发给前端的涨停/跌停虚线）与封板机共用此方法，
+     * 避免"引擎按本局模式、前端按写死 10%"两套口径（快速模式曾因此画错线）。
+     */
+    public static double limitPrice(double prevClose, double pct, boolean up) {
+        return round2(prevClose * (up ? 1 + pct : 1 - pct));
     }
 
     /** 当前生效的涨跌停幅度：ST 股取一半。 */

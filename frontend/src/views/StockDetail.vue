@@ -195,17 +195,10 @@ const infoOpen = computed(() => row.value.open)
 const infoHigh = computed(() => row.value.high)
 const infoLow = computed(() => row.value.low)
 
-// 涨跌停价：ST ±5%、普通 ±10%（与后端 Quote.limitUpPrice 同口径，HALF_UP 2 位）
-const limitUpPrice = computed(() =>
-  round2((dayPrevClose.value || stock.value.basePrice) * (row.value.st ? 1.05 : 1.10))
-)
-const limitDownPrice = computed(() =>
-  round2((dayPrevClose.value || stock.value.basePrice) * (row.value.st ? 0.95 : 0.90))
-)
-function round2(v) {
-  return Math.round(v * 100) / 100
-}
-
+// 涨跌停价由后端按本局模式算好下发（标准 ±10% / 快速 ±20%，ST 取一半）。
+// 前端不再自己乘系数：写死 1.10 曾让快速模式的虚线停在 10% 的位置。
+const limitUpPrice = computed(() => row.value.limitUp || 0)
+const limitDownPrice = computed(() => row.value.limitDown || 0)
 // 涨跌额（现价 - 昨收，元）
 const chgAmount = computed(() => quote.value.current - dayPrevClose.value)
 
