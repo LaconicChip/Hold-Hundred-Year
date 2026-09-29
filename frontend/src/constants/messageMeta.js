@@ -90,3 +90,40 @@ export const SRC_FILTERS = [
   { value: 'NPC', label: '营业部' },
   { value: 'SYSTEM', label: '系统' }
 ]
+
+// ============================================================
+// 呈现通道（spec §12.1 消息中心之外，重要消息要"当面"告诉玩家）
+//   BANNER 头条大弹幕：横贯屏幕的粗体大字，慢速飘过，pointer-events:none，绝不打断操作
+//   POPUP  浮层提醒：右下角堆叠卡片，6 秒自动收起，可点进消息中心
+//   FEED   普通消息：只在消息中心排队，不打扰
+// 判定只看 source/type/title，后端不改协议，REST 列表与 WS 推送共用同一套规则。
+// ============================================================
+export const CHANNEL = { BANNER: 'banner', POPUP: 'popup', FEED: 'feed' }
+
+// 市场级大事：值得全屏通报一次
+const BANNER_HINTS = ['千股跌停', '千股涨停', '熔断', '救市', '崩盘', '制裁', '黑7月', '强制平仓', '停牌核查']
+// 账户级但需要立刻知道：追保/强平/停牌/除权/中签/上市/纪元切换/内幕
+const POPUP_SOURCES = ['SYSTEM', 'INSIDER']
+
+export function channelOf(m) {
+  if (!m) return CHANNEL.FEED
+  const source = m.source || ''
+  const title = m.title || ''
+  const body = m.content || ''
+  if (source === 'AUTHORITY') return CHANNEL.BANNER
+  if (BANNER_HINTS.some((h) => title.includes(h) || body.includes(h))) return CHANNEL.BANNER
+  if (POPUP_SOURCES.includes(source)) return CHANNEL.POPUP
+  if (m.followupOf != null) return CHANNEL.POPUP // 传闻被证实/辟谣的追报，提醒一次
+  return CHANNEL.FEED
+}
+
+// 语义配色（红涨绿跌，spec §12）：利好=红、利空=绿、中性=墨
+const UP_HINTS = ['涨停', '新高', '救市', '反弹', '中签', '盈利', '超预期', '分红', '回暖', '放量', '转正', '增长', '落地']
+const DOWN_HINTS = ['跌停', '崩盘', '爆仓', '平仓', '停牌', '核查', '制裁', '风险', '下滑', '亏损', '承压', '跳水', '腰斩', '过剩', '降价', '撤单', '停工', '违约']
+
+export function toneOf(text) {
+  const s = text || ''
+  if (DOWN_HINTS.some((h) => s.includes(h))) return 'down'
+  if (UP_HINTS.some((h) => s.includes(h))) return 'up'
+  return 'ink'
+}

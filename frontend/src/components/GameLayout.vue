@@ -55,6 +55,9 @@
 
     <main class="main">
       <router-view />
+    <!-- 全站"当面提醒"层：头条大弹幕 + 右下角浮层，均不阻塞操作（spec §12.1） -->
+    <HeadlineDanmu />
+    <NoticePopup />
     </main>
   </div>
 </template>
@@ -63,6 +66,8 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import SvgIcon from './SvgIcon.vue'
+import HeadlineDanmu from './HeadlineDanmu.vue'
+import NoticePopup from './NoticePopup.vue'
 import TierBadge from './TierBadge.vue'
 import bullImg from '@/assets/img/bull.png'
 import { useMarketStore } from '@/stores/market'
@@ -140,13 +145,24 @@ function onLogout() {
   router.push('/login')
 }
 
+// 新消息轮询（5 秒）：驱动头条大弹幕与右下角浮层，实现见 stores/messages.js pollAndPresent
+const MESSAGE_POLL_MS = 5000
+let messagePoll = null
+
 onMounted(() => {
   syncCollapsed()
   window.addEventListener('resize', syncCollapsed)
   // 侧栏要显示纪元/段位/交易日，进主布局时补一次状态
   if (!market.currentDay) market.fetchState()
+  // 新消息轮询：驱动头条大弹幕与右下角浮层（首轮静默，只登记不播报）
+  messages.pollAndPresent()
+  messagePoll = setInterval(() => messages.pollAndPresent(), MESSAGE_POLL_MS)
 })
-onUnmounted(() => window.removeEventListener('resize', syncCollapsed))
+onUnmounted(() => {
+  window.removeEventListener('resize', syncCollapsed)
+  if (messagePoll) clearInterval(messagePoll)
+  messagePoll = null
+})
 </script>
 
 <style scoped>
