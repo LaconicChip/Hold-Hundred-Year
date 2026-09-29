@@ -527,6 +527,10 @@ BANKRUPT / FINISHED（终局：冻结一切操作，展示结局结算页）
 
 - `GET  /api/me/trades`：交易流水分页
 
+- `GET  /api/me/loan-records`：融资流水分页（loan\_record，新在前）
+
+- `GET  /api/me/ipo-records`：打新记录分页（user\_ipo\_record，新在前）
+
 - `GET  /api/me/titles`：已解锁称号与挑战徽章（kind 区分）
 
 - `GET  /api/me/equity-curve`：108 天净资产 vs 百年指数曲线（来自 user\_daily\_snapshot，终局页/资产页用）

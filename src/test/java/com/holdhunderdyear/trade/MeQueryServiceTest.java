@@ -2,6 +2,8 @@ package com.holdhunderdyear.trade;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhunderdyear.game.model.dto.AssetsDTO;
+import com.holdhunderdyear.game.model.dto.IpoRecordItemDTO;
+import com.holdhunderdyear.game.model.dto.LoanRecordItemDTO;
 import com.holdhunderdyear.game.model.dto.PositionDTO;
 import com.holdhunderdyear.game.model.dto.TitleDTO;
 import com.holdhunderdyear.game.model.dto.TradeItemDTO;
@@ -9,8 +11,10 @@ import com.holdhunderdyear.common.PageResult;
 import com.holdhunderdyear.game.model.dto.TradeDTO;
 import com.holdhunderdyear.market.MarketStateService;
 import com.holdhunderdyear.market.entity.SysUser;
+import com.holdhunderdyear.market.entity.UserIpoRecord;
 import com.holdhunderdyear.market.entity.UserTitle;
 import com.holdhunderdyear.market.mapper.SysUserMapper;
+import com.holdhunderdyear.market.mapper.UserIpoRecordMapper;
 import com.holdhunderdyear.market.mapper.UserTitleMapper;
 import com.holdhunderdyear.world.WorldSeeder;
 import org.junit.jupiter.api.Test;
@@ -19,6 +23,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -28,8 +33,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 个人资产/持仓/流水/称号查询集成测试（hold_year_test 库，方法级事务自动回滚）。
- * 锁定 spec §11 GET /api/me/{assets,positions,trades,titles} 契约——此前这四端点缺失、
- * 前端被迫走 mock 假数据，本测试防回归。
+ * 锁定 spec §11 GET /api/me/{assets,positions,trades,loan-records,ipo-records,titles}
+ * 契约——此前这些端点缺失、前端被迫走 mock 假数据或占位空态，本测试防回归。
  */
 @SpringBootTest
 @Transactional
@@ -47,10 +52,16 @@ class MeQueryServiceTest {
     private TradeService tradeService;
 
     @Autowired
+    private MarginService marginService;
+
+    @Autowired
     private MeQueryService meQueryService;
 
     @Autowired
     private SysUserMapper sysUserMapper;
+
+    @Autowired
+    private UserIpoRecordMapper userIpoRecordMapper;
 
     @Autowired
     private UserTitleMapper userTitleMapper;
@@ -145,6 +156,74 @@ class MeQueryServiceTest {
         assertEquals("初入股市", row.getName());
         assertTrue(row.isUnlocked());
         assertFalse(row.getName().isBlank());
+    }
+
+    @Test
+    void loanRecordsReturnNewestFirstWithDebtBalanceAfterEachRow() {
+        long userId = worldSeeder.seedUser("me_loan1", BCRYPT_HASH);
+        marketStateService.startDay(userId);
+        marginService.borrow(userId, new BigDecimal("50000"));
+        marginService.repay(userId, new BigDecimal("10000"));
+
+        PageResult<LoanRecordItemDTO> page = meQueryService.loanRecords(userId);
+
+        assertEquals(2, page.getTotal());
+        LoanRecordItemDTO newest = page.getRecords().get(0);
+        LoanRecordItemDTO oldest = page.getRecords().get(1);
+        assertEquals("REPAY", newest.getLoanType(), "newest row must come first");
+        assertEquals(10000.00, newest.getAmount(), 1e-9);
+        assertEquals(40000.00, newest.getDebtAfter(), 1e-9, "debtAfter is the balance right after this row");
+        assertEquals("BORROW", oldest.getLoanType());
+        assertEquals(50000.00, oldest.getAmount(), 1e-9);
+        assertEquals(50000.00, oldest.getDebtAfter(), 1e-9);
+        assertEquals(1, oldest.getGameDay(), "borrow happened on the opened day 1");
+        assertNotNull(oldest.getTime());
+    }
+
+    @Test
+    void loanRecordsAreEmptyForAccountThatNeverTouchedMargin() {
+        long userId = worldSeeder.seedUser("me_loan2", BCRYPT_HASH);
+
+        PageResult<LoanRecordItemDTO> page = meQueryService.loanRecords(userId);
+
+        assertEquals(0, page.getTotal());
+        assertTrue(page.getRecords().isEmpty(), "no margin activity means no loan rows");
+    }
+
+    @Test
+    void ipoRecordsReturnNewestFirstWithStatusAndProfit() {
+        long userId = worldSeeder.seedUser("me_ipo1", BCRYPT_HASH);
+        insertIpoRecord(userId, "牛途科技", "12.50", "SETTLED", "3200.00", 5);
+        insertIpoRecord(userId, "滚滚传媒", "8.00", "LOST", null, 9);
+
+        PageResult<IpoRecordItemDTO> page = meQueryService.ipoRecords(userId);
+
+        assertEquals(2, page.getTotal());
+        IpoRecordItemDTO newest = page.getRecords().get(0);
+        assertEquals("滚滚传媒", newest.getIpoName(), "newest subscription must come first");
+        assertEquals("LOST", newest.getStatus());
+        assertEquals(8.00, newest.getIssuePrice(), 1e-9);
+        assertEquals(0.0, newest.getProfit(), 1e-9, "unsettled rows report zero profit");
+        assertEquals(9, newest.getGameDay());
+        assertNotNull(newest.getTime());
+        IpoRecordItemDTO settled = page.getRecords().get(1);
+        assertEquals("SETTLED", settled.getStatus());
+        assertEquals(3200.00, settled.getProfit(), 1e-9);
+        assertEquals(12.50, settled.getIssuePrice(), 1e-9);
+    }
+
+    private void insertIpoRecord(long userId, String ipoName, String issuePrice,
+                                 String status, String profit, int gameDay) {
+        UserIpoRecord record = new UserIpoRecord();
+        record.setUserId(userId);
+        record.setScriptDayId(1L);
+        record.setIpoName(ipoName);
+        record.setIssuePrice(new BigDecimal(issuePrice));
+        record.setStatus(status);
+        record.setProfit(profit == null ? null : new BigDecimal(profit));
+        record.setGameDay(gameDay);
+        record.setCreatedAt(LocalDateTime.now());
+        userIpoRecordMapper.insert(record);
     }
 
     private void buy(long userId, long stockId, int shares) {

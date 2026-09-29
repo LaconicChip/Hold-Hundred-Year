@@ -3,6 +3,8 @@ package com.holdhunderdyear.web;
 import com.holdhunderdyear.common.PageResult;
 import com.holdhunderdyear.common.R;
 import com.holdhunderdyear.game.model.dto.AssetsDTO;
+import com.holdhunderdyear.game.model.dto.IpoRecordItemDTO;
+import com.holdhunderdyear.game.model.dto.LoanRecordItemDTO;
 import com.holdhunderdyear.game.model.dto.PositionDTO;
 import com.holdhunderdyear.game.model.dto.TitleDTO;
 import com.holdhunderdyear.game.model.dto.TradeItemDTO;
@@ -15,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * 个人资料接口（spec §11）：资产看板 / 持仓列表 / 交易流水分页 / 已解锁称号徽章。
+ * 个人资料接口（spec §11）：资产看板 / 持仓列表 / 交易·融资·打新流水分页 / 已解锁称号徽章。
  * 只读查询委托 MeQueryService（现价 mark-to-market 与交易同源）。
  */
 @RestController
@@ -44,6 +46,18 @@ public class MeController {
     @GetMapping("/trades")
     public R<PageResult<TradeItemDTO>> trades(@AuthenticationPrincipal Long userId) {
         return R.ok(meQueryService.trades(userId));
+    }
+
+    /** 融资流水分页（借款/还款/结息/强平还款，最近 100 条，新在前）。 */
+    @GetMapping("/loan-records")
+    public R<PageResult<LoanRecordItemDTO>> loanRecords(@AuthenticationPrincipal Long userId) {
+        return R.ok(meQueryService.loanRecords(userId));
+    }
+
+    /** 打新记录分页（含未中签等终态，最近 100 条，新在前）。 */
+    @GetMapping("/ipo-records")
+    public R<PageResult<IpoRecordItemDTO>> ipoRecords(@AuthenticationPrincipal Long userId) {
+        return R.ok(meQueryService.ipoRecords(userId));
     }
 
     /** 已解锁称号与挑战徽章（kind 区分）。 */

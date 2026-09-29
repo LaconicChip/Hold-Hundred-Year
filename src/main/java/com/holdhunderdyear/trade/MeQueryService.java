@@ -6,16 +6,22 @@ import com.holdhunderdyear.common.ErrorCode;
 import com.holdhunderdyear.common.PageResult;
 import com.holdhunderdyear.game.constants.StockDefs;
 import com.holdhunderdyear.game.model.dto.AssetsDTO;
+import com.holdhunderdyear.game.model.dto.IpoRecordItemDTO;
+import com.holdhunderdyear.game.model.dto.LoanRecordItemDTO;
 import com.holdhunderdyear.game.model.dto.PositionDTO;
 import com.holdhunderdyear.game.model.dto.TitleDTO;
 import com.holdhunderdyear.game.model.dto.TradeItemDTO;
 import com.holdhunderdyear.market.QuoteBoardRegistry;
+import com.holdhunderdyear.market.entity.LoanRecord;
 import com.holdhunderdyear.market.entity.SysUser;
 import com.holdhunderdyear.market.entity.TradeRecord;
+import com.holdhunderdyear.market.entity.UserIpoRecord;
 import com.holdhunderdyear.market.entity.UserPosition;
 import com.holdhunderdyear.market.entity.UserTitle;
+import com.holdhunderdyear.market.mapper.LoanRecordMapper;
 import com.holdhunderdyear.market.mapper.SysUserMapper;
 import com.holdhunderdyear.market.mapper.TradeRecordMapper;
+import com.holdhunderdyear.market.mapper.UserIpoRecordMapper;
 import com.holdhunderdyear.market.mapper.UserPositionMapper;
 import com.holdhunderdyear.market.mapper.UserTitleMapper;
 import com.holdhunderdyear.market.quote.Quote;
@@ -27,7 +33,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 个人资产/持仓/流水/称号查询聚合（spec §11 GET /api/me/{assets,positions,trades,titles}）。
+ * 个人资产/持仓/三类流水/称号查询聚合（spec §11 GET /api/me/{assets,positions,
+ * trades,loan-records,ipo-records,titles}，对应 spec §12.4 资产页的交易/融资/打新流水）。
  * 现价一律读本账户行情板（世界锁内快照读取，mark-to-market 与交易同源）；无 game_state
  * 抛 NOT_FOUND。
  */
@@ -37,22 +44,29 @@ public class MeQueryService {
     private static final DateTimeFormatter TIME_FORMAT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    private static final int TRADE_PAGE_SIZE = 100;
+    /** 流水类查询的单页条数：交易/融资/打新共用（最近 N 条，新在前）。 */
+    private static final int FLOW_PAGE_SIZE = 100;
 
     private final SysUserMapper sysUserMapper;
     private final UserPositionMapper userPositionMapper;
     private final TradeRecordMapper tradeRecordMapper;
+    private final LoanRecordMapper loanRecordMapper;
+    private final UserIpoRecordMapper userIpoRecordMapper;
     private final UserTitleMapper userTitleMapper;
     private final QuoteBoardRegistry quoteBoardRegistry;
 
     public MeQueryService(SysUserMapper sysUserMapper,
                           UserPositionMapper userPositionMapper,
                           TradeRecordMapper tradeRecordMapper,
+                          LoanRecordMapper loanRecordMapper,
+                          UserIpoRecordMapper userIpoRecordMapper,
                           UserTitleMapper userTitleMapper,
                           QuoteBoardRegistry quoteBoardRegistry) {
         this.sysUserMapper = sysUserMapper;
         this.userPositionMapper = userPositionMapper;
         this.tradeRecordMapper = tradeRecordMapper;
+        this.loanRecordMapper = loanRecordMapper;
+        this.userIpoRecordMapper = userIpoRecordMapper;
         this.userTitleMapper = userTitleMapper;
         this.quoteBoardRegistry = quoteBoardRegistry;
     }
@@ -104,15 +118,39 @@ public class MeQueryService {
         }
     }
 
-    /** 交易流水：最近 TRADE_PAGE_SIZE 条，新在前。 */
+    /** 交易流水：最近 FLOW_PAGE_SIZE 条，新在前。 */
     public PageResult<TradeItemDTO> trades(long userId) {
         requireUser(userId);
         List<TradeRecord> records = tradeRecordMapper.selectList(
                 new LambdaQueryWrapper<TradeRecord>()
                         .eq(TradeRecord::getUserId, userId)
                         .orderByDesc(TradeRecord::getId)
-                        .last("LIMIT " + TRADE_PAGE_SIZE));
+                        .last("LIMIT " + FLOW_PAGE_SIZE));
         List<TradeItemDTO> rows = records.stream().map(this::toTradeRow).toList();
+        return new PageResult<>(rows, rows.size());
+    }
+
+    /** 融资流水：最近 FLOW_PAGE_SIZE 条，新在前（借款/还款/结息/强平还款同表）。 */
+    public PageResult<LoanRecordItemDTO> loanRecords(long userId) {
+        requireUser(userId);
+        List<LoanRecord> records = loanRecordMapper.selectList(
+                new LambdaQueryWrapper<LoanRecord>()
+                        .eq(LoanRecord::getUserId, userId)
+                        .orderByDesc(LoanRecord::getId)
+                        .last("LIMIT " + FLOW_PAGE_SIZE));
+        List<LoanRecordItemDTO> rows = records.stream().map(this::toLoanRow).toList();
+        return new PageResult<>(rows, rows.size());
+    }
+
+    /** 打新记录：最近 FLOW_PAGE_SIZE 条，新在前（含未中签/放弃缴款等终态）。 */
+    public PageResult<IpoRecordItemDTO> ipoRecords(long userId) {
+        requireUser(userId);
+        List<UserIpoRecord> records = userIpoRecordMapper.selectList(
+                new LambdaQueryWrapper<UserIpoRecord>()
+                        .eq(UserIpoRecord::getUserId, userId)
+                        .orderByDesc(UserIpoRecord::getId)
+                        .last("LIMIT " + FLOW_PAGE_SIZE));
+        List<IpoRecordItemDTO> rows = records.stream().map(this::toIpoRow).toList();
         return new PageResult<>(rows, rows.size());
     }
 
@@ -183,6 +221,31 @@ public class MeQueryService {
         row.setAmount(record.getAmount().doubleValue());
         row.setCommission(record.getCommission().doubleValue());
         row.setTax(record.getTax() != null ? record.getTax().doubleValue() : 0.0);
+        return row;
+    }
+
+    /** 融资流水行组装：类型原样透出，金额为元，time 允许为空（DB 默认值补齐前）。 */
+    private LoanRecordItemDTO toLoanRow(LoanRecord record) {
+        LoanRecordItemDTO row = new LoanRecordItemDTO();
+        row.setId(record.getId());
+        row.setTime(record.getCreatedAt() != null ? TIME_FORMAT.format(record.getCreatedAt()) : null);
+        row.setLoanType(record.getLoanType());
+        row.setAmount(record.getAmount().doubleValue());
+        row.setDebtAfter(record.getDebtAfter().doubleValue());
+        row.setGameDay(record.getGameDay() != null ? record.getGameDay() : 0);
+        return row;
+    }
+
+    /** 打新记录行组装：profit 为空（未结算）记 0，前端按 status 判定是否展示盈亏。 */
+    private IpoRecordItemDTO toIpoRow(UserIpoRecord record) {
+        IpoRecordItemDTO row = new IpoRecordItemDTO();
+        row.setId(record.getId());
+        row.setTime(record.getCreatedAt() != null ? TIME_FORMAT.format(record.getCreatedAt()) : null);
+        row.setIpoName(record.getIpoName());
+        row.setIssuePrice(record.getIssuePrice().doubleValue());
+        row.setStatus(record.getStatus());
+        row.setProfit(record.getProfit() != null ? record.getProfit().doubleValue() : 0.0);
+        row.setGameDay(record.getGameDay() != null ? record.getGameDay() : 0);
         return row;
     }
 
