@@ -31,3 +31,8 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### 本项目运行产物（本地起服务/浏览器调试残留，勿提交） ###
+/backend_run.log
+/frontend_run.log
+.playwright-mcp/
