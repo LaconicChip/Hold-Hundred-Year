@@ -111,7 +111,7 @@ public class MarketQueryService {
 
     /**
      * 市场状态聚合：状态机值、年/年内日换算、当日纪元、段位、盘中打点与倒计时
-     * （盘中 = TOTAL_TICKS - tickIndex，其余状态 0）、世界种子。无 game_state 抛 NOT_FOUND。
+     * （盘中 = 全天跳数 - tickIndex，其余状态 0）、世界种子、本局模式档案。无 game_state 抛 NOT_FOUND。
      */
     public MarketStateDTO state(long userId) {
         UserGameState gameState = requireGameState(userId);
@@ -124,8 +124,6 @@ public class MarketQueryService {
         dto.setYear((currentDay - 1) / mode.getDaysPerYear() + 1);
         dto.setDayInYear((currentDay - 1) % mode.getDaysPerYear() + 1);
         dto.setMode(mode.name());
-        dto.setModeLabel(mode.getLabel());
-        dto.setModeDescription(mode.getDescription());
         dto.setTickMs(mode.getTickMs());
         dto.setDaySeconds(mode.daySeconds());
         dto.setTotalDays(mode.totalDays());

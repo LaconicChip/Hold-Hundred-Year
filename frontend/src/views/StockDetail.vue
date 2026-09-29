@@ -152,7 +152,6 @@ import SealStamp from '@/components/SealStamp.vue'
 import SvgIcon from '@/components/SvgIcon.vue'
 import DanmuBar from '@/components/DanmuBar.vue'
 import { priceCls, fmtPct, fmtPrice, fmtMoney } from '@/utils/format'
-import { TICK_MS } from '@/constants/rhythm'
 
 const route = useRoute()
 const router = useRouter()
@@ -215,7 +214,7 @@ function loadPosition() {
   return user.fetchPositions()
 }
 
-// 分时数据（固定 90 槽，3 秒轮询实时延伸——后端一跳 GameConstants.TICK_MS=3000ms）
+// 分时数据（固定 90 槽，一跳一拉：轮询间隔取本局模式的 tickMs）
 const stockPoints = ref([])
 async function loadChartData() {
   try {
@@ -290,7 +289,7 @@ onMounted(async () => {
   await loadChartData()
   intradayPoll = setInterval(() => {
     loadChartData()
-  }, market.tickMs || TICK_MS)
+  }, market.tickMs)
   await loadPosition()
   await user.fetchAssets().catch(() => {})
   await loadMessages()

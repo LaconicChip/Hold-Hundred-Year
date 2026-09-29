@@ -1,6 +1,7 @@
 package com.holdhunderdyear.web;
 
 import com.holdhunderdyear.common.R;
+import com.holdhunderdyear.game.model.dto.GameModeDTO;
 import com.holdhunderdyear.game.model.dto.GameResultDTO;
 import com.holdhunderdyear.game.model.dto.RestartDTO;
 import com.holdhunderdyear.game.model.enums.GameMode;
@@ -12,9 +13,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Arrays;
+import java.util.List;
+
 /**
  * 终局接口：查询双结局结果（只读）/ 重开新世界（清游戏数据、换 seed 重新播种，
- * 保留账号与密码）。业务拒绝经 BizException 统一转为 400 + R.fail(ErrorCode)。
+ * 保留账号与密码）/ 列出可选的一局模式。业务拒绝经 BizException 统一转为 400 + R.fail(ErrorCode)。
  */
 @RestController
 @RequestMapping("/api/game")
@@ -24,6 +28,12 @@ public class GameController {
 
     public GameController(GameEndService gameEndService) {
         this.gameEndService = gameEndService;
+    }
+
+    /** 可选的一局模式（开新局的选择器用）：档案只有一个来源 GameMode。 */
+    @GetMapping("/modes")
+    public R<List<GameModeDTO>> modes() {
+        return R.ok(Arrays.stream(GameMode.values()).map(GameModeDTO::of).toList());
     }
 
     @GetMapping("/result")

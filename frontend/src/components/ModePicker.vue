@@ -3,7 +3,7 @@
   <div class="mp" :class="{ 'mp-compact': compact }">
     <span v-if="!compact" class="mp-lead">这一局怎么打？</span>
     <button
-      v-for="opt in GAME_MODES"
+      v-for="opt in market.modes"
       :key="opt.code"
       type="button"
       class="mp-opt"
@@ -18,7 +18,11 @@
 </template>
 
 <script setup>
-import { GAME_MODES } from '@/constants/rhythm'
+import { onMounted } from 'vue'
+import { useMarketStore } from '@/stores/market'
+
+const market = useMarketStore()
+onMounted(() => market.fetchModes())
 
 defineProps({
   modelValue: { type: String, default: 'STANDARD' },

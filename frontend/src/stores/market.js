@@ -8,6 +8,7 @@ import {
   fetchLeaderboard,
   fetchEquityCurve
 } from '@/api/market'
+import { fetchGameModes } from '@/api/game'
 
 export const useMarketStore = defineStore('market', {
   state: () => ({
@@ -35,6 +36,8 @@ export const useMarketStore = defineStore('market', {
     indexValue: 0,
     prevIndex: 0,
     indexDayPct: 0,
+    // 可选模式清单（开新局的选择器用，来自后端 GameMode，不再前端另抄）
+    modes: [],
     // 加载态
     loading: false
   }),
@@ -65,6 +68,17 @@ export const useMarketStore = defineStore('market', {
   },
 
   actions: {
+    // 拉一次模式清单；已拉过就不重复请求（选择器可能同屏多处）
+    async fetchModes() {
+      if (this.modes.length) return this.modes
+      try {
+        this.modes = await fetchGameModes()
+      } catch {
+        this.modes = []
+      }
+      return this.modes
+    },
+
     async fetchState() {
       this.loading = true
       try {

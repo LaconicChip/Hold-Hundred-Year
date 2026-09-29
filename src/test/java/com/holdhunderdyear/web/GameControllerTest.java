@@ -2,6 +2,7 @@ package com.holdhunderdyear.web;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhunderdyear.common.ErrorCode;
+import com.holdhunderdyear.game.model.enums.GameMode;
 import com.holdhunderdyear.market.entity.UserGameState;
 import com.holdhunderdyear.market.mapper.UserGameStateMapper;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -26,7 +28,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 终局接口集成测试（hold_year_test 库，方法级事务自动回滚）。
  * 覆盖：未认证查询结果/重开被 JWT 门槛拦下（401 + UNAUTHORIZED）、认证后终局
- * 重开走通全链路（restart code=0，重开后 result 返回 400 + GAME_NOT_FINISHED）。
+ * 重开走通全链路（restart code=0，重开后 result 返回 400 + GAME_NOT_FINISHED）、
+ * 模式选择器用的 /api/game/modes 与 GameMode 档案一致。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -82,6 +85,33 @@ class GameControllerTest {
                 .andExpect(status().isBadRequest()));
         assertEquals(ErrorCode.GAME_NOT_FINISHED.getCode(), result.path("code").asInt(),
                 "a fresh world has no final result yet, body=" + result);
+    }
+
+    @Test
+    void modesListEveryProfileForTheModePicker() throws Exception {
+        String username = unique("modes");
+        register(username, "password123");
+        String token = json(login(username, "password123")).path("data").path("token").asString();
+
+        JsonNode body = json(mockMvc.perform(get("/api/game/modes")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()));
+        assertEquals(0, body.path("code").asInt(), "modes must succeed, body=" + body);
+
+        JsonNode data = body.path("data");
+        assertEquals(GameMode.values().length, data.size(), "one entry per GameMode, body=" + data);
+        for (GameMode mode : GameMode.values()) {
+            JsonNode entry = null;
+            for (JsonNode node : data) {
+                if (mode.name().equals(node.path("code").asString())) {
+                    entry = node;
+                }
+            }
+            assertNotNull(entry, "missing mode in payload: " + mode.name());
+            assertEquals(mode.getLabel(), entry.path("label").asString(), "label of " + mode);
+            assertEquals(mode.getDescription(), entry.path("description").asString(), "description of " + mode);
+            assertEquals(mode.totalDays(), entry.path("totalDays").asInt(), "totalDays of " + mode);
+        }
     }
 
     private static String unique(String suffix) {

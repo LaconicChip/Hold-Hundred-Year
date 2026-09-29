@@ -4,8 +4,8 @@ import lombok.Data;
 
 /**
  * 市场状态聚合（Task 10.3，spec §11 GET/POST /api/market/state|start）：
- * 状态机当前值、交易日历（一游戏年 DAYS_PER_YEAR 个交易日的年/日换算）、当日所属纪元、
- * 玩家段位、盘中打点与半场倒计时、本局世界种子。
+ * 状态机当前值、交易日历（按本局模式的年长做年/日换算）、当日所属纪元、
+ * 玩家段位、盘中打点与半场倒计时、本局世界种子、本局模式档案。
  */
 @Data
 public class MarketStateDTO {
@@ -18,12 +18,6 @@ public class MarketStateDTO {
 
     /** 本局模式代码（STANDARD/QUICK），前端据此决定轮询间隔与文案 */
     private String mode;
-
-    /** 本局模式中文名 */
-    private String modeLabel;
-
-    /** 本局模式说明（一行，注册页与状态条用） */
-    private String modeDescription;
 
     /** 本局每跳毫秒数（倒计时与分时轮询的节奏） */
     private int tickMs;
