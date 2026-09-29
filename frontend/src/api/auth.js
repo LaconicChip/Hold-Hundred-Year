@@ -1,9 +1,9 @@
 // 鉴权相关接口
 import http from './http'
 
-// 注册：body {username,password} -> data {userId}
-export function register(username, password) {
-  return http.post('/api/auth/register', { username, password })
+// 注册：body {username,password,mode} -> data {userId}；mode 缺省 STANDARD（快速模式传 QUICK）
+export function register(username, password, gameMode) {
+  return http.post('/api/auth/register', { username, password, mode: gameMode || 'STANDARD' })
 }
 
 // 登录：body {username,password} -> data {token, userId, username}

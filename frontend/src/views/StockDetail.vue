@@ -299,7 +299,7 @@ onMounted(async () => {
   await loadChartData()
   intradayPoll = setInterval(() => {
     loadChartData()
-  }, TICK_MS)
+  }, market.tickMs || TICK_MS)
   await loadPosition()
   await user.fetchAssets().catch(() => {})
   await loadMessages()

@@ -32,6 +32,22 @@
         </button>
       </div>
 
+      <!-- 本局模式：只在开户时选，选定后整局不变 -->
+      <div v-if="mode === 'register'" class="gamemode-pick">
+        <button
+          v-for="opt in GAME_MODES"
+          :key="opt.code"
+          type="button"
+          class="gamemode-opt"
+          :class="{ on: gameMode === opt.code }"
+          :title="opt.desc"
+          @click="gameMode = opt.code"
+        >
+          <b>{{ opt.label }}</b>
+          <span>{{ opt.desc }}</span>
+        </button>
+      </div>
+
       <form class="login-form" @submit.prevent="onSubmit">
         <input
           v-model.trim="username"
@@ -83,6 +99,13 @@ const router = useRouter()
 const user = useUserStore()
 
 const mode = ref('login')
+
+// 开户时可选的本局模式（与后端 GameMode 对齐）
+const GAME_MODES = [
+  { code: 'STANDARD', label: '标准模式', desc: '72 个交易日 · 约 2 小时 · ±10%' },
+  { code: 'QUICK', label: '快速模式', desc: '36 个交易日 · 约 30 分钟 · ±20%' }
+]
+const gameMode = ref('STANDARD')
 const username = ref('')
 const password = ref('')
 const confirmPwd = ref('')
@@ -127,7 +150,7 @@ async function onSubmit() {
     if (mode.value === 'login') {
       await user.login(username.value, password.value)
     } else {
-      await user.register(username.value, password.value)
+      await user.register(username.value, password.value, gameMode.value)
     }
     router.push('/market')
   } catch (e) {
@@ -260,6 +283,35 @@ async function onSubmit() {
 }
 .err-ic { width: 1em; height: 1em; flex: none; }
 
+.gamemode-pick {
+  display: flex;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.gamemode-opt {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--card);
+  border: var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  font-family: var(--font-fun);
+  color: var(--ink-2);
+  cursor: pointer;
+  text-align: left;
+}
+.gamemode-opt b { font-size: var(--fs-md); color: var(--ink); }
+.gamemode-opt span { font-size: var(--fs-xs); font-family: var(--font-body); }
+.gamemode-opt.on {
+  color: var(--on-brand);
+  background: var(--brand);
+  box-shadow: var(--shadow);
+}
+.gamemode-opt.on b, .gamemode-opt.on span { color: var(--on-brand); }
 .submit-btn { justify-content: center; margin-top: var(--sp-1); width: 100%; }
 .submit-ic { width: 1.1em; height: 1.1em; }
 

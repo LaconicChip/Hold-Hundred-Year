@@ -266,7 +266,7 @@
     <section class="card">
       <div class="sec-head">
         <span class="card-title">
-          <SvgIcon name="chart" class="title-ic-sm" />{{ TOTAL_DAYS }} 天资产 vs 百年指数
+          <SvgIcon name="chart" class="title-ic-sm" />{{ market.totalDays || TOTAL_DAYS }} 天资产 vs 百年指数
         </span>
       </div>
       <div v-if="!curveHasData" class="empty curve-empty">

@@ -22,6 +22,14 @@ export const useMarketStore = defineStore('market', {
     tickIndex: 0,
     countdownTicks: 0,
     worldSeed: '',
+    // 本局游戏档案（新建局时选定，整局不变）：节奏与涨跌停都由它决定
+    mode: 'STANDARD',
+    modeLabel: '标准',
+    modeDescription: '',
+    tickMs: 1000,
+    daySeconds: 100,
+    totalDays: 72,
+    limitPct: 0.1,
     // 百年指数（StatusBar 指数块）：indexValue 当前值 / prevIndex 昨收基准 /
     // indexDayPct 当日涨跌幅（%），来自 MarketStateDTO
     indexValue: 0,
@@ -40,6 +48,11 @@ export const useMarketStore = defineStore('market', {
     // 终局态
     isEnded(state) {
       return state.marketState === 'BANKRUPT' || state.marketState === 'FINISHED'
+    },
+
+    // 每跳秒数（倒计时与分时轮询都用它，缺省兜底 1 秒）
+    tickSeconds(state) {
+      return state.tickMs > 0 ? state.tickMs / 1000 : 1
     },
 
     // 纪元旗标基调：bull / bear / shock（供纪元旗标样式）

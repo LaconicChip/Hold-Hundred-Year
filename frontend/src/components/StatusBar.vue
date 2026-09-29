@@ -86,7 +86,7 @@ import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useMarketStore } from '@/stores/market'
-import { TICK_SECONDS } from '@/constants/rhythm'
+
 import { useQuotesStore } from '@/stores/quotes'
 import { useMessagesStore } from '@/stores/messages'
 import SvgIcon from './SvgIcon.vue'
@@ -168,7 +168,7 @@ function fmt(s) {
 const countdownText = computed(() => fmt(remaining.value))
 
 function recalibrate() {
-  if (market.isOpen) remaining.value = (market.countdownTicks || 0) * TICK_SECONDS
+  if (market.isOpen) remaining.value = (market.countdownTicks || 0) * market.tickSeconds
 }
 watch(() => market.countdownTicks, recalibrate)
 watch(() => market.isOpen, recalibrate)
