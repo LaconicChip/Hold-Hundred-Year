@@ -18,6 +18,7 @@ import com.holdhunderdyear.market.mapper.UserGameStateMapper;
 import com.holdhunderdyear.market.mapper.UserScriptDayMapper;
 import com.holdhunderdyear.market.mapper.UserStockStateMapper;
 import com.holdhunderdyear.game.constants.GameConstants;
+import com.holdhunderdyear.game.model.enums.GameMode;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -163,6 +164,27 @@ class WorldSeederTest {
             assertEquals(def.beta(), info.getBeta(), 0.0, def.name() + " beta");
             assertEquals(def.weight(), info.getIndexWeight(), 1e-9, def.name() + " indexWeight");
         }
+    }
+
+    @Test
+    void quickModeRegistrationPersistsModeAndCompressedSchedule() {
+        long userId = worldSeeder.seedUser("seeder_quick1", "$2a$10$bcrypthash", GameMode.QUICK);
+
+        UserGameState state = userGameStateMapper.selectOne(new LambdaQueryWrapper<UserGameState>()
+                .eq(UserGameState::getUserId, userId));
+        assertEquals("QUICK", state.getGameMode(), "mode must be stored with the account for the whole run");
+
+        List<UserEra> eras = userEraMapper.selectList(new LambdaQueryWrapper<UserEra>()
+                .eq(UserEra::getUserId, userId).orderByAsc(UserEra::getEraIndex));
+        assertEquals(11, eras.size(), "quick mode keeps all 11 eras");
+        assertEquals(1, eras.get(0).getStartDay());
+        assertEquals(36, eras.get(10).getEndDay(), "quick mode finishes on day 36, not 72");
+
+        // 老签名（不传模式）必须仍是标准模式，存量行为零变化
+        long standard = worldSeeder.seedUser("seeder_quick2", "$2a$10$bcrypthash");
+        UserGameState standardState = userGameStateMapper.selectOne(new LambdaQueryWrapper<UserGameState>()
+                .eq(UserGameState::getUserId, standard));
+        assertEquals("STANDARD", standardState.getGameMode());
     }
 
     @Test

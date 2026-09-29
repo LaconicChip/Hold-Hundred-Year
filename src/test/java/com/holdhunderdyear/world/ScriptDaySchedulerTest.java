@@ -1,6 +1,7 @@
 package com.holdhunderdyear.world;
 
 import com.holdhunderdyear.game.constants.StockDefs;
+import com.holdhunderdyear.game.model.enums.GameMode;
 import com.holdhunderdyear.game.model.enums.ScriptType;
 import com.holdhunderdyear.world.EraScheduler.EraInstance;
 import com.holdhunderdyear.world.ScriptDayScheduler.ScriptDayInstance;
@@ -203,6 +204,31 @@ class ScriptDaySchedulerTest {
 
             long ipoDays = ofType(days, ScriptType.IPO).stream().map(ScriptDayInstance::gameDay).distinct().count();
             assertTrue(ipoDays >= 6 && ipoDays <= 9, "seed " + seed + " IPO count " + ipoDays);
+        }
+    }
+
+    @Test
+    void quickModeKeepsEveryScriptDayTypeInsideThirtySixDays() {
+        for (long seed = 1; seed <= 500; seed++) {
+            List<EraInstance> eras = eraScheduler.roll(seed, GameMode.QUICK);
+            List<ScriptDayInstance> days;
+            try {
+                days = scheduler.roll(seed, eras, GameMode.QUICK);
+            } catch (RuntimeException e) {
+                throw new AssertionError("seed " + seed + " quick roller failed", e);
+            }
+            for (ScriptDayInstance d : days) {
+                assertTrue(d.gameDay() >= 1 && d.gameDay() <= GameMode.QUICK.totalDays(),
+                        "seed " + seed + " quick script day " + d.gameDay() + " outside 1..36");
+            }
+            for (ScriptType type : List.of(ScriptType.CIRCUIT_BREAKER, ScriptType.LIMIT_DOWN_ALL,
+                    ScriptType.RESCUE, ScriptType.LIMIT_UP_ALL, ScriptType.SANCTION,
+                    ScriptType.CRASH_WEEK, ScriptType.IPO)) {
+                assertTrue(ofType(days, type).size() >= 1,
+                        "seed " + seed + " quick mode lost script type " + type);
+            }
+            assertTrue(ofType(days, ScriptType.IPO).size() >= 6,
+                    "seed " + seed + " quick mode IPO count too low to feel like three years");
         }
     }
 

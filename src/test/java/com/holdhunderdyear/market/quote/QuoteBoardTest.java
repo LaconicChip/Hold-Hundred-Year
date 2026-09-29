@@ -35,6 +35,23 @@ class QuoteBoardTest {
     }
 
     @Test
+    void limitPricesFollowTheBoardsGameMode() {
+        Quote quote = new Quote();
+        quote.setPrevClose(100.0);
+
+        assertEquals(110.0, quote.limitUpPrice(), 1e-9, "默认（标准模式）普通股 +10%");
+        assertEquals(90.0, quote.limitDownPrice(), 1e-9);
+
+        quote.setLimitPct(0.20);
+        assertEquals(120.0, quote.limitUpPrice(), 1e-9, "快速模式普通股 ±20%");
+        assertEquals(80.0, quote.limitDownPrice(), 1e-9);
+
+        quote.setSt(true);
+        assertEquals(110.0, quote.limitUpPrice(), 1e-9, "ST 取本局幅度的一半");
+        assertEquals(90.0, quote.limitDownPrice(), 1e-9);
+    }
+
+    @Test
     void restoreBuildsQuotesFromStockStates() {
         List<UserStockState> states = new ArrayList<>();
         for (StockDefs.StockDef def : StockDefs.ALL) {

@@ -3,6 +3,7 @@ package com.holdhunderdyear.world;
 import com.holdhunderdyear.game.constants.EraDefs;
 import com.holdhunderdyear.game.constants.StockDefs;
 import com.holdhunderdyear.game.model.enums.EraCode;
+import com.holdhunderdyear.game.model.enums.GameMode;
 import com.holdhunderdyear.world.EraScheduler.EraInstance;
 import org.junit.jupiter.api.Test;
 import com.holdhunderdyear.game.constants.GameConstants;
@@ -87,6 +88,30 @@ class EraSchedulerTest {
                     "seed " + seed + " era 5 must open year 2");
             int len = era5.endDay() - era5.startDay() + 1;
             assertTrue(len >= 3 && len <= 5, "seed " + seed + " era 5 length " + len);
+        }
+    }
+
+    @Test
+    void quickModeStillCoversAllElevenErasInsideThirtySixDays() {
+        for (long seed = 1; seed <= 1000; seed++) {
+            List<EraInstance> eras = scheduler.roll(seed, GameMode.QUICK);
+            assertEquals(11, eras.size(), "seed " + seed + " quick mode must keep all 11 eras");
+            assertEquals(1, eras.get(0).startDay(), "seed " + seed + " first era starts day 1");
+            assertEquals(GameMode.QUICK.totalDays(), eras.get(10).endDay(),
+                    "seed " + seed + " last era must end on the quick-mode final day");
+            for (int i = 0; i < 11; i++) {
+                EraInstance era = eras.get(i);
+                int len = era.endDay() - era.startDay() + 1;
+                assertTrue(len >= GameMode.QUICK.getMinEraLen(),
+                        "seed " + seed + " quick era " + (i + 1) + " length " + len
+                                + " < " + GameMode.QUICK.getMinEraLen());
+                assertTrue(era.startDay() >= 1 && era.endDay() <= 36,
+                        "seed " + seed + " quick era " + (i + 1) + " outside 1..36");
+                if (i < 10) {
+                    assertEquals(era.endDay() + 1, eras.get(i + 1).startDay(),
+                            "seed " + seed + " gap/overlap between quick era " + (i + 1) + " and " + (i + 2));
+                }
+            }
         }
     }
 

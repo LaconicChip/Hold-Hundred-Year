@@ -235,6 +235,7 @@ public class WorldTickService {
             state.setLowPrice(BigDecimal.valueOf(quote.getLow()));
             userStockStateMapper.updateById(state);
         }
+        board.setLastTickAtNanos(System.nanoTime());
         gs.setTickIndex(board.getTickIndex());
         gs.setIndexValue(board.getIndexValue());
         userGameStateMapper.updateById(gs);
