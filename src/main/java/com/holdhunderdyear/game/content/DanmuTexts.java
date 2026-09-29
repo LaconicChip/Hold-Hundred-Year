@@ -1,7 +1,7 @@
-package com.holdhunderdyear.game.constants;
+package com.holdhunderdyear.game.content;
+
 
 import com.holdhunderdyear.game.content.ContentCatalog;
-
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -10,7 +10,7 @@ import java.util.Map;
  * 股吧弹幕文案池（spec §7.3）：9 个全局类别池 + 21 个板块池。
  *
  * <p>文案本体在 <code>resources/content/danmu.txt</code>，这里只是一层带类型的读取入口——
- * 加段子、改措辞改那个文本文件即可，不必动 Java。板块名必须与 {@link StockDefs} 的
+ * 加段子、改措辞改那个文本文件即可，不必动 Java。板块名必须与 {@link com.holdhunderdyear.game.constants.StockDefs} 的
  * sector 字段一一对应（由 DanmuTextsTest/StockPersonasTest 校验）。
  *
  * <p>三级混抽（个股专属 → 板块 → 全局）在 {@code DanmuService}；个股专属池见

@@ -23,7 +23,9 @@ import java.util.Set;
  * 一行一条文案
  * </pre>
  *
- * <p>一次性加载并缓存（内容只读、进程内不变）；文件缺失、分组缺失或分组为空都
+ * <p>一次性加载并缓存（内容只读、进程内不变），文件清单写在 {@code loadAll()}；
+ * 新增文案文件要在那里登记（ContentCatalogTest 会盯着这一点）。
+ * 文件缺失、分组缺失或分组为空都
  * 直接抛 IllegalStateException —— 文案漏了要在启动时就炸，而不是运行时悄悄返回空列表。
  */
 public final class ContentCatalog {
@@ -32,6 +34,11 @@ public final class ContentCatalog {
     private static final Map<String, Map<String, List<String>>> FILES = loadAll();
 
     private ContentCatalog() {
+    }
+
+    /** 已登记的文案文件（不含 .txt 后缀）。新增文件必须同时加进 FILES 清单，有测试把关。 */
+    public static Set<String> loadedFiles() {
+        return FILES.keySet();
     }
 
     /** 某个文件的全部分组（只读、保持文件里的书写顺序）。 */
@@ -62,7 +69,7 @@ public final class ContentCatalog {
 
     private static Map<String, Map<String, List<String>>> loadAll() {
         Map<String, Map<String, List<String>>> loaded = new LinkedHashMap<>();
-        for (String file : List.of("danmu", "stock-personas", "sector-flavor", "npc-lines")) {
+        for (String file : List.of("danmu", "stock-personas", "sector-flavor", "npc-lines", "event-copy")) {
             loaded.put(file, parse(file));
         }
         return Collections.unmodifiableMap(loaded);
@@ -101,3 +108,4 @@ public final class ContentCatalog {
         return Collections.unmodifiableMap(bySection);
     }
 }
+

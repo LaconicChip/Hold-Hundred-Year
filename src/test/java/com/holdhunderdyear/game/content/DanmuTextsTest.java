@@ -1,4 +1,4 @@
-package com.holdhunderdyear.game.constants;
+package com.holdhunderdyear.game.content;
 
 import org.junit.jupiter.api.Test;
 

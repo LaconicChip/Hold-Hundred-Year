@@ -1,12 +1,12 @@
 package com.holdhunderdyear.event;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhunderdyear.game.constants.NpcDefs;
-import com.holdhunderdyear.game.constants.NpcLines;
 import com.holdhunderdyear.game.constants.StockDefs;
+import com.holdhunderdyear.game.content.NpcLines;
 import com.holdhunderdyear.game.model.enums.EraCode;
 import com.holdhunderdyear.game.model.enums.SealState;
 import com.holdhunderdyear.game.model.enums.VolRegime;
+import com.holdhunderdyear.market.engine.PriceShock;
 import com.holdhunderdyear.market.entity.SysUser;
 import com.holdhunderdyear.market.entity.TradeRecord;
 import com.holdhunderdyear.market.entity.UserDailySnapshot;
@@ -16,10 +16,10 @@ import com.holdhunderdyear.market.mapper.SysUserMapper;
 import com.holdhunderdyear.market.mapper.TradeRecordMapper;
 import com.holdhunderdyear.market.mapper.UserDailySnapshotMapper;
 import com.holdhunderdyear.market.mapper.UserMessageMapper;
-import com.holdhunderdyear.market.engine.PriceShock;
 import com.holdhunderdyear.market.quote.Quote;
 import com.holdhunderdyear.market.quote.QuoteBoard;
 import com.holdhunderdyear.world.WorldRandom;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;

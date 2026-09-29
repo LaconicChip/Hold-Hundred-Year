@@ -1,7 +1,8 @@
-package com.holdhunderdyear.game.constants;
+package com.holdhunderdyear.game.content;
 
+
+import com.holdhunderdyear.game.constants.NpcDefs;
 import com.holdhunderdyear.game.content.ContentCatalog;
-
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;

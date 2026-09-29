@@ -1,10 +1,9 @@
 package com.holdhunderdyear.event;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.holdhunderdyear.game.constants.DanmuTexts;
-import com.holdhunderdyear.game.constants.StockDefs;
-import com.holdhunderdyear.game.constants.StockPersonas;
 import com.holdhunderdyear.game.constants.StockDefs.StockDef;
+import com.holdhunderdyear.game.constants.StockDefs;
+import com.holdhunderdyear.game.content.DanmuTexts;
+import com.holdhunderdyear.game.content.StockPersonas;
 import com.holdhunderdyear.game.model.enums.SealState;
 import com.holdhunderdyear.market.MarketStateService;
 import com.holdhunderdyear.market.WorldTickService;
@@ -16,6 +15,7 @@ import com.holdhunderdyear.market.quote.Quote;
 import com.holdhunderdyear.market.quote.QuoteBoard;
 import com.holdhunderdyear.world.WorldRandom;
 import com.holdhunderdyear.world.WorldSeeder;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

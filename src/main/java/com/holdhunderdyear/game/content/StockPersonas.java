@@ -1,7 +1,8 @@
-package com.holdhunderdyear.game.constants;
+package com.holdhunderdyear.game.content;
 
+
+import com.holdhunderdyear.game.constants.StockDefs;
 import com.holdhunderdyear.game.content.ContentCatalog;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;

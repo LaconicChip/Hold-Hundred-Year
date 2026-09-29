@@ -1,6 +1,7 @@
-package com.holdhunderdyear.game.constants;
+package com.holdhunderdyear.game.content;
 
 import com.holdhunderdyear.game.constants.StockDefs.StockDef;
+import com.holdhunderdyear.game.constants.StockDefs;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashSet;

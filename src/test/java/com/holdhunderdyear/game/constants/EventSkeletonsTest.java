@@ -1,6 +1,7 @@
 package com.holdhunderdyear.game.constants;
 
 import com.holdhunderdyear.event.EventSkeleton;
+import com.holdhunderdyear.game.content.EventCopy;
 import com.holdhunderdyear.game.model.enums.EraCode;
 import org.junit.jupiter.api.Test;
 
@@ -9,6 +10,8 @@ import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -19,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * 事件骨架池静态校验（纯 JUnit，无 Spring）：数量与唯一性、变体完备性、板块匹配、
  * 槽位白名单、followup 与来源匹配、真伪概率带、tickRange 合法性、CHAIN 全负、
- * 贸易战骨架纪元标签、纪元集合合法。
+ * 贸易战骨架纪元标签、纪元集合合法，以及骨架编号与 event-copy.txt 分组一一对应。
  */
 class EventSkeletonsTest {
 
@@ -31,6 +34,17 @@ class EventSkeletonsTest {
     void poolHasExactlySeventyFiveSkeletons() {
         assertTrue(EventSkeletons.ALL.size() >= 70, "pool must hold at least 70 skeletons");
         assertEquals(75, EventSkeletons.ALL.size(), "pool must hold exactly 75 skeletons");
+    }
+
+    @Test
+    void copySectionsMatchSkeletonCodesExactly() {
+        Set<String> codes = EventSkeletons.ALL.stream()
+                .map(EventSkeleton::code)
+                .collect(Collectors.toCollection(TreeSet::new));
+        Set<String> copyCodes = EventCopy.codes().stream()
+                .collect(Collectors.toCollection(TreeSet::new));
+        assertEquals(codes, copyCodes,
+                "resources/content/event-copy.txt must hold exactly one @section per skeleton code");
     }
 
     @Test
