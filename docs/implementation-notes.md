@@ -64,6 +64,8 @@
 - **个股历史消息**：`MessageService.list` 的第 6/7 个参数是 `stockId` + `includeSector`。个股页用 `stockId&includeSector=true`，一次拿回"本票专属（stock_id 命中）+ 本票所属板块（sector 命中且 stock_id 为空）"；板块名由后端按 `StockDefs` 反查，前端不需要知道。板块级消息的 `sector` 由 `EventFactory` 在 SECTOR 级事件落库时写入（迁移 `V20260929_02`）。历史存量消息的 sector 为 NULL，只有升级后新产生的板块消息能被个股页捞到。
 - **文案库五份文件**（`src/main/resources/content/`，见 §7）：`stock-personas.txt`（24 股 × 8 弹幕 + 6 事件）、`sector-flavor.txt`（21 板块 + 大盘 × 权威/媒体/传闻含追报/玩梗各 2）、`npc-lines.txt`（4 场景 × 5 + 8 NPC × 5 闲聊）、`danmu.txt`（9 全局池 + 21 板块池）、`event-copy.txt`（75 条事件骨架的标题/正文变体与追报）。前四份被 `StockPersonasTest` 的"全局零重复"总校验覆盖（≥700 条唯一），任何一处抄重直接红。
 - **一局一档案（GameMode）**：标准/快速两套节奏在 `game/model/enums/GameMode.java` 里各自带值（年长、跳毫秒、午休、涨跌停、最短纪元长度），建局时选定写进 `user_game_state.game_mode`，**一局一选、本局进行中不可改**：注册不绑模式，开局前（大盘页状态条的模式选择器）与终局后（"再来一局"旁的选择器）都走 `POST /api/game/restart {mode}`；restart 允许"终局后"与"从未开过局"两种时机，其余一律拒绝。**不要**再用 `GameConstants.TICK_MS/DAYS_PER_YEAR/TOTAL_DAYS` 做运行时判定——那些只是标准模式的默认值，运行时一律 `GameMode.of(gs.getGameMode())`。调度器改成 500ms 心跳（`SCHEDULER_HEARTBEAT_MS`）+ 每账户按本局 `tickMs` 门控（`QuoteBoard.lastTickAtNanos`）；快进与测试直接调 `tickOne`，不看墙钟，所以"快进=逐跳"等价与同种子可复现都不受影响。前端从 `/api/market/state` 读 `mode/tickMs/daySeconds/totalDays/limitPct`，模式清单（代码/名称/一句话说明/天数）由 `GET /api/game/modes` 下发给 `ModePicker`，注册不绑模式。
+- **提醒消息只有一个出口**：任何"要告诉玩家一句话"的通知（纪元切换、结算播报、除权、追保/强平、打新、剧本收官、称号解锁、NPC 台词）一律走 `event/NotifyPublisher`（`system(...)` / `npc(...)`，字段惯例 type=NOTIFY、未读、当日、created_at 现取）。别再在各服务里 `new UserMessage()` 抄一份——历史上抄了 7 份，字段还各有出入。行情事件（EVENT/三态传闻）仍走 `EventFactory`/`MainScriptService`，它们要写 sector/truth_status/followup_of，语义不同。
+- **心跳与冷用户节流**：`MarketScheduler` 每 `SCHEDULER_HEARTBEAT_MS`(100ms) 扫一遍在线用户，但**先做内存预判**（`dueForBeat`）：有行情板的按本局 `tickMs` 判到点；没有板的（未开过局 / 刚重启 / 刚登出）按 1 秒节流放行一次。别去掉这个节流——每个停在"还没开盘"页面的在线账号都会变成每秒 10 次 `selectOne`。
 - **前端菜单/路由**：`GameLayout.vue` 竖排菜单；`/market /stock/:id /assets /messages /leaderboard /summary /result`；涨跌与金额格式化统一在 `frontend/src/utils/format.js`。
 
 ## 4. 环境与运维
@@ -86,9 +88,10 @@
 ## 5. 验收状态
 
 - **Phase 0-13 全部完成并通过验收**（后端引擎/调度/交易/融资/事件/NPC/剧本/打新/WS/REST → 前端 8 页 + 组件 → 终局验收）。
-- 后端全量 **388 tests，0 Failures / 0 Errors**（同种子可复现、快进=逐跳、人设与板块/NPC 文案零重复总校验、事件骨架 75 条与 event-copy.txt 一一对应、文案文件全部登记、剧本日撒点不死循环、prev_index 基准、三类流水查询、模式档案与 /api/game/modes）；标准局 72 交易日约 2 小时、快速局 36 天约 30 分钟；前端 `npm run build` 通过，入口主包 17.6 kB（vendor 按 echarts / element-plus / vue 拆块）。
+- 后端全量 **392 tests，0 Failures / 0 Errors**（同种子可复现、快进=逐跳、人设与板块/NPC 文案零重复总校验、事件骨架 75 条与 event-copy.txt 一一对应、文案文件全部登记、剧本日撒点不死循环、prev_index 基准、三类流水查询、模式档案与 /api/game/modes、提醒消息落库惯例（NotifyPublisher）、心跳冷用户节流）；标准局 72 交易日约 2 小时、快速局 36 天约 30 分钟；前端 `npm run build` 通过，入口主包 17.6 kB（vendor 按 echarts / element-plus / vue 拆块）。
 - 验收图集 `docs/design/shots/`：01-login / 02-market / 03-stock / 03b-limit-sealed / 04-assets / 05-messages / 05-stock-bought / 06-rank / 07-summary / 08-result / 09-notice-popup（右下角浮层）/ 10-danmu-board（分道弹幕）/ 11-quick-mode-picker（模式选择）/ 12-quick-market（快速模式实盘：±20% 行情）/ 13-stock-detail（个股页：涨跌停虚线在 ±20% 处）。
-- 后续维护轮次（2026-09-29）：资产页三类流水接口与接入 → 结构整理与占位文案清理 → `prev_index` 根治 → 规格 §11 对齐 → 前端拆包 → 节奏压缩与弹幕/消息体验重做 → 一局一档案 GameMode → 倒计时三连修 → 涨跌停价由后端按本局下发 → **全部游戏文案外置到 `resources/content/`、删掉前端手抄的股票表与节奏镜像、清掉死常量/死配置/未用图标**。
+- 后续维护轮次（2026-09-29）：资产页三类流水接口与接入 → 结构整理与占位文案清理 → `prev_index` 根治 → 规格 §11 对齐 → 前端拆包 → 节奏压缩与弹幕/消息体验重做 → 一局一档案 GameMode → 倒计时三连修 → 涨跌停价由后端按本局下发 → **全部游戏文案外置到 `resources/content/`（含 75 条事件骨架的标题正文）、删掉前端手抄的股票表与节奏镜像、清掉死常量/死配置/未用图标/未用 import 与死导出**
+- 同日第二轮（结构整治）：`game/content` 收拢全部文案读取层 → `EventSkeletons` 499→227 行 → 7 份重复的"提醒消息落库"样板收进 `event/NotifyPublisher`（纪元切换标题不再把 `BULL_START` 这种枚举名漏给玩家）→ 心跳对"还没缓存行情板"的在线用户按 1 秒节流（原来每个未开盘账号每秒 10 次空查库）→ 换行符统一 LF。
 
 ## 6. 还值得做的事（都不是缺陷）
 
