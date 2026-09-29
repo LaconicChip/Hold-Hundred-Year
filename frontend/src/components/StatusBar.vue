@@ -146,15 +146,16 @@ const unread = computed(() => messages.unreadCount)
 
 // 开始按钮（未开盘 / 已收盘）
 const showStart = computed(() => market.marketState === 'NOT_STARTED' || market.marketState === 'CLOSED')
-const showSkip = computed(() => !market.isEnded)
+// 跳过只对"今天还没收盘"的日子开放。收盘后再给一个"跳过下一交易日"，等于把玩家从没看过的
+// 一整天凭空过掉（25 号收盘 → 直接 26 号已收盘 → 27 号开始），这一天毫无参与感。
+// 要连续快进：先"开始下一交易日"，再在盘中"跳过当日"——每一天都被明确地跳过一次。
+const DURING_DAY = ['MORNING_OPEN', 'LUNCH_BREAK', 'AFTERNOON_OPEN']
+const showSkip = computed(() => !market.isEnded && DURING_DAY.includes(market.marketState))
 const startText = computed(() =>
   market.marketState === 'NOT_STARTED' ? '开始第 1 天' : '开始下一交易日'
 )
-// 跳过文案：盘中（含午休）为“跳过当日”，否则“跳过下一交易日”
-const DURING_DAY = ['MORNING_OPEN', 'LUNCH_BREAK', 'AFTERNOON_OPEN']
-const skipText = computed(() =>
-  DURING_DAY.includes(market.marketState) ? '跳过当日' : '跳过下一交易日'
-)
+// 跳过按钮只在盘中/午休出现，文案恒为"跳过当日"
+const skipText = computed(() => '跳过当日')
 
 // ---- 倒计时（本地每秒递减，fetchState / WS 快照刷新时校正）----
 const remaining = ref(0)

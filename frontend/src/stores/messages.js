@@ -1,9 +1,10 @@
 // 消息中心 store（消息列表 / 弹幕 / 通知）
 import { defineStore } from 'pinia'
 import { fetchMessages, markMessageRead, markAllRead } from '@/api/message'
+import { useUserStore } from './user'
 import { channelOf, toneOf, CHANNEL } from '@/constants/messageMeta'
 
-const DANMU_MAX = 30 // 弹幕环形缓冲上限
+const DANMU_MAX = 30 // 弹幕环形缓冲上限（只用于回看；飘动按 seq 取增量，不再依赖数组长度）
 const BANNER_MAX = 5 // 大弹幕队列上限（超了丢最旧的，绝不无限堆）
 const POPUP_MAX = 3 // 同屏浮层上限
 // 轻量通知 kind -> 标题（后端 pushNotification 只带 kind 时兜底）
@@ -21,7 +22,9 @@ export const useMessagesStore = defineStore('messages', {
   state: () => ({
     list: [], // MessageDTO 列表
     total: 0,
-    danmu: [], // 弹幕环形缓冲：[{id,text,user?}]
+    danmu: [], // 弹幕环形缓冲：[{seq,text,user?}]，仅保留最近 DANMU_MAX 条
+    danmuSeq: 0, // 弹幕自增序号
+    danmuVersion: 0, // 每来一条 +1：组件 watch 它，而不是 watch 会封顶的数组长度
     notifications: [], // 轻量通知对象（字段不定）
     banners: [], // 头条大弹幕队列（新消息按通道入队，播一条移一条）
     popups: [], // 右下角浮层队列（最多 3 条，组件侧定时收起）
@@ -103,7 +106,16 @@ export const useMessagesStore = defineStore('messages', {
       this.present(dto)
     },
 
-    // 通道分发：BANNER 进大弹幕队列、POPUP 进右下角浮层、FEED 什么都不做。
+    // 这只票是否在玩家持仓里（读 user store 的持仓，与行情表高亮同一份数据）
+    holdsStock(stockId) {
+      try {
+        return useUserStore().positions.some((p) => p && p.stockId === stockId)
+      } catch {
+        return false // store 未就绪时按"非持仓"处理，绝不因此抛错
+      }
+    },
+
+    // 通道分发：BANNER 进大弹幕队列、POPUP 进浮层（持仓股走醒目档）、FEED 什么都不做。
     // 只在实时推送时调用——历史列表加载（fetchMessages）不补播，避免刷新就刷屏。
     present(m) {
       const channel = channelOf(m)
@@ -112,7 +124,10 @@ export const useMessagesStore = defineStore('messages', {
         id: m.id,
         title: m.title || '消息',
         text: m.content || '',
-        tone: toneOf((m.title || '') + (m.content || ''))
+        stockId: m.stockId != null ? m.stockId : null,
+        tone: toneOf((m.title || '') + (m.content || '')),
+        // 自己持有的票出事，值得一次更醒目的弹窗；别的票只在右下角轻提示
+        hold: m.stockId != null && this.holdsStock(m.stockId)
       }
       if (channel === CHANNEL.BANNER) {
         this.banners.push(item)
@@ -144,11 +159,13 @@ export const useMessagesStore = defineStore('messages', {
         user = str.slice(0, idx)
         content = str.slice(idx + 1)
       }
-      this.danmu.push({ id: Date.now() + Math.random(), text: content, user })
+      this.danmuSeq += 1
+      this.danmu.push({ id: this.danmuSeq, seq: this.danmuSeq, text: content, user })
       // 维持环形缓冲上限
       if (this.danmu.length > DANMU_MAX) {
         this.danmu.splice(0, this.danmu.length - DANMU_MAX)
       }
+      this.danmuVersion += 1 // 通知消费方按 seq 取增量（数组封顶不影响）
     },
 
     // 轻量通知入列（容错 title/content/kind 字段）
