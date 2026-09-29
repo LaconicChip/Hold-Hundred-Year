@@ -139,7 +139,9 @@ public class MarketQueryService {
         dto.setTickIndex(gameState.getTickIndex());
         MarketState marketState = MarketState.valueOf(gameState.getMarketState());
         boolean trading = marketState == MarketState.MORNING_OPEN || marketState == MarketState.AFTERNOON_OPEN;
-        dto.setCountdownTicks(trading ? GameConstants.TOTAL_TICKS - gameState.getTickIndex() : 0);
+        // 倒计时按"当前这一段还剩几跳"算：早盘只有 45 跳，用全天 90 跳做基准会让早盘
+        // 显示成午盘的两倍长（tick_index 是全天绝对跳号 0..90）。
+        dto.setCountdownTicks(remainingTicksInSession(marketState, gameState.getTickIndex()));
         dto.setWorldSeed(String.valueOf(gameState.getWorldSeed()));
         // 指数块当日涨跌幅（大盘页 StatusBar）：昨收取前日快照，无前日快照按基期 1000
         double prevIndex = GameConstants.INITIAL_INDEX;
@@ -486,6 +488,20 @@ public class MarketQueryService {
                 .eq(UserMessage::getUserId, userId)
                 .eq(UserMessage::getGameDay, day)
                 .orderByAsc(UserMessage::getId));
+    }
+
+    /**
+     * 本会话剩余跳数：早盘 = 45 - tickIndex，午盘 = 90 - tickIndex（tickIndex 是全天
+     * 绝对跳号）；非交易态返回 0，越界一律夹到 0，绝不返回负数。
+     */
+    static int remainingTicksInSession(MarketState state, int tickIndex) {
+        if (state == MarketState.MORNING_OPEN) {
+            return Math.max(0, GameConstants.TICKS_PER_SESSION - tickIndex);
+        }
+        if (state == MarketState.AFTERNOON_OPEN) {
+            return Math.max(0, GameConstants.TOTAL_TICKS - tickIndex);
+        }
+        return 0; // 未开盘/午休/结算/收盘/终局：没有"本会话剩余跳数"可言
     }
 
     /** 查询 day 所属纪元（user_era 行 start_day <= day <= end_day），无则 null。 */

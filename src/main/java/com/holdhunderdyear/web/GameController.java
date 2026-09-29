@@ -2,10 +2,13 @@ package com.holdhunderdyear.web;
 
 import com.holdhunderdyear.common.R;
 import com.holdhunderdyear.game.model.dto.GameResultDTO;
+import com.holdhunderdyear.game.model.dto.RestartDTO;
+import com.holdhunderdyear.game.model.enums.GameMode;
 import com.holdhunderdyear.market.GameEndService;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -28,9 +31,11 @@ public class GameController {
         return R.ok(gameEndService.result(userId));
     }
 
+    /** 开新的一局：body 可带 mode（STANDARD/QUICK），省略则沿用本局模式。 */
     @PostMapping("/restart")
-    public R<Void> restart(@AuthenticationPrincipal Long userId) {
-        gameEndService.restart(userId);
+    public R<Void> restart(@AuthenticationPrincipal Long userId,
+                           @RequestBody(required = false) RestartDTO dto) {
+        gameEndService.restart(userId, dto == null ? null : GameMode.of(dto.getMode()));
         return R.ok();
     }
 }

@@ -17,7 +17,4 @@ public class RegisterDTO {
     @NotBlank(message = "密码不能为空")
     @Size(min = 6, max = 64, message = "密码长度必须在6-64个字符之间")
     private String password;
-
-    /** 可选：本局模式（STANDARD/QUICK），缺省 STANDARD。 */
-    private String mode;
 }

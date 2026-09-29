@@ -3,12 +3,14 @@ package com.holdhunderdyear.market;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhunderdyear.common.BizException;
 import com.holdhunderdyear.common.ErrorCode;
+import com.holdhunderdyear.game.model.enums.GameMode;
 import com.holdhunderdyear.market.entity.GameEvent;
 import com.holdhunderdyear.market.entity.LoanRecord;
 import com.holdhunderdyear.market.entity.SysUser;
 import com.holdhunderdyear.market.entity.TradeRecord;
 import com.holdhunderdyear.market.entity.UserDailySnapshot;
 import com.holdhunderdyear.market.entity.UserEra;
+import com.holdhunderdyear.market.entity.StockDailyBar;
 import com.holdhunderdyear.market.entity.UserGameState;
 import com.holdhunderdyear.market.entity.UserIpoRecord;
 import com.holdhunderdyear.market.entity.UserMessage;
@@ -27,6 +29,7 @@ import com.holdhunderdyear.market.mapper.UserIpoRecordMapper;
 import com.holdhunderdyear.market.mapper.UserMessageMapper;
 import com.holdhunderdyear.market.mapper.UserPositionMapper;
 import com.holdhunderdyear.market.mapper.UserScriptDayMapper;
+import com.holdhunderdyear.market.mapper.StockDailyBarMapper;
 import com.holdhunderdyear.market.mapper.UserStockStateMapper;
 import com.holdhunderdyear.market.mapper.UserTitleMapper;
 import com.holdhunderdyear.market.quote.Quote;
@@ -97,6 +100,9 @@ class GameEndServiceTest {
 
     @Autowired
     private UserStockStateMapper userStockStateMapper;
+
+    @Autowired
+    private StockDailyBarMapper stockDailyBarMapper;
 
     @Autowired
     private UserDailySnapshotMapper userDailySnapshotMapper;
@@ -279,6 +285,57 @@ class GameEndServiceTest {
         Quote fresh = quote(userId, 1L);
         assertEquals(168.0, fresh.getCurrent(), 0.0001,
                 "the poisoned cached board must be evicted and rebuilt from reseeded states");
+    }
+
+    @Test
+    void restartClearsDailyBarsSoTheNewRunDoesNotInheritHistory() {
+        long userId = worldSeeder.seedUser("end_kline1", "$2a$10$bcrypthash");
+        StockDailyBar bar = new StockDailyBar();
+        bar.setUserId(userId);
+        bar.setStockId(1L);
+        bar.setGameDay(1);
+        bar.setOpen(new BigDecimal("168.00"));
+        bar.setHigh(new BigDecimal("168.00"));
+        bar.setLow(new BigDecimal("168.00"));
+        bar.setClose(new BigDecimal("168.00"));
+        bar.setChangePct(0.0);
+        stockDailyBarMapper.insert(bar);
+        assertEquals(1L, dailyBars(userId), "precondition: one daily bar exists");
+
+        gameEndService.restart(userId, GameMode.STANDARD);
+
+        assertEquals(0L, dailyBars(userId),
+                "restart must wipe stock_daily_bar, otherwise the new run opens with the old K-lines");
+    }
+
+    @Test
+    void modeIsChosenPerRunAndReseedsTheSchedule() {
+        long userId = worldSeeder.seedUser("end_mode1", "$2a$10$bcrypthash");
+        assertEquals("STANDARD", gameState(userId).getGameMode(), "registration defaults to standard");
+
+        // 还没开过局 → 允许按快速模式重播种：模式一局一选，不在注册那一刻绑死
+        gameEndService.restart(userId, GameMode.QUICK);
+
+        assertEquals("QUICK", gameState(userId).getGameMode(), "mode must be switchable before the first open");
+        int lastEraDay = userEraMapper.selectList(new LambdaQueryWrapper<UserEra>()
+                        .eq(UserEra::getUserId, userId)).stream()
+                .mapToInt(UserEra::getEndDay).max().orElseThrow();
+        assertEquals(36, lastEraDay, "era schedule must be re-rolled for the quick-mode horizon");
+    }
+
+    @Test
+    void restartIsStillRefusedOnceThisRunHasStarted() {
+        long userId = worldSeeder.seedUser("end_mode2", "$2a$10$bcrypthash");
+        marketStateService.startDay(userId);
+
+        assertThrows(BizException.class, () -> gameEndService.restart(userId, GameMode.QUICK),
+                "a run already underway cannot be re-rolled just to change the mode");
+    }
+
+    private long dailyBars(long userId) {
+        Long count = stockDailyBarMapper.selectCount(new LambdaQueryWrapper<StockDailyBar>()
+                .eq(StockDailyBar::getUserId, userId));
+        return count == null ? 0L : count;
     }
 
     @Test

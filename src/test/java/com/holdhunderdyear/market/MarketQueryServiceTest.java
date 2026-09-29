@@ -11,6 +11,7 @@ import com.holdhunderdyear.game.model.dto.KlinePointDTO;
 import com.holdhunderdyear.game.model.dto.LeaderboardDTO;
 import com.holdhunderdyear.game.model.dto.MarketStateDTO;
 import com.holdhunderdyear.game.model.dto.StockQuoteDTO;
+import com.holdhunderdyear.game.model.enums.MarketState;
 import com.holdhunderdyear.market.entity.UserDailySnapshot;
 import com.holdhunderdyear.market.entity.UserGameState;
 import com.holdhunderdyear.market.entity.UserStockState;
@@ -73,6 +74,21 @@ class MarketQueryServiceTest {
     private UserStockStateMapper userStockStateMapper;
 
     @Test
+    void countdownTicksAreTheRemainingTicksOfTheCurrentSession() {
+        // 早盘只有 45 跳：用全天 90 跳做基准会让早盘倒计时正好是午盘的两倍
+        assertEquals(45, MarketQueryService.remainingTicksInSession(MarketState.MORNING_OPEN, 0));
+        assertEquals(1, MarketQueryService.remainingTicksInSession(MarketState.MORNING_OPEN, 44));
+        assertEquals(45, MarketQueryService.remainingTicksInSession(MarketState.AFTERNOON_OPEN, 45));
+        assertEquals(1, MarketQueryService.remainingTicksInSession(MarketState.AFTERNOON_OPEN, 89));
+        // 越界与收盘态一律夹到 0：前端倒计时靠它对齐，负值会显示成负时间
+        assertEquals(0, MarketQueryService.remainingTicksInSession(MarketState.MORNING_OPEN, 90));
+        assertEquals(0, MarketQueryService.remainingTicksInSession(MarketState.AFTERNOON_OPEN, 120));
+        assertEquals(0, MarketQueryService.remainingTicksInSession(MarketState.CLOSED, 0));
+        assertEquals(0, MarketQueryService.remainingTicksInSession(MarketState.LUNCH_BREAK, 45));
+    }
+
+
+    @Test
     void stateReportsFreshWorldContract() {
         long userId = worldSeeder.seedUser("mq_state1", BCRYPT_HASH);
 
@@ -103,7 +119,8 @@ class MarketQueryServiceTest {
         assertEquals("MORNING_OPEN", state.getMarketState(), "second startDay must be a no-op");
         assertEquals(1, state.getCurrentDay());
         assertEquals(0, state.getTickIndex());
-        assertEquals(90, state.getCountdownTicks(), "intraday countdown is 90 - tickIndex");
+        // 早盘只有 45 跳：倒计时必须是"本会话剩余跳数"，用全天 90 跳会让早盘看起来比午盘长一倍
+        assertEquals(45, state.getCountdownTicks(), "morning countdown must be the 45 ticks left in that session");
     }
 
     @Test

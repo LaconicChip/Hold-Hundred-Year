@@ -45,6 +45,8 @@
 
 > **一局一个档案**（`GameMode`，存 `user_game_state.game_mode`，建局时选定、整局不可改）：
 >
+> > 模式在**开每一局时**选（大盘页开局前 / 终局页"再来一局"），注册时不绑定。
+>
 > | 档案 | 年长 | 跳间隔 | 午休 | 一天 | 一局 | 涨跌停 | ST |
 > | --- | --- | --- | --- | --- | --- | --- | --- |
 > | 标准 STANDARD | 24 交易日 | 1000ms | 10 秒 | 100 秒 | 72 天 ≈ 2 小时 | ±10% | ±5% |
@@ -575,11 +577,11 @@ BANKRUPT / FINISHED（终局：冻结一切操作，展示结局结算页）
 
 - `POST /api/ipo/subscribe` `{scriptDayId}`：新股顶格申购（申购日当日有效，幂等）
 
-- `POST /api/game/restart`：终局后"再来一局"——用新种子重新播种一个世界（重置账户游戏数据，保留账号）
+- `POST /api/game/restart` `{mode?}`：开新的一局——用新种子重新播种（清空持仓/行情状态/快照/消息/融资流水/成交/纪元/剧本日/打新记录/称号/事件/**日K**，账户资金与 game\_state 复位，保留账号密码）。`mode` 省略则沿用本局模式。**两种时机可调用**：终局后"再来一局"，以及注册后还没开过局（第 1 天、零成交零持仓）——模式是**一局一选**的，不在注册时绑定。本局进行中调用一律拒绝。
 
 - `GET  /api/game/result`：终局结算页数据（结局类型、存活天数、总收益率、指数涨幅、最终段位、强平记录、本局种子号、全剧资产 vs 指数曲线、**营业部最终排行榜与 NPC 结局小剧场**）
 
-- `GET  /api/market/state`：market\_state、current\_day（年/第几天）、当前纪元名称与叙事、当前段位、tick\_index、阶段倒计时、新手引导步骤
+- `GET  /api/market/state`：market\_state、current\_day（年/第几天）、当前纪元名称与叙事、当前段位、tick\_index、**本会话剩余跳数**的阶段倒计时（早盘 45−tick、午盘 90−tick，非交易态 0，绝不返回负数）、新手引导步骤；另下发本局档案 `mode/modeLabel/tickMs/daySeconds/totalDays/limitPct`
 
 - `POST /api/market/start`：开始第 1 天 / 下一交易日（幂等）
 

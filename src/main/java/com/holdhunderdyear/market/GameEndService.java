@@ -8,8 +8,10 @@ import com.holdhunderdyear.event.EventFactory;
 import com.holdhunderdyear.event.NpcService;
 import com.holdhunderdyear.game.constants.GameConstants;
 import com.holdhunderdyear.game.model.dto.GameResultDTO;
+import com.holdhunderdyear.game.model.enums.GameMode;
 import com.holdhunderdyear.game.model.enums.MarketState;
 import com.holdhunderdyear.market.entity.GameEvent;
+import com.holdhunderdyear.market.entity.StockDailyBar;
 import com.holdhunderdyear.market.entity.LoanRecord;
 import com.holdhunderdyear.market.entity.SysUser;
 import com.holdhunderdyear.market.entity.TradeRecord;
@@ -23,6 +25,7 @@ import com.holdhunderdyear.market.entity.UserScriptDay;
 import com.holdhunderdyear.market.entity.UserStockState;
 import com.holdhunderdyear.market.entity.UserTitle;
 import com.holdhunderdyear.market.mapper.GameEventMapper;
+import com.holdhunderdyear.market.mapper.StockDailyBarMapper;
 import com.holdhunderdyear.market.mapper.LoanRecordMapper;
 import com.holdhunderdyear.market.mapper.SysUserMapper;
 import com.holdhunderdyear.market.mapper.TradeRecordMapper;
@@ -76,6 +79,7 @@ public class GameEndService {
     private final UserIpoRecordMapper userIpoRecordMapper;
     private final UserTitleMapper userTitleMapper;
     private final GameEventMapper gameEventMapper;
+    private final StockDailyBarMapper stockDailyBarMapper;
     private final QuoteBoardRegistry quoteBoardRegistry;
     private final WorldSeeder worldSeeder;
     private final EventFactory eventFactory;
@@ -96,6 +100,7 @@ public class GameEndService {
                           UserIpoRecordMapper userIpoRecordMapper,
                           UserTitleMapper userTitleMapper,
                           GameEventMapper gameEventMapper,
+                          StockDailyBarMapper stockDailyBarMapper,
                           QuoteBoardRegistry quoteBoardRegistry,
                           WorldSeeder worldSeeder,
                           EventFactory eventFactory,
@@ -115,6 +120,7 @@ public class GameEndService {
         this.userIpoRecordMapper = userIpoRecordMapper;
         this.userTitleMapper = userTitleMapper;
         this.gameEventMapper = gameEventMapper;
+        this.stockDailyBarMapper = stockDailyBarMapper;
         this.quoteBoardRegistry = quoteBoardRegistry;
         this.worldSeeder = worldSeeder;
         this.eventFactory = eventFactory;
@@ -162,10 +168,19 @@ public class GameEndService {
      * 负债 0，game_state 全字段重置回第 1 天 NOT_STARTED（null 字段显式 set），
      * 最后以新种子重新播种世界。账号与密码保留。
      */
+    /** 以本局原有模式重开一局。 */
     public void restart(long userId) {
+        restart(userId, null);
+    }
+
+    /**
+     * 开新的一局，可同时选定这一局的模式（mode=null 表示沿用当前模式）。
+     * 模式是"一局一选"：终局后"再来一局"要能换，注册后还没开局也要能换。
+     */
+    public void restart(long userId, GameMode mode) {
         quoteBoardRegistry.worldLock(userId).lock();
         try {
-            transactionTemplate.executeWithoutResult(status -> doRestart(userId));
+            transactionTemplate.executeWithoutResult(status -> doRestart(userId, mode));
             quoteBoardRegistry.evict(userId);
         } finally {
             quoteBoardRegistry.worldLock(userId).unlock();
@@ -173,12 +188,15 @@ public class GameEndService {
     }
 
     /** restart 事务体（世界锁内开启，提交先于锁释放与 evict）。 */
-    private void doRestart(long userId) {
+    private void doRestart(long userId, GameMode mode) {
         UserGameState gs = gameState(userId);
         MarketState state = MarketState.valueOf(gs.getMarketState());
-        if (state != MarketState.FINISHED && state != MarketState.BANKRUPT) {
+        boolean finished = state == MarketState.FINISHED || state == MarketState.BANKRUPT;
+        // 终局后可重开；注册后从未开过局（第 1 天、零成交零持仓）也可以——那是"开局前选模式"
+        if (!finished && !untouchedNewRun(userId, gs)) {
             throw new BizException(ErrorCode.GAME_NOT_FINISHED);
         }
+        GameMode next = mode == null ? GameMode.of(gs.getGameMode()) : mode;
         long newSeed = ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE);
 
         userPositionMapper.delete(new LambdaQueryWrapper<UserPosition>()
@@ -201,6 +219,8 @@ public class GameEndService {
                 .eq(UserIpoRecord::getUserId, userId));
         userTitleMapper.delete(new LambdaQueryWrapper<UserTitle>()
                 .eq(UserTitle::getUserId, userId));
+        stockDailyBarMapper.delete(new LambdaQueryWrapper<StockDailyBar>()
+                .eq(StockDailyBar::getUserId, userId));
         gameEventMapper.delete(new LambdaQueryWrapper<GameEvent>()
                 .eq(GameEvent::getUserId, userId));
         eventFactory.clearPending(userId);
@@ -224,6 +244,7 @@ public class GameEndService {
                 .set(UserGameState::getWorldSeed, newSeed)
                 .set(UserGameState::getIndexValue, 1000.0)
                 .set(UserGameState::getPrevIndex, 1000.0)
+                .set(UserGameState::getGameMode, next.name())
                 .set(UserGameState::getPrevTotalAsset, null)
                 .set(UserGameState::getVolRegime, "NORMAL")
                 .set(UserGameState::getTier, "RETAIL")
@@ -231,6 +252,18 @@ public class GameEndService {
                 .set(UserGameState::getEndDay, null));
 
         worldSeeder.seedWorld(userId, newSeed);
+    }
+
+    /** 是否"注册后从未开过局"：NOT_STARTED、还在第 1 天、零成交零持仓。 */
+    private boolean untouchedNewRun(long userId, UserGameState gs) {
+        if (MarketState.valueOf(gs.getMarketState()) != MarketState.NOT_STARTED || gs.getCurrentDay() > 1) {
+            return false;
+        }
+        Long trades = tradeRecordMapper.selectCount(new LambdaQueryWrapper<TradeRecord>()
+                .eq(TradeRecord::getUserId, userId));
+        Long positions = userPositionMapper.selectCount(new LambdaQueryWrapper<UserPosition>()
+                .eq(UserPosition::getUserId, userId));
+        return (trades == null || trades == 0L) && (positions == null || positions == 0L);
     }
 
     /** 强平流水：loan_type=LIQUIDATE，按 gameDay,id 升序。 */

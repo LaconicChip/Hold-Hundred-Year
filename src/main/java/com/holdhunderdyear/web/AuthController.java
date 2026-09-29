@@ -7,7 +7,6 @@ import com.holdhunderdyear.common.JwtUtil;
 import com.holdhunderdyear.common.R;
 import com.holdhunderdyear.game.model.dto.LoginDTO;
 import com.holdhunderdyear.game.model.dto.RegisterDTO;
-import com.holdhunderdyear.game.model.enums.GameMode;
 import com.holdhunderdyear.market.entity.SysUser;
 import com.holdhunderdyear.market.mapper.SysUserMapper;
 import com.holdhunderdyear.world.WorldSeeder;
@@ -49,8 +48,7 @@ public class AuthController {
     public R<Map<String, Object>> register(@Valid @RequestBody RegisterDTO dto) {
         long userId;
         try {
-            userId = worldSeeder.seedUser(dto.getUsername(), passwordEncoder.encode(dto.getPassword()),
-                    GameMode.of(dto.getMode()));
+            userId = worldSeeder.seedUser(dto.getUsername(), passwordEncoder.encode(dto.getPassword()));
         } catch (DuplicateKeyException e) {
             throw new BizException(ErrorCode.USERNAME_EXISTS);
         }
