@@ -169,7 +169,7 @@ public class MarginService {
             BigDecimal marketValue = marketValueOf(positions(userId), board);
             BigDecimal debt = debtOf(user);
             BigDecimal assets = user.getBalance().add(marketValue);
-            // 额度：累计负债（融资 + 高利贷）≤ 净资产。借满 4 倍高利贷之后不能再找券商加杠杆
+            // 额度：累计负债（融资 + 高利贷）≤ 净资产。借满高利贷之后不能再找券商加杠杆
             if (amount.compareTo(marginBorrowableOf(assets, debt, SharkService.sharkOf(user))) > 0) {
                 throw new BizException(ErrorCode.MARGIN_EXCEED);
             }
@@ -433,7 +433,7 @@ public class MarginService {
      * 融资还能借多少，且不小于 0。规则本身是"累计负债（融资 + 高利贷 + 这次借的）
      * 不超过净资产"，而借钱只是把负债和现金同额一起加、净资产不动，解出来就是
      * {@code 可借 = 现金 + 市值 − (融资债 + 高利贷) × (1 + 上限倍率)}。
-     * 高利贷必须一起算：不然借满 4 倍高利贷之后还能再找券商借一份，杠杆直接翻倍。
+     * 高利贷必须一起算：不然借满高利贷之后还能再找券商借一份，杠杆直接翻倍。
      * 公式只写这一处，借款校验与视图（含 /api/me/assets 的 borrowable）共用。
      */
     public static BigDecimal marginBorrowableOf(BigDecimal assets, BigDecimal marginDebt, BigDecimal sharkDebt) {

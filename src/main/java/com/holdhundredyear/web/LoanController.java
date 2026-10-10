@@ -46,7 +46,7 @@ public class LoanController {
         return R.ok(sharkService.view(userId));
     }
 
-    /** 借高利贷：额度上限是净资产的 4 倍，超出直接拒。 */
+    /** 借高利贷：额度上限是净资产 × SHARK_LIMIT_RATIO，超出直接拒。 */
     @PostMapping("/shark/borrow")
     public R<SharkLoanDTO> sharkBorrow(@AuthenticationPrincipal Long userId, @Valid @RequestBody LoanDTO dto) {
         return R.ok(sharkService.borrow(userId, dto.getAmount()));

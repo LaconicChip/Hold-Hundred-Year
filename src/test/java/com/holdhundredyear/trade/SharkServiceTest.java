@@ -41,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 高利贷集成测试（hold_year_test 库，方法级事务自动回滚），覆盖 spec §6.6：
- * 额度 4 倍净资产、日息按账龄递增且利滚利、到期先扣现金再强卖、卖不掉则逾期、
+ * 额度 5 倍净资产、日息按账龄递增且利滚利、到期先扣现金再强卖、卖不掉则逾期、
  * 高利贷不进维持担保比例但进净资产与资不抵债判定（含"只有高利贷、没有融资债"这一条），
  * 以及提前还款按到期日近的优先冲销。
  */
@@ -77,19 +77,19 @@ class SharkServiceTest {
     private UserMessageMapper userMessageMapper;
 
     @Test
-    void borrowUpToFourTimesNetAssetThenRejectsMore() {
+    void borrowUpToFiveTimesNetAssetThenRejectsMore() {
         long userId = seedInMarket();
 
-        SharkLoanDTO result = sharkService.borrow(userId, money("400000.00"));
+        SharkLoanDTO result = sharkService.borrow(userId, money("500000.00"));
 
-        assertEquals(0, money("500000.00").compareTo(balance(userId)), "cash 100000 + 400000");
-        assertEquals(0, money("400000.00").compareTo(sharkOf(userId)), "the ledger must sync into sys_user");
+        assertEquals(0, money("600000.00").compareTo(balance(userId)), "cash 100000 + 500000");
+        assertEquals(0, money("500000.00").compareTo(sharkOf(userId)), "the ledger must sync into sys_user");
         assertEquals(0, money("0.00").compareTo(result.getBorrowable()),
-                "borrowing exactly 4x net asset leaves no room (net asset is unchanged by the draw)");
+                "borrowing exactly 5x net asset leaves no room (net asset is unchanged by the draw)");
         List<LoanRecord> loans = loanRecords(userId);
         assertEquals(1, loans.size());
         assertEquals("SHARK_BORROW", loans.get(0).getLoanType());
-        assertEquals(0, money("400000.00").compareTo(loans.get(0).getDebtAfter()));
+        assertEquals(0, money("500000.00").compareTo(loans.get(0).getDebtAfter()));
         assertNotNull(message(userId, "高利贷到手"), "the draw must be announced");
 
         assertThrows(BizException.class, () -> sharkService.borrow(userId, money("0.01")),

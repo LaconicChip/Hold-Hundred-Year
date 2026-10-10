@@ -27,7 +27,7 @@ public class SharkLoanDTO {
     /** 距最早到期日还剩几个交易日（逾期为负）。 */
     private Integer daysToDue;
 
-    /** 当前还能借多少（净资产 4 倍扣掉已借部分）。 */
+    /** 当前还能借多少（净资产 × SHARK_LIMIT_RATIO 扣掉已借部分）。 */
     private BigDecimal borrowable;
 
     /** 规则原样下发（额度倍数、利率档位、升档步长、期限），前端只渲染不复写规则。 */

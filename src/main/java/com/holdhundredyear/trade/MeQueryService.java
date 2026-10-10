@@ -92,7 +92,8 @@ public class MeQueryService {
             AssetsDTO dto = new AssetsDTO();
             dto.setCash(cash);
             dto.setMarketValue(marketValue);
-            dto.setDebt(debt);
+            // 负债给合计（融资 + 高利贷）：只欠高利贷时显示 0.00 是在骗人；融资债单列在 sharkDebt 里可减出
+            dto.setDebt(debt + sharkDebt);
             dto.setSharkDebt(sharkDebt);
             dto.setNetAsset(cash + marketValue - debt - sharkDebt);
             dto.setGuardRatio(debt > 0 ? (cash + marketValue) / debt : 0.0);

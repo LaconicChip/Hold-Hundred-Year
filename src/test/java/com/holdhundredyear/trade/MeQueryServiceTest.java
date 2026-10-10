@@ -120,6 +120,8 @@ class MeQueryServiceTest {
         sharkService.borrow(userId, new BigDecimal("20000.00"));
         AssetsDTO afterShark = meQueryService.assets(userId);
         assertEquals(20000.00, afterShark.getSharkDebt(), 1e-9);
+        assertEquals(70000.00, afterShark.getDebt(), 1e-9,
+                "the asset card must show total debt: 50000 margin + 20000 shark, not just the broker line");
         assertEquals(30000.00, afterShark.getBorrowable(), 1e-9,
                 "room = 170000 - 50000*2 - 20000 = 30000: a private loan squeezes the margin line");
         assertEquals(afterShark.getCash() + afterShark.getMarketValue() - 50000.00 - 20000.00,

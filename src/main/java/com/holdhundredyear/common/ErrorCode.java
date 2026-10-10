@@ -27,7 +27,7 @@ public enum ErrorCode {
     LOGIN_FAILED(1017, "用户名或密码错误"),
     NOT_FOUND(1018, "资源不存在"),
     GAME_NOT_FINISHED(1019, "本局尚未结束"),
-    SHARK_EXCEED(1020, "高利贷额度不足，最多可借净资产的 4 倍");
+    SHARK_EXCEED(1020, "高利贷额度不足，已超过可借上限");
 
     private final int code;
     private final String msg;
