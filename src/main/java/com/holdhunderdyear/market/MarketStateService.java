@@ -7,6 +7,7 @@ import com.holdhunderdyear.event.NotifyPublisher;
 import com.holdhunderdyear.game.constants.GameConstants;
 import com.holdhunderdyear.game.constants.StockDefs.StockDef;
 import com.holdhunderdyear.game.constants.StockDefs;
+import com.holdhunderdyear.game.content.EraNarratives;
 import com.holdhunderdyear.game.model.enums.EraCode;
 import com.holdhunderdyear.game.model.enums.MarketState;
 import com.holdhunderdyear.game.model.enums.ScriptType;
@@ -478,7 +479,7 @@ public class MarketStateService {
     }
 
     /** 纪元切换检测：newDay 所在纪元 != prevDay 所在纪元（prevDay=0 视为无纪元，首日常开）时
-     *  推送一条 SYSTEM/NOTIFY 消息，正文取 {@link EraCode#getNarrative()} 的纪元叙事。 */
+     *  推送一条 SYSTEM/NOTIFY 消息，正文取 {@link EraNarratives#narrative(EraCode)} 的纪元叙事。 */
     private void detectEraSwitchAndNotify(long userId, int newDay, int prevDay) {
         UserEra current = eraForDay(userId, newDay);
         if (current == null) {
@@ -489,7 +490,7 @@ public class MarketStateService {
             return;
         }
         EraCode code = EraCode.valueOf(current.getEraCode());
-        notifyPublisher.system(userId, newDay, "纪元切换：" + code.getName(), code.getNarrative());
+        notifyPublisher.system(userId, newDay, "纪元切换：" + code.getName(), EraNarratives.narrative(code));
     }
 
     /** 查询 day 所属纪元（user_era 行 start_day <= day <= end_day）。 */

@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * 个股人设档案的完整性与"反重复"校验（纯单测，不连库）：
  * 覆盖 24 只票（每股 8 条专属弹幕 + 6 条专属事件文案）、每条非空白、无 emoji、
- * 并把板块文案库（SectorFlavor）与 NPC 台词库（NpcLines）一起纳入零重复总校验。
+ * 并把板块文案库（SectorFlavor）、NPC 台词库（NpcLines）与纪元叙事（EraNarratives）一起纳入零重复总校验。
  * 事件文案都带 {stock} 槽位，
  * 以及个股专属池 + 板块池 + 全局池合起来不出现重复句子——
  * 文案量堆上去却互相抄，等于没堆。
@@ -83,7 +83,7 @@ class StockPersonasTest {
         DanmuTexts.SECTOR_FLAVOR.values().forEach(allPools::add);
         StockPersonas.ALL.forEach((persona) -> allPools.add(persona.danmu()));
         StockPersonas.ALL.forEach((persona) -> allPools.add(persona.news()));
-        // 板块文案库与 NPC 台词库一起进总校验：任何一处抄重都会红
+        // 板块、NPC 台词与纪元叙事一起进总校验：任何一处抄重都会红
         for (String sector : SectorFlavor.sectors()) {
             for (SectorFlavor.Channel channel : SectorFlavor.Channel.values()) {
                 for (SectorFlavor.Entry entry : SectorFlavor.pool(sector, channel)) {
@@ -96,6 +96,9 @@ class StockPersonasTest {
             allPools.add(NpcLines.scene(scene));
         }
         NpcLines.chatterPool().values().forEach(allPools::add);
+        for (String narrative : EraNarratives.all().values()) {
+            allPools.add(List.of(narrative));
+        }
         for (List<String> pool : allPools) {
             for (String line : pool) {
                 if (line == null || line.isBlank()) {

@@ -4,6 +4,7 @@ import com.holdhunderdyear.common.BizException;
 import com.holdhunderdyear.common.ErrorCode;
 import com.holdhunderdyear.game.constants.GameConstants;
 import com.holdhunderdyear.game.constants.StockDefs;
+import com.holdhunderdyear.game.content.EraNarratives;
 import com.holdhunderdyear.game.model.enums.EraCode;
 import com.holdhunderdyear.game.model.enums.GameMode;
 import com.holdhunderdyear.game.model.enums.ScriptType;
@@ -247,7 +248,7 @@ class MarketStateServiceTest {
                 "title must read the era's Chinese name, title=" + msg.getTitle());
         assertFalse(msg.getTitle().contains("BULL_START"),
                 "player-facing title must not leak the enum name, title=" + msg.getTitle());
-        assertEquals(EraCode.BULL_START.getNarrative(), msg.getContent(),
+        assertEquals(EraNarratives.narrative(EraCode.BULL_START), msg.getContent(),
                 "era notice must carry the era narrative, not a placeholder");
         assertFalse(msg.getContent().contains("占位"), "no placeholder copy may reach players");
     }
@@ -281,7 +282,7 @@ class MarketStateServiceTest {
         EraCode switched = EraCode.valueOf(era2.getEraCode());
         assertEquals("纪元切换：" + switched.getName(), msg.getTitle(),
                 "era-switch title is the Chinese era name only, no enum code");
-        assertEquals(EraCode.valueOf(era2.getEraCode()).getNarrative(), msg.getContent(),
+        assertEquals(EraNarratives.narrative(EraCode.valueOf(era2.getEraCode())), msg.getContent(),
                 "era-switch notice must read the new era's narrative");
     }
 

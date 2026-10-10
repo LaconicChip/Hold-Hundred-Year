@@ -190,7 +190,7 @@ BANKRUPT / FINISHED（终局：冻结一切操作，展示结局结算页）
 | 10 黑7月   | 2026.7 科技崩盘     | 3·25–32          | 科技暴跌、红利逆势 | 银行、煤炭石油、白酒、食品      | 算力/半导体/通信连续崩盘        |
 | 11 震荡再平衡 | 2026.8 收官       | 3·33–36          | 区间震荡、板块轮动 | 轮动（超跌科技反弹+防御交替）    | 纯题材股继续出清             |
 
-纪元切换时推送"纪元叙事"消息（新闻播报风格，交代时代背景，如"证监会清理场外配资，杠杆牛隐忧初现"" Meta 宣布对外出售算力，AI 军备竞赛叙事动摇"）。
+纪元切换时推送"纪元叙事"消息（新闻播报风格，交代时代背景，如"证监会清理场外配资，杠杆牛隐忧初现"" Meta 宣布对外出售算力，AI 军备竞赛叙事动摇"）：标题是纪元显示名（`EraCode`），正文在 `resources/content/era-narratives.txt`（读取入口 `game/content/EraNarratives.java`，一组一句）。
 
 ### 4.4 特殊剧本日（历史名场面，保证发生、时点抖动）
 
@@ -467,7 +467,7 @@ BANKRUPT / FINISHED（终局：冻结一切操作，展示结局结算页）
 
 ### 7.8 文案资产（改文案不改代码）
 
-全部游戏文案集中在 `src/main/resources/content/` 五个纯文本文件，一行一条、`#` 注释、`@分组名` 开组，由 `game/content/ContentCatalog` 一次性装载、`DanmuTexts / StockPersonas / SectorFlavor / NpcLines / EventCopy` 五个薄壳按类型读取：
+全部游戏文案集中在 `src/main/resources/content/` 六个纯文本文件，一行一条、`#` 注释、`@分组名` 开组，由 `game/content/ContentCatalog` 一次性装载、`DanmuTexts / StockPersonas / SectorFlavor / NpcLines / EventCopy / EraNarratives` 六个薄壳按类型读取：
 
 | 文件 | 内容 |
 | --- | --- |
@@ -476,6 +476,7 @@ BANKRUPT / FINISHED（终局：冻结一切操作，展示结局结算页）
 | `sector-flavor.txt` | 21 板块 + 大盘的权威/媒体/传闻（含证实·辟谣追报）/玩梗 |
 | `npc-lines.txt` | 4 个角色线场景台词 + 8 位 NPC 性格闲聊 |
 | `event-copy.txt` | 75 条事件骨架的标题/正文变体与追报 |
+| `era-narratives.txt` | 11 个纪元的叙事（纪元切换通知正文，每组恰好一行） |
 
 约束：分组缺失或为空**启动即抛**（不允许运行时静默无文案）；全站禁 emoji；跨全部文案池**零重复**、个股/板块覆盖率与槽位白名单（`{stock}`/`{amount}`/`{user}`）全部由单测把关。骨架的**结构**（作用域、来源、纪元、权重、冲击模式、幅度区间）留在 `EventSkeletons.java`，掷骰与随机消费顺序不受文案增删影响。
 

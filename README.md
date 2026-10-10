@@ -33,9 +33,10 @@ src/main/resources/db/
   V20260914_01__*.sql 等            旧库增量迁移脚本（需手工执行，见 docs/db-migrations.md）
 
 src/main/resources/content/
-  danmu.txt / stock-personas.txt / sector-flavor.txt / npc-lines.txt / event-copy.txt
-  全部游戏文案（弹幕、24 股人设、板块与大盘消息、NPC 台词、75 条事件骨架的标题正文与追报）
-  —— 改文案只改这五个 txt，不动 Java；格式与校验见 docs/implementation-notes.md §7
+  danmu.txt / stock-personas.txt / sector-flavor.txt / npc-lines.txt / event-copy.txt /
+  era-narratives.txt
+  全部游戏文案（弹幕、24 股人设、板块与大盘消息、NPC 台词、75 条事件骨架的标题正文与追报、11 条纪元叙事）
+  —— 改文案只改这六个 txt，不动 Java；格式与校验见 docs/implementation-notes.md §7
 
 frontend/src/
   views/        8 个页面（Login/Market/StockDetail/Assets/Messages/Leaderboard/DailySummary/GameResult）
@@ -99,7 +100,7 @@ cd frontend; npm run build
 | 实现备忘 | `docs/implementation-notes.md` |
 | 视觉基准 | `docs/design/style-tile.html` |
 | 数据库迁移 | `docs/db-migrations.md` |
-| 游戏文案 | `src/main/resources/content/`（5 个 .txt，改文案不用改代码） |
+| 游戏文案 | `src/main/resources/content/`（6 个 .txt，改文案不用改代码） |
 | 验收截图 | `docs/design/shots/` |
 
 ## 改动前必读的硬约束
