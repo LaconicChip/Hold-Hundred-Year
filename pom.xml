@@ -8,11 +8,11 @@
         <version>4.1.1</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
-    <groupId>com.HoldHunderdYear</groupId>
-    <artifactId>Hold-Hunderd-Year</artifactId>
+    <groupId>com.HoldHundredYear</groupId>
+    <artifactId>Hold-Hundred-Year</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>Hold-Hunderd-Year</name>
-    <description>Hold-Hunderd-Year</description>
+    <name>Hold-Hundred-Year</name>
+    <description>Hold-Hundred-Year</description>
     <url/>
     <licenses>
         <license/>

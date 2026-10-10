@@ -11,7 +11,7 @@ A 股模拟炒股游戏：一局 72 个交易日（3 年 × 24 天），约 1 �
 ## 目录结构
 
 ```text
-src/main/java/com/holdhunderdyear/
+src/main/java/com/holdhundredyear/
   world/     世界种子与排期（WorldRandom 是唯一随机入口、WorldSeeder、EraScheduler、ScriptDayScheduler）
   market/    行情状态机与推进（MarketStateService 开盘管线、WorldTickService 单跳、SettlementService 结算、
              FastForwardService 快进、MarketQueryService 查询聚合、QuoteBoardRegistry 世界锁）
