@@ -96,7 +96,7 @@
         <dd>{{ fmtMoney(loanInfo.balance) }}</dd>
       </dl>
       <p v-else class="loan-note muted-2">
-        预估可借额度 = 净资产 - 负债（口径说明：borrowable 仅在借款/还款响应返回，无独立查询接口，初始以净资产减负债估算展示）
+        预估可借额度 = 净资产 - 负债，实际额度以借款申请结果为准
       </p>
 
       <div class="loan-form">
