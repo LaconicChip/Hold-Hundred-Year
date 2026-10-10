@@ -35,17 +35,22 @@ import java.util.Set;
  *   <li>制裁闪崩（era7）：s = 1+nextInt(2) → s 次 pickDay 于 era7 → 按挑选顺序掷
  *       targetStockId = 科技股池（半导体/算力/通信/传媒，按 StockDefs 声明顺序派生）中
  *       nextInt 取一；</li>
- *   <li>黑7月崩盘（era10 前半段）：c = 2+nextInt(2) → c 次 pickDay 于
- *       [era10.start, era10.start+(len+1)/2-1] → 按挑选顺序逐日掷 sealRatio；</li>
+ *   <li>黑7月崩盘（era10）：c = 2+nextInt(2)（按窗口容量夹逼）→ c 次 pickDay 于窗口内
+ *       （标准模式窗口 = 前半段 [era10.start, era10.start+(len+1)/2-1]，快速模式 =
+ *       整个纪元，见 {@code GameMode#isCrashWindowFullEra()}）→ 按挑选顺序逐日掷 sealRatio；</li>
  *   <li>IPO：12 个候选名 Collections.shuffle 洗牌一次 → 逐年（年1/年2/年3）
  *       k = 2+nextInt(2) → k 次 pickDay 于年内（末段留出 IPO_LIFECYCLE_TAIL 天给 D+2/D+4）→ 按挑选顺序依次取名（不重复）并掷
  *       issuePrice = round2(5+25*nextDouble)。</li>
  * </ol>
- * pickDay 命中已用日期时的重掷循环同样由该 Random 驱动，天然确定；各候选区间长度均严格
- * 每类剧本日的请求数都在掷骰后按窗口容量夹逼（千股跌停还额外扣除救市日及其次日），且
- * pickDay 在池子耗尽时直接抛 IllegalStateException，绝不出现无界重掷：年长被压缩到
- * 24 交易日/年时，短纪元（如纪元10 只有 4 天）也不会把撒点循环卡死。
- * 每年 DAYS_PER_YEAR 天），重掷空间始终宽裕。
+ * <p>每类剧本日的请求数都在掷骰后按窗口容量夹逼（千股跌停还要额外扣掉救市日及其次日），
+ * pickDay 命中已用日期时的重掷循环同样由该 Random 驱动、天然确定，池子见底直接抛
+ * IllegalStateException——年长压到 12 交易日/年、短纪元只剩 2~3 天时，撒点既不会把注册
+ * 线程卡死，也不会掷出纪元外的日期。
+ *
+ * <p>夹逼会丢掷骰结果的地方只剩一处，且是数学上装不下：快速模式纪元 3 恒为 4 天，
+ * "2 天千股跌停 → 救市 → 次日千股涨停"正好排满整段，第 3 个跌停日没有格子（一年 12 天里
+ * 再给纪元 3 加一天，就会有别的纪元跌破 GameMode.getMinEraLen()）。黑7月的窗口改成按
+ * 档案铺满整个纪元，正是为了不再白白丢掉已经掷出来的崩盘日。
  */
 public class ScriptDayScheduler {
 
@@ -84,6 +89,7 @@ public class ScriptDayScheduler {
     /** 按本局模式撒点：三年区间与收官日都随年长变化，剧本日类型一个不减。 */
     public List<ScriptDayInstance> roll(long seed, List<EraScheduler.EraInstance> eras, GameMode mode) {
         Random r = WorldRandom.of(seed, "script");
+        GameMode gameMode = mode == null ? GameMode.STANDARD : mode;
         List<ScriptDayInstance> out = new ArrayList<>();
 
         EraScheduler.EraInstance era2 = eras.get(1);
@@ -162,15 +168,15 @@ public class ScriptDayScheduler {
                     params("targetStockId", TECH_STOCK_IDS.get(r.nextInt(TECH_STOCK_IDS.size())))));
         }
 
-        // 6. 黑7月崩盘（纪元10 前半段）
+        // 6. 黑7月崩盘（纪元10）：标准模式崩前半段、后半段阴跌；快速模式整个纪元都是窗口
         int len10 = era10.endDay() - era10.startDay() + 1;
-        int half = (len10 + 1) / 2;
-        // 崩盘日只能落在纪元10 前半段：短纪元（压缩日历后可能只有 4 天）时按前半段容量夹逼
-        int c = Math.min(2 + r.nextInt(2), half);
+        int crashWindow = gameMode.isCrashWindowFullEra() ? len10 : (len10 + 1) / 2;
+        // 崩盘日只能落在窗口内：短纪元（快速模式实测只有 2~3 天）时按窗口容量夹逼
+        int c = Math.min(2 + r.nextInt(2), crashWindow);
         Set<Integer> crashUsed = new HashSet<>();
         List<Integer> crashDays = new ArrayList<>();
         for (int i = 0; i < c; i++) {
-            crashDays.add(pickDay(r, era10.startDay(), era10.startDay() + half - 1, crashUsed));
+            crashDays.add(pickDay(r, era10.startDay(), era10.startDay() + crashWindow - 1, crashUsed));
         }
         for (int day : crashDays) {
             out.add(new ScriptDayInstance(day, ScriptType.CRASH_WEEK,
@@ -181,7 +187,6 @@ public class ScriptDayScheduler {
         List<String> names = new ArrayList<>(IPO_NAME_POOL);
         Collections.shuffle(names, r);
         int nameIdx = 0;
-        GameMode gameMode = mode == null ? GameMode.STANDARD : mode;
         int dyp = gameMode.getDaysPerYear();
         int[][] yearRanges = {{1, dyp}, {dyp + 1, dyp * 2}, {dyp * 2 + 1, gameMode.totalDays()}};
         for (int[] range : yearRanges) {

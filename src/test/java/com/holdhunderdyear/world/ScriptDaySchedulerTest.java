@@ -34,6 +34,11 @@ class ScriptDaySchedulerTest {
             "雷霆安防", "银河芯动", "九霄云算", "聚宝盆金服", "盘古智驾", "凤凰光学",
             "鲸落生物", "长城数科", "天权航天", "锦鲤锂业", "貔貅支付", "玄武云储");
 
+    /** 名场面日：能把玩家从随机游走里拽出来的那些天（打新是机制，不算名场面）。 */
+    private static final Set<ScriptType> SET_PIECES = Set.of(ScriptType.CIRCUIT_BREAKER,
+            ScriptType.LIMIT_DOWN_ALL, ScriptType.RESCUE, ScriptType.LIMIT_UP_ALL,
+            ScriptType.SANCTION, ScriptType.CRASH_WEEK);
+
     private final EraScheduler eraScheduler = new EraScheduler();
     private final ScriptDayScheduler scheduler = new ScriptDayScheduler();
 
@@ -377,6 +382,79 @@ class ScriptDaySchedulerTest {
                 }
             }
         }
+    }
+
+    @Test
+    void quickModeCrashWeekFillsTheWholeEraInsteadOfOneDay() {
+        // 快速模式纪元10 实测只有 2~3 天：窗口若仍取前半段，黑7月会退化成一天。
+        int threeDayCrashes = 0;
+        for (long seed = 1; seed <= 500; seed++) {
+            List<EraInstance> eras = eraScheduler.roll(seed, GameMode.QUICK);
+            EraInstance era10 = eras.get(9);
+            int len10 = era10.endDay() - era10.startDay() + 1;
+            List<ScriptDayInstance> crashes = ofType(
+                    scheduler.roll(seed, eras, GameMode.QUICK), ScriptType.CRASH_WEEK);
+            assertTrue(crashes.size() >= 2, "seed " + seed + " CRASH_WEEK collapsed to " + crashes.size()
+                    + " day(s) inside a " + len10 + "-day era10");
+            assertTrue(crashes.size() <= Math.min(3, len10), "seed " + seed + " CRASH_WEEK count "
+                    + crashes.size() + " exceeds era10 length " + len10);
+            for (ScriptDayInstance crash : crashes) {
+                assertTrue(crash.gameDay() >= era10.startDay() && crash.gameDay() <= era10.endDay(),
+                        "seed " + seed + " CRASH_WEEK day " + crash.gameDay() + " outside era10 ["
+                                + era10.startDay() + "," + era10.endDay() + "]");
+            }
+            if (crashes.size() == 3) {
+                threeDayCrashes++;
+            }
+        }
+        assertTrue(threeDayCrashes > 0,
+                "a rolled 3-day crash week must land when the era can hold it, never be clipped away");
+    }
+
+    @Test
+    void quickModeCrashChainLeavesNoIdleDayInEraThree() {
+        // 纪元3 恒为 4 天、股灾链正好排满：第 3 个跌停日装不下是既定取舍，写死在这里防止
+        // 以后有人把纪元3 压到 3 天，把"股灾"演成"一日游"还不自知。
+        for (long seed = 1; seed <= MAX_SEED; seed++) {
+            List<EraInstance> eras = eraScheduler.roll(seed, GameMode.QUICK);
+            EraInstance era3 = eras.get(2);
+            int len3 = era3.endDay() - era3.startDay() + 1;
+            List<ScriptDayInstance> days = scheduler.roll(seed, eras, GameMode.QUICK);
+            Set<Integer> chain = new HashSet<>();
+            for (ScriptType type : List.of(ScriptType.LIMIT_DOWN_ALL, ScriptType.RESCUE,
+                    ScriptType.LIMIT_UP_ALL)) {
+                for (ScriptDayInstance day : ofType(days, type)) {
+                    if (day.gameDay() >= era3.startDay() && day.gameDay() <= era3.endDay()) {
+                        chain.add(day.gameDay());
+                    }
+                }
+            }
+            assertEquals(len3, chain.size(), "seed " + seed + " era3 spans " + len3
+                    + " day(s) but the crash chain occupies " + chain);
+        }
+    }
+
+    @Test
+    void quickModeRunsDenserWithSetPiecesThanStandard() {
+        // 短局靠"更密"而不是"更少"：名场面日的绝对天数两种模式差不多，但时间轴对半砍，所以占比必须更高。
+        for (long seed = 1; seed <= MAX_SEED; seed++) {
+            double standard = setPieceDensity(GameMode.STANDARD, seed);
+            double quick = setPieceDensity(GameMode.QUICK, seed);
+            assertTrue(quick > standard, "seed " + seed + " quick set-piece density " + quick
+                    + " must exceed standard density " + standard);
+        }
+    }
+
+    /** 同一 seed 下，名场面日占本局交易日总数的比例。 */
+    private double setPieceDensity(GameMode mode, long seed) {
+        List<ScriptDayInstance> days = scheduler.roll(seed, eraScheduler.roll(seed, mode), mode);
+        Set<Integer> pieces = new HashSet<>();
+        for (ScriptDayInstance day : days) {
+            if (SET_PIECES.contains(day.type())) {
+                pieces.add(day.gameDay());
+            }
+        }
+        return pieces.size() / (double) mode.totalDays();
     }
 
     private static List<ScriptDayInstance> ofType(List<ScriptDayInstance> days, ScriptType type) {

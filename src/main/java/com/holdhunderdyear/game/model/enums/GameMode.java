@@ -16,8 +16,8 @@ import lombok.Getter;
 @Getter
 public enum GameMode {
 
-    STANDARD("标准模式", 24, 1000, 10000, 0.10, 3, "三年 72 个交易日 · 约 2 小时 · 涨跌停 ±10%"),
-    QUICK("快速模式", 12, 500, 5000, 0.20, 2, "三年 36 个交易日 · 约 30 分钟 · 涨跌停 ±20%");
+    STANDARD("标准模式", 24, 1000, 10000, 0.10, 3, false, "三年 72 个交易日 · 约 2 小时 · 涨跌停 ±10%"),
+    QUICK("快速模式", 12, 500, 5000, 0.20, 2, true, "三年 36 个交易日 · 约 30 分钟 · 涨跌停 ±20%");
 
     /** 一局固定的游戏年数。 */
     public static final int YEARS = 3;
@@ -34,16 +34,24 @@ public enum GameMode {
      * 因此下限放到 2，保证 11 个纪元既不重叠也不留缝地全部塞进去。
      */
     private final int minEraLen;
+    /**
+     * 黑7月崩盘日的撒点窗口要不要铺满整个纪元（由 ScriptDayScheduler 消费）：
+     * 标准模式只在纪元 10 前半段崩、后半段阴跌，还原"跌透了的三个月"；
+     * 快速模式纪元 10 实测只有 2~3 天，再只取前半段就只剩 1 个崩盘日——
+     * "黑7月崩盘周"演成一天。短局没有阴跌的时间预算，整段都可以崩。
+     */
+    private final boolean crashWindowFullEra;
     private final String description;
 
     GameMode(String label, int daysPerYear, int tickMs, int lunchMs, double limitPct,
-            int minEraLen, String description) {
+            int minEraLen, boolean crashWindowFullEra, String description) {
         this.label = label;
         this.daysPerYear = daysPerYear;
         this.tickMs = tickMs;
         this.lunchMs = lunchMs;
         this.limitPct = limitPct;
         this.minEraLen = minEraLen;
+        this.crashWindowFullEra = crashWindowFullEra;
         this.description = description;
     }
 
