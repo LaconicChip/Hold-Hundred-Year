@@ -140,10 +140,18 @@ public class GameEndService {
         if (state != MarketState.FINISHED && state != MarketState.BANKRUPT) {
             throw new BizException(ErrorCode.GAME_NOT_FINISHED);
         }
-        UserDailySnapshot finalSnapshot = userDailySnapshotMapper.selectOne(
+        // 终局快照取"最后一个已结算日"，不是"endDay 当天"：盘中爆仓（MarginService.intradayCheck
+        // 在某一跳直接落 BANKRUPT 并短路）当天根本不会走收盘结算，按 endDay 等值查会拿到 null，
+        // 终局接口 500、玩家永远看不到「天台见」。最坏情况退到播种时的第 0 天快照，页面照样能画。
+        List<UserDailySnapshot> settled = userDailySnapshotMapper.selectList(
                 new LambdaQueryWrapper<UserDailySnapshot>()
                         .eq(UserDailySnapshot::getUserId, userId)
-                        .eq(UserDailySnapshot::getGameDay, gs.getEndDay()));
+                        .le(UserDailySnapshot::getGameDay, gs.getEndDay())
+                        .orderByDesc(UserDailySnapshot::getGameDay));
+        if (settled.isEmpty()) {
+            throw new BizException(ErrorCode.NOT_FOUND);
+        }
+        UserDailySnapshot finalSnapshot = settled.get(0);
 
         GameResultDTO result = new GameResultDTO();
         result.setEnding(state.name());

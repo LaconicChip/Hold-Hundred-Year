@@ -213,6 +213,40 @@ class GameEndServiceTest {
     }
 
     @Test
+    void resultFallsBackToLastSettledDayWhenBankruptcyStruckIntraday() {
+        // 盘中爆仓（MarginService.intradayCheck 短路）当天不会走收盘结算，也就没有 endDay 当天的
+        // 快照：曾经这里按 gameDay == endDay 取到 null，终局接口 500，玩家永远看不到「天台见」。
+        long userId = seedInMarket();
+        insertSnapshot(userId, 3, "2000.00", "0.00", "98000.00", "2000.00", 980.0, null);
+        setTerminalState(userId, "BANKRUPT", "BANKRUPT", 4, "RETAIL");
+
+        GameResultDTO result = gameEndService.result(userId);
+
+        assertEquals("BANKRUPT", result.getEnding());
+        assertEquals(4, result.getEndDay(), "the day the margin blew up stays the reported end day");
+        assertEquals(-98.0, result.getTotalReturnPct(), 0.0001, "read from the last settled day: (2000 - 100000) / 100000");
+        assertEquals(-2.0, result.getIndexGainPct(), 0.0001, "index 980 against the 1000 base");
+        assertEquals(2, result.getCurve().size(), "day 0 plus day 3 only, day 4 never settled");
+        assertEquals(1, result.getRankings().size());
+        assertEquals(2000.0, result.getRankings().get(0).getAsset(), 0.0001);
+        assertEquals("BANKRUPT", result.getRankings().get(0).getStatus());
+    }
+
+    @Test
+    void resultSurvivesBankruptcyBeforeTheFirstClose() {
+        // 第 1 天盘中就爆仓：唯一的快照是播种时的第 0 天，终局页仍要能画出来。
+        long userId = seedInMarket();
+        setTerminalState(userId, "BANKRUPT", "BANKRUPT", 1, "RETAIL");
+
+        GameResultDTO result = gameEndService.result(userId);
+
+        assertEquals("BANKRUPT", result.getEnding());
+        assertEquals(0.0, result.getTotalReturnPct(), 0.0001, "the day-0 snapshot is 100000 by definition");
+        assertEquals(0.0, result.getIndexGainPct(), 0.0001);
+        assertEquals(1, result.getCurve().size(), "only the seeding snapshot exists");
+    }
+
+    @Test
     void restartRejectsNonTerminalState() {
         long userId = seedInMarket();
 
