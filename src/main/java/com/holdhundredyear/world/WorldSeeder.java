@@ -164,6 +164,7 @@ public class WorldSeeder {
         snapshot.setCash(BigDecimal.valueOf(100000.00));
         snapshot.setMarketValue(BigDecimal.valueOf(0.00));
         snapshot.setDebt(BigDecimal.valueOf(0.00));
+        snapshot.setSharkDebt(BigDecimal.ZERO);
         snapshot.setNetAsset(BigDecimal.valueOf(100000.00));
         snapshot.setIndexValue(1000.0);
         snapshot.setNpcAssetsJson(npcAssetsJson());

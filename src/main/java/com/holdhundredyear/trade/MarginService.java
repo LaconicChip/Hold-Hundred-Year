@@ -138,7 +138,7 @@ public class MarginService {
             throw new BizException(ErrorCode.NOT_FOUND);
         }
         BigDecimal debt = debtOf(user);
-        if (debt.compareTo(BigDecimal.ZERO) <= 0) {
+        if (debt.add(SharkService.sharkOf(user)).compareTo(BigDecimal.ZERO) <= 0) {
             return false;
         }
         boolean bankrupt = marginCheck(userId, gs.getCurrentDay(), gs, user, positions(userId), board);
@@ -169,9 +169,8 @@ public class MarginService {
             BigDecimal marketValue = marketValueOf(positions(userId), board);
             BigDecimal debt = debtOf(user);
             BigDecimal assets = user.getBalance().add(marketValue);
-            // 额度：累计负债（debt + amount）≤ 净资产（assets − debt），判界用乘法规避除零
-            if (debt.multiply(BORROW_LIMIT).add(amount)
-                    .compareTo(assets.subtract(debt)) > 0) {
+            // 额度：累计负债（融资 + 高利贷）≤ 净资产。借满 4 倍高利贷之后不能再找券商加杠杆
+            if (amount.compareTo(marginBorrowableOf(assets, debt, SharkService.sharkOf(user))) > 0) {
                 throw new BizException(ErrorCode.MARGIN_EXCEED);
             }
             user.setBalance(user.getBalance().add(amount));
@@ -216,25 +215,32 @@ public class MarginService {
     private boolean marginCheck(long userId, int day, UserGameState gs, SysUser user,
                                 List<UserPosition> positions, QuoteBoard board) {
         BigDecimal debt = debtOf(user);
-        if (debt.compareTo(BigDecimal.ZERO) <= 0) {
+        BigDecimal shark = SharkService.sharkOf(user);
+        if (debt.add(shark).compareTo(BigDecimal.ZERO) <= 0) {
             return false;
         }
         BigDecimal assets = user.getBalance().add(marketValueOf(positions, board));
-        if (assets.compareTo(debt.multiply(MARGIN_CALL)) < 0) {
-            notifyMarginCallOnce(userId, day);
-        }
         boolean liquidated = false;
-        if (assets.compareTo(debt.multiply(LIQUIDATION)) < 0) {
-            liquidated = liquidate(userId, day, user, positions, board);
+        if (debt.signum() > 0) {
+            // 追保与强平只看融资债：券商不为民间借贷平仓（spec §6.6）
+            if (assets.compareTo(debt.multiply(MARGIN_CALL)) < 0) {
+                notifyMarginCallOnce(userId, day);
+            }
+            if (assets.compareTo(debt.multiply(LIQUIDATION)) < 0) {
+                liquidated = liquidate(userId, day, user, positions, board);
+            }
+            debt = debtOf(user);
         }
-        debt = debtOf(user);
-        BigDecimal netAsset = user.getBalance().add(marketValueOf(positions, board)).subtract(debt);
+        // 净资产含高利贷：券商只平融资的仓，但你欠放高利贷的钱一样会让你资不抵债
+        BigDecimal netAsset = user.getBalance().add(marketValueOf(positions, board))
+                .subtract(debt).subtract(SharkService.sharkOf(user));
         if (netAsset.compareTo(BigDecimal.ZERO) <= 0) {
             gs.setMarketState(MarketState.BANKRUPT.name());
             gs.setEndReason("BANKRUPT");
             gs.setEndDay(day);
             notify(userId, day, "爆仓",
-                    "强制平仓后仍资不抵债，本局宣告爆仓。您坚持了 " + day + " 个交易日，"
+                    (liquidated ? "强制平仓后仍资不抵债" : "欠的债已经盖过全部资产")
+                            + "，本局宣告爆仓。您坚持了 " + day + " 个交易日，"
                             + "营业部天台风大，排队请趁早。", null);
             return true;
         }
@@ -418,8 +424,21 @@ public class MarginService {
         LoanResultDTO result = new LoanResultDTO();
         result.setBalance(user.getBalance());
         result.setDebt(debt);
-        result.setBorrowable(user.getBalance().add(marketValue)
-                .subtract(debt).subtract(debt.multiply(BORROW_LIMIT)));
+        result.setBorrowable(marginBorrowableOf(user.getBalance().add(marketValue), debt,
+                SharkService.sharkOf(user)));
         return result;
+    }
+
+    /**
+     * 融资还能借多少，且不小于 0。规则本身是"累计负债（融资 + 高利贷 + 这次借的）
+     * 不超过净资产"，而借钱只是把负债和现金同额一起加、净资产不动，解出来就是
+     * {@code 可借 = 现金 + 市值 − (融资债 + 高利贷) × (1 + 上限倍率)}。
+     * 高利贷必须一起算：不然借满 4 倍高利贷之后还能再找券商借一份，杠杆直接翻倍。
+     * 公式只写这一处，借款校验与视图（含 /api/me/assets 的 borrowable）共用。
+     */
+    public static BigDecimal marginBorrowableOf(BigDecimal assets, BigDecimal marginDebt, BigDecimal sharkDebt) {
+        BigDecimal limit = BigDecimal.valueOf(1 + GameConstants.BORROW_LIMIT_RATIO);
+        BigDecimal room = assets.subtract(marginDebt.add(sharkDebt).multiply(limit));
+        return room.signum() > 0 ? room.setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
     }
 }

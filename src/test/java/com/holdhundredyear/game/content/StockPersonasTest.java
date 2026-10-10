@@ -99,6 +99,7 @@ class StockPersonasTest {
         for (String narrative : EraNarratives.all().values()) {
             allPools.add(List.of(narrative));
         }
+        SharkLines.all().values().forEach(allPools::add);
         for (List<String> pool : allPools) {
             for (String line : pool) {
                 if (line == null || line.isBlank()) {

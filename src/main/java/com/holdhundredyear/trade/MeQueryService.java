@@ -28,6 +28,7 @@ import com.holdhundredyear.market.quote.Quote;
 import com.holdhundredyear.market.quote.QuoteBoard;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -83,13 +84,19 @@ public class MeQueryService {
             double marketValue = marketValueOf(userId, board);
             double cash = user.getBalance().doubleValue();
             double debt = user.getDebt().doubleValue();
+            BigDecimal sharkDebtAmount = SharkService.sharkOf(user);
+            double sharkDebt = sharkDebtAmount.doubleValue();
+            double marginRoom = MarginService.marginBorrowableOf(
+                    BigDecimal.valueOf(cash + marketValue), BigDecimal.valueOf(debt), sharkDebtAmount).doubleValue();
 
             AssetsDTO dto = new AssetsDTO();
             dto.setCash(cash);
             dto.setMarketValue(marketValue);
             dto.setDebt(debt);
-            dto.setNetAsset(cash + marketValue - debt);
+            dto.setSharkDebt(sharkDebt);
+            dto.setNetAsset(cash + marketValue - debt - sharkDebt);
             dto.setGuardRatio(debt > 0 ? (cash + marketValue) / debt : 0.0);
+            dto.setBorrowable(Math.max(marginRoom, 0.0));
             return dto;
         } finally {
             board.getLock().unlock();

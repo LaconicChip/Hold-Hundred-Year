@@ -1,4 +1,4 @@
--- 《你持有一百年看看》schema v1 (14 tables)
+-- 《你持有一百年看看》schema v1 (16 tables)
 
 CREATE TABLE IF NOT EXISTS sys_user (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS sys_user (
     password VARCHAR(100) NOT NULL,
     balance DECIMAL(12,2) NOT NULL,
     debt DECIMAL(12,2) NOT NULL,
+    shark_debt DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -177,6 +178,7 @@ CREATE TABLE IF NOT EXISTS user_daily_snapshot (
     cash DECIMAL(12,2) NOT NULL,
     market_value DECIMAL(12,2) NOT NULL,
     debt DECIMAL(12,2) NOT NULL,
+    shark_debt DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     net_asset DECIMAL(12,2) NOT NULL,
     day_return_pct DOUBLE NULL,
     index_value DOUBLE NOT NULL,
@@ -196,4 +198,19 @@ CREATE TABLE IF NOT EXISTS user_ipo_record (
     game_day INT NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_user_day (user_id, game_day)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 高利贷台账：一笔一行，各自带起算日与到期日（还款按到期日近的优先冲销）。
+-- 日息不存列：按账龄 (game_day - start_day) 从 GameConstants 的递增表推导，避免与规则漂移。
+-- status：OPEN 在借 / OVERDUE 逾期未清（利滚利继续计息、每天催债）/ REPAID 已结清。
+CREATE TABLE IF NOT EXISTS user_shark_loan (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    principal DECIMAL(12,2) NOT NULL,
+    balance DECIMAL(12,2) NOT NULL,
+    start_day INT NOT NULL,
+    due_day INT NOT NULL,
+    status VARCHAR(16) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user_status (user_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

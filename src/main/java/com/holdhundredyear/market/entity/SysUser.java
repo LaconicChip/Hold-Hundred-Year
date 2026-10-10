@@ -25,5 +25,8 @@ public class SysUser {
 
     private BigDecimal debt;
 
+    /** 高利贷未清余额（与融资债分列：担保比例只读 debt，净资产读两者之和）。 */
+    private BigDecimal sharkDebt;
+
     private LocalDateTime createdAt;
 }

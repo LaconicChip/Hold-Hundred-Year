@@ -10,6 +10,7 @@
 | `V20260929_01__user_game_state_prev_index.sql` | `user_game_state` 加列 `prev_index DOUBLE NOT NULL DEFAULT 1000` 并按 `index_value` 回填 | 指数昨收基准独立成列（熔断日盘中重启不再把阈值基数当成盘中值） |
 | `V20260929_02__user_message_sector.sql` | `user_message` 加列 `sector VARCHAR(16) NULL` | 板块级消息记下归属板块，个股详情页 includeSector 才能捞回本板块新闻 |
 | `V20260929_03__user_game_state_game_mode.sql` | `user_game_state` 加列 `game_mode VARCHAR(16) NOT NULL DEFAULT 'STANDARD'` | 一局一个游戏档案（标准/快速），建局选定、整局不变 |
+| `V20261010_01__shark_loan.sql` | `sys_user` 与 `user_daily_snapshot` 各加列 `shark_debt DECIMAL(12,2) NOT NULL DEFAULT 0.00`；新建表 `user_shark_loan`（高利贷台账） | 高利贷板块（spec §6.6）：4 倍净资产额度、日息按账龄递增、到期强制平仓还债 |
 
 ## 执行方式
 
@@ -23,6 +24,13 @@ mysql -uroot -p hold_year      < src/main/resources/db/V20260929_03__user_game_s
 ```
 
 ## 说明
+
+- `shark_debt` 分列在 `sys_user`（当前未清余额）与 `user_daily_snapshot`（当日快照口径）。融资债与高利贷债必须分开记：
+  维持担保比例只按 `debt` 算（券商不为民间借贷平仓），净资产与资不抵债判定按两者合计算。
+  存量行回填 0，所以升级前注册的老账户不会凭空背上高利贷，行为与升级前完全相同。
+- `user_shark_loan` 一笔一行（本金 / 未清余额 / 起算日 / 到期日 / 状态）。日息不落库，按账龄从常量表现算，
+  改了递增规则不会留下对不上的旧行。`sys_user.shark_debt` 是这台账的汇总缓存，
+  每次计息 / 还款 / 强卖后由服务端从台账重算（`SharkService.syncBalance`）。
 
 - `day_change_pct` 为可空列：盘中为 NULL，收盘结算时写入当日涨跌幅（比率口径，`0.04` = +4%）。
   该列存在的意义是：结算会把 `prev_close` 双写为当日收盘价（为次日涨跌停基准准备），

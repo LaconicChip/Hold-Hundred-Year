@@ -31,6 +31,9 @@ public class DailySummaryDTO {
     /** 快照负债 */
     private double debt;
 
+    /** 其中的高利贷未清余额（debt 是融资 + 高利贷合计）。 */
+    private double sharkDebt;
+
     /** 快照净资产 */
     private double netAsset;
 

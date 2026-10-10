@@ -55,6 +55,9 @@ class MeQueryServiceTest {
     private MarginService marginService;
 
     @Autowired
+    private SharkService sharkService;
+
+    @Autowired
     private MeQueryService meQueryService;
 
     @Autowired
@@ -94,6 +97,33 @@ class MeQueryServiceTest {
         assertEquals(10000.00, assets.getDebt(), 1e-9);
         assertEquals(assets.getCash() + 3600.00 - 10000.00, assets.getNetAsset(), 1e-9);
         assertEquals((assets.getCash() + 3600.00) / 10000.00, assets.getGuardRatio(), 1e-9);
+    }
+
+    @Test
+    void assetsExposeBorrowableAndSharkDebt() {
+        long userId = worldSeeder.seedUser("me_borrowable", BCRYPT_HASH);
+        marketStateService.startDay(userId);
+
+        AssetsDTO fresh = meQueryService.assets(userId);
+
+        assertEquals(100000.00, fresh.getBorrowable(), 1e-9,
+                "no debt at all: the room is the whole net asset");
+        assertEquals(0.0, fresh.getSharkDebt(), 1e-9);
+
+        // 借 5 万融资：净资产不变，但可借额度按公式再扣一次融资债（净资产 − 融资债 × 2）
+        marginService.borrow(userId, new BigDecimal("50000.00"));
+        AssetsDTO afterMargin = meQueryService.assets(userId);
+        assertEquals(50000.00, afterMargin.getBorrowable(), 1e-9,
+                "cash 150000, debt 50000, no shark: room = 150000 - 50000*2 = 50000");
+
+        // 再借 2 万高利贷：高利贷进"累计负债"口径，融资额度必须跟着缩
+        sharkService.borrow(userId, new BigDecimal("20000.00"));
+        AssetsDTO afterShark = meQueryService.assets(userId);
+        assertEquals(20000.00, afterShark.getSharkDebt(), 1e-9);
+        assertEquals(30000.00, afterShark.getBorrowable(), 1e-9,
+                "room = 170000 - 50000*2 - 20000 = 30000: a private loan squeezes the margin line");
+        assertEquals(afterShark.getCash() + afterShark.getMarketValue() - 50000.00 - 20000.00,
+                afterShark.getNetAsset(), 1e-9, "net asset must subtract both debts");
     }
 
     @Test

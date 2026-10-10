@@ -22,6 +22,7 @@ import com.holdhundredyear.market.entity.UserIpoRecord;
 import com.holdhundredyear.market.entity.UserMessage;
 import com.holdhundredyear.market.entity.UserPosition;
 import com.holdhundredyear.market.entity.UserScriptDay;
+import com.holdhundredyear.market.entity.UserSharkLoan;
 import com.holdhundredyear.market.entity.UserStockState;
 import com.holdhundredyear.market.entity.UserTitle;
 import com.holdhundredyear.market.mapper.GameEventMapper;
@@ -36,9 +37,11 @@ import com.holdhundredyear.market.mapper.UserIpoRecordMapper;
 import com.holdhundredyear.market.mapper.UserMessageMapper;
 import com.holdhundredyear.market.mapper.UserPositionMapper;
 import com.holdhundredyear.market.mapper.UserScriptDayMapper;
+import com.holdhundredyear.market.mapper.UserSharkLoanMapper;
 import com.holdhundredyear.market.mapper.UserStockStateMapper;
 import com.holdhundredyear.market.mapper.UserTitleMapper;
 import com.holdhundredyear.trade.CorporateActionService;
+import com.holdhundredyear.trade.SharkService;
 import com.holdhundredyear.world.WorldSeeder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -76,6 +79,7 @@ public class GameEndService {
     private final TradeRecordMapper tradeRecordMapper;
     private final UserEraMapper userEraMapper;
     private final UserScriptDayMapper userScriptDayMapper;
+    private final UserSharkLoanMapper userSharkLoanMapper;
     private final UserIpoRecordMapper userIpoRecordMapper;
     private final UserTitleMapper userTitleMapper;
     private final GameEventMapper gameEventMapper;
@@ -101,6 +105,7 @@ public class GameEndService {
                           UserTitleMapper userTitleMapper,
                           GameEventMapper gameEventMapper,
                           StockDailyBarMapper stockDailyBarMapper,
+                          UserSharkLoanMapper userSharkLoanMapper,
                           QuoteBoardRegistry quoteBoardRegistry,
                           WorldSeeder worldSeeder,
                           EventFactory eventFactory,
@@ -121,6 +126,7 @@ public class GameEndService {
         this.userTitleMapper = userTitleMapper;
         this.gameEventMapper = gameEventMapper;
         this.stockDailyBarMapper = stockDailyBarMapper;
+        this.userSharkLoanMapper = userSharkLoanMapper;
         this.quoteBoardRegistry = quoteBoardRegistry;
         this.worldSeeder = worldSeeder;
         this.eventFactory = eventFactory;
@@ -164,7 +170,9 @@ public class GameEndService {
         result.setFinalTierName(SettlementService.tierNameOf(gs.getTier()));
         result.setWorldSeed(String.valueOf(gs.getWorldSeed()));
         SysUser account = sysUserMapper.selectById(userId);
-        result.setDebt(account == null ? BigDecimal.ZERO : account.getDebt());
+        // 天台页要显示"欠了多少"：融资债 + 高利贷余额合计
+        result.setDebt(account == null ? BigDecimal.ZERO
+                : account.getDebt().add(SharkService.sharkOf(account)));
         result.setLiquidations(liquidations(userId));
         result.setCurve(curve(userId, gs.getEndDay()));
         result.setRankings(rankings(state, finalSnapshot));
@@ -174,7 +182,7 @@ public class GameEndService {
     /**
      * 终局重开：世界锁 + 锁内事务提交后 evict 行情板缓存。事务内校验终局（非终局抛
      * GAME_NOT_FINISHED），按 userId 逐表清空游戏数据（持仓/股票状态/快照/消息/
-     * 融资流水/成交记录/纪元/剧本日/打新记录/称号/事件），重置账户为初始资金 10 万、
+     * 融资流水/成交记录/纪元/剧本日/打新记录/称号/事件/高利贷台账），重置账户为初始资金 10 万、
      * 负债 0，game_state 全字段重置回第 1 天 NOT_STARTED（null 字段显式 set），
      * 最后以新种子重新播种世界。账号与密码保留。
      */
@@ -231,6 +239,8 @@ public class GameEndService {
                 .eq(UserTitle::getUserId, userId));
         stockDailyBarMapper.delete(new LambdaQueryWrapper<StockDailyBar>()
                 .eq(StockDailyBar::getUserId, userId));
+        userSharkLoanMapper.delete(new LambdaQueryWrapper<UserSharkLoan>()
+                .eq(UserSharkLoan::getUserId, userId));
         gameEventMapper.delete(new LambdaQueryWrapper<GameEvent>()
                 .eq(GameEvent::getUserId, userId));
         eventFactory.clearPending(userId);
@@ -243,6 +253,7 @@ public class GameEndService {
         }
         user.setBalance(BigDecimal.valueOf(GameConstants.INITIAL_BALANCE));
         user.setDebt(BigDecimal.valueOf(0.00));
+        user.setSharkDebt(BigDecimal.ZERO);
         sysUserMapper.updateById(user);
 
         // MyBatis-Plus updateById 跳过 null 字段，endReason/endDay/prevTotalAsset 必须显式 set null
@@ -280,7 +291,7 @@ public class GameEndService {
     private List<LoanRecord> liquidations(long userId) {
         return loanRecordMapper.selectList(new LambdaQueryWrapper<LoanRecord>()
                 .eq(LoanRecord::getUserId, userId)
-                .eq(LoanRecord::getLoanType, "LIQUIDATE")
+                .in(LoanRecord::getLoanType, List.of("LIQUIDATE", "SHARK_LIQUIDATE"))
                 .orderByAsc(LoanRecord::getGameDay)
                 .orderByAsc(LoanRecord::getId));
     }

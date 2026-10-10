@@ -26,6 +26,7 @@ import com.holdhundredyear.market.mapper.UserStockStateMapper;
 import com.holdhundredyear.market.quote.Quote;
 import com.holdhundredyear.market.quote.QuoteBoard;
 import com.holdhundredyear.trade.MarginService;
+import com.holdhundredyear.trade.SharkService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -65,6 +66,7 @@ public class SettlementService {
     private final NotifyPublisher notifyPublisher;
     private final QuoteBoardRegistry quoteBoardRegistry;
     private final MarginService marginService;
+    private final SharkService sharkService;
     private final NpcService npcService;
     private final ProgressService progressService;
 
@@ -78,6 +80,7 @@ public class SettlementService {
                              NotifyPublisher notifyPublisher,
                              QuoteBoardRegistry quoteBoardRegistry,
                              MarginService marginService,
+                             SharkService sharkService,
                              NpcService npcService,
                              ProgressService progressService) {
         this.userGameStateMapper = userGameStateMapper;
@@ -90,6 +93,7 @@ public class SettlementService {
         this.notifyPublisher = notifyPublisher;
         this.quoteBoardRegistry = quoteBoardRegistry;
         this.marginService = marginService;
+        this.sharkService = sharkService;
         this.npcService = npcService;
         this.progressService = progressService;
     }
@@ -122,13 +126,19 @@ public class SettlementService {
         SysUser user = sysUserMapper.selectById(userId);
         accrueInterest(userId, user, day, GameMode.of(gs.getGameMode()));
 
+        // 步骤⑤续前：高利贷计息与到期清算（先于券商追保强平——到期强卖会改现金与持仓，
+        // 券商随后看到的是同一套账，两条清算线不会互相打脸）
+        sharkService.settleDay(userId, day, user, positions, board, GameMode.of(gs.getGameMode()),
+                gs.getWorldSeed());
+
         // 步骤⑤续：追保 + 强平 + 爆仓（MarginService 在调用方事务内原地改账，强平会改
         // 余额/负债/持仓，其后必须重算口径再评价与快照）
         boolean bankrupt = marginService.settleCheck(userId, gs, user, positions, board);
         BigDecimal cash = user.getBalance();
         BigDecimal debt = user.getDebt() != null ? user.getDebt() : BigDecimal.ZERO;
+        BigDecimal sharkDebt = SharkService.sharkOf(user);
         BigDecimal marketValue = marketValue(positions, stateByStock);
-        BigDecimal netAsset = cash.add(marketValue).subtract(debt);
+        BigDecimal netAsset = cash.add(marketValue).subtract(debt).subtract(sharkDebt);
 
         // NPC 资产 JSON 与角色线消息（Task 8.4）：指数日收益提为一次，两个分支快照前统一生成
         double indexDayPct = indexDayPct(userId, day, gs);
@@ -137,7 +147,7 @@ public class SettlementService {
         if (bankrupt) {
             // 爆仓终局（spec §6.4）：快照留痕后短路，跳过日收益评价/段位评定/状态落位
             double dayReturnPct = dayReturnPctOf(gs, netAsset);
-            insertSnapshot(userId, day, gs, cash, marketValue, debt, netAsset, dayReturnPct, indexDayPct, npcJson);
+            insertSnapshot(userId, day, gs, cash, marketValue, debt, sharkDebt, netAsset, dayReturnPct, indexDayPct, npcJson);
             gs.setPrevTotalAsset(netAsset);
             userGameStateMapper.updateById(gs);
             return;
@@ -149,7 +159,7 @@ public class SettlementService {
         // 步骤⑦续：新手引导与成就徽章（Task 10.1，非破产路径才评）
         progressService.onSettle(userId, day, gs, board);
         // 步骤⑧：每日快照
-        insertSnapshot(userId, day, gs, cash, marketValue, debt, netAsset, dayReturnPct, indexDayPct, npcJson);
+        insertSnapshot(userId, day, gs, cash, marketValue, debt, sharkDebt, netAsset, dayReturnPct, indexDayPct, npcJson);
         // 步骤⑫：状态落位
         closeOutDay(userId, day, gs, netAsset, dayReturnPct);
 
@@ -339,14 +349,15 @@ public class SettlementService {
 
     /** 步骤⑧：每日快照落库（NPC 资产 JSON 由 NpcService 生成，写入 npc_assets_json）。 */
     private void insertSnapshot(long userId, int day, UserGameState gs, BigDecimal cash, BigDecimal marketValue,
-                                BigDecimal debt, BigDecimal netAsset, double dayReturnPct, double indexDayPct,
-                                String npcJson) {
+                                BigDecimal debt, BigDecimal sharkDebt, BigDecimal netAsset, double dayReturnPct,
+                                double indexDayPct, String npcJson) {
         UserDailySnapshot snapshot = new UserDailySnapshot();
         snapshot.setUserId(userId);
         snapshot.setGameDay(day);
         snapshot.setCash(cash);
         snapshot.setMarketValue(marketValue);
         snapshot.setDebt(debt);
+        snapshot.setSharkDebt(sharkDebt);
         snapshot.setNetAsset(netAsset);
         snapshot.setDayReturnPct(dayReturnPct);
         snapshot.setIndexValue(gs.getIndexValue());

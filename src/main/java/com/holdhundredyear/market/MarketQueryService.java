@@ -179,10 +179,13 @@ public class MarketQueryService {
         dto.setIndexDayPct(indexDayPct);
         dto.setCash(snapshot.getCash().doubleValue());
         dto.setMarketValue(snapshot.getMarketValue().doubleValue());
-        dto.setDebt(snapshot.getDebt().doubleValue());
+        double marginDebt = snapshot.getDebt().doubleValue();
+        double sharkDebt = snapshot.getSharkDebt() == null ? 0.0 : snapshot.getSharkDebt().doubleValue();
+        dto.setDebt(marginDebt + sharkDebt);
+        dto.setSharkDebt(sharkDebt);
         dto.setNetAsset(snapshot.getNetAsset().doubleValue());
-        double debt = dto.getDebt();
-        dto.setGuardRatio(debt > 0 ? (dto.getCash() + dto.getMarketValue()) / debt : 0.0);
+        // 担保比例只按融资债算：券商不为高利贷平仓（spec §6.6）
+        dto.setGuardRatio(marginDebt > 0 ? (dto.getCash() + dto.getMarketValue()) / marginDebt : 0.0);
 
         List<UserMessage> messages = messagesOfDay(userId, day);
         dto.setNews(messages.stream()

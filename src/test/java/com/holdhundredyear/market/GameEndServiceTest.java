@@ -87,6 +87,12 @@ class GameEndServiceTest {
     private MarginService marginService;
 
     @Autowired
+    private com.holdhundredyear.trade.SharkService sharkService;
+
+    @Autowired
+    private com.holdhundredyear.market.mapper.UserSharkLoanMapper userSharkLoanMapper;
+
+    @Autowired
     private QuoteBoardRegistry quoteBoardRegistry;
 
     @Autowired
@@ -268,6 +274,9 @@ class GameEndServiceTest {
         long userId = seedInMarket();
         tradeService.buy(userId, order(1L, 100));
         marginService.borrow(userId, asDecimal("50000.00"));
+        sharkService.borrow(userId, asDecimal("100000.00"));
+        assertEquals(0, asDecimal("100000.00").compareTo(sysUser(userId).getSharkDebt()),
+                "precondition: the shark ledger must be live before the restart");
         insertEvent(userId);
         insertTitle(userId);
         insertIpo(userId);
@@ -295,6 +304,12 @@ class GameEndServiceTest {
                 "the account must reset to the initial balance");
         assertEquals(0, asDecimal("0.00").compareTo(sysUser(userId).getDebt()),
                 "the debt must reset to zero");
+        assertEquals(0, asDecimal("0.00").compareTo(sysUser(userId).getSharkDebt()),
+                "the shark balance must reset too, or the new run starts already in debt");
+        assertTrue(userSharkLoanMapper.selectList(
+                new LambdaQueryWrapper<com.holdhundredyear.market.entity.UserSharkLoan>()
+                        .eq(com.holdhundredyear.market.entity.UserSharkLoan::getUserId, userId)).isEmpty(),
+                "the shark ledger must be wiped: a fresh world starts with no private loans");
 
         assertTrue(positions(userId).isEmpty(), "positions must be wiped");
         assertTrue(records(userId).isEmpty(), "trade records must be wiped");

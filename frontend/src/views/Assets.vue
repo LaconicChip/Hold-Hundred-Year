@@ -96,7 +96,7 @@
         <dd>{{ fmtMoney(loanInfo.balance) }}</dd>
       </dl>
       <p v-else class="loan-note muted-2">
-        预估可借额度 = 净资产 - 负债，实际额度以借款申请结果为准
+        点下面的比例就能把金额填好，也能自己改；能不能借以服务端算出的额度为准。
       </p>
 
       <div class="loan-form">
@@ -108,7 +108,90 @@
           <SvgIcon name="check" class="btn-ic" />还款
         </button>
       </div>
+      <div class="quick-row">
+        <span class="quick-lab muted-2">借可借额度的</span>
+        <button class="quick" :disabled="loanLoading" @click="setLoanPart(0.25)">1/4</button>
+        <button class="quick" :disabled="loanLoading" @click="setLoanPart(1 / 3)">1/3</button>
+        <button class="quick" :disabled="loanLoading" @click="setLoanPart(0.5)">1/2</button>
+        <button class="quick" :disabled="loanLoading" @click="setLoanPart(1)">全部</button>
+        <span class="quick-lab muted-2">还负债的</span>
+        <button class="quick" :disabled="loanLoading" @click="setLoanPayPart(0.5)">一半</button>
+        <button class="quick" :disabled="loanLoading" @click="setLoanPayPart(1)">还清</button>
+      </div>
       <div v-if="loanErr" class="loan-err">{{ loanErr }}</div>
+    </section>
+
+    <!-- 高利贷：场外配资，风险自担（spec §6.6） -->
+    <section class="card shark-card">
+      <div class="sec-head">
+        <span class="card-title">
+          <SvgIcon name="alert" class="title-ic-sm shark-ic" />高利贷
+          <span class="tag shark-flag">高风险</span>
+        </span>
+        <span class="stat stat-inline">
+          <span class="lab">还能借</span>
+          <span class="val">{{ fmtMoney(sharkRoom) }}</span>
+        </span>
+      </div>
+
+      <ul class="shark-warn">
+        <li v-for="line in shark.warnings || []" :key="line">{{ line }}</li>
+      </ul>
+
+      <dl class="kv shark-kv">
+        <dt>未清余额</dt>
+        <dd>{{ fmtMoney(shark.balance || 0) }}</dd>
+        <dt>今日利息</dt>
+        <dd class="up">{{ fmtMoney(shark.todayInterest || 0) }}</dd>
+        <dt>今天按几倍利息</dt>
+        <dd>{{ annualText }}</dd>
+        <dt>最早到期</dt>
+        <dd :class="dueClass">{{ dueText }}</dd>
+      </dl>
+
+      <div class="loan-form">
+        <el-input-number v-model="sharkAmount" :min="0" :step="1000" :controls="true" class="loan-input" />
+        <button class="btn btn-warn" :disabled="sharkLoading" @click="doSharkBorrow">
+          <SvgIcon name="alert" class="btn-ic" />借高利贷
+        </button>
+        <button class="btn" :disabled="sharkLoading" @click="doSharkRepay">
+          <SvgIcon name="check" class="btn-ic" />还款
+        </button>
+      </div>
+      <div class="quick-row">
+        <span class="quick-lab muted-2">借可借额度的</span>
+        <button class="quick" :disabled="sharkLoading" @click="setSharkPart(0.25)">1/4</button>
+        <button class="quick" :disabled="sharkLoading" @click="setSharkPart(1 / 3)">1/3</button>
+        <button class="quick" :disabled="sharkLoading" @click="setSharkPart(0.5)">1/2</button>
+        <button class="quick" :disabled="sharkLoading" @click="setSharkPart(1)">全部</button>
+        <span class="quick-lab muted-2">还余额的</span>
+        <button class="quick" :disabled="sharkLoading" @click="setSharkPayPart(0.5)">一半</button>
+        <button class="quick" :disabled="sharkLoading" @click="setSharkPayPart(1)">还清</button>
+      </div>
+      <div v-if="sharkErr" class="loan-err">{{ sharkErr }}</div>
+
+      <div v-if="shark.tranches && shark.tranches.length" class="scroll-x shark-ledger">
+        <table class="tbl zebra">
+          <thead>
+            <tr>
+              <th>本金</th>
+              <th>未清</th>
+              <th>起算</th>
+              <th>到期</th>
+              <th>状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in shark.tranches" :key="row.id">
+              <td class="num">{{ fmtMoney(row.principal) }}</td>
+              <td class="num up">{{ fmtMoney(row.balance) }}</td>
+              <td class="num">第 {{ row.startDay }} 天</td>
+              <td class="num">第 {{ row.dueDay }} 天</td>
+              <td><span class="tag" :class="trancheCls(row.status)">{{ trancheLabel(row.status) }}</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <!-- 持仓表 -->
@@ -306,7 +389,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useMarketStore } from '@/stores/market'
 import { useUserStore } from '@/stores/user'
 import { fetchAssets, fetchPositions, fetchTrades, fetchLoanRecords, fetchIpoRecords, fetchTitles } from '@/api/me'
-import { borrow, repay } from '@/api/loan'
+import { borrow, repay, fetchShark, sharkBorrow, sharkRepay } from '@/api/loan'
 import { fetchEquityCurve } from '@/api/market'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -319,6 +402,7 @@ import StickerTag from '@/components/StickerTag.vue'
 import SvgIcon from '@/components/SvgIcon.vue'
 import { ElInputNumber } from 'element-plus/es/components/input-number/index.mjs'
 import { ElMessage } from 'element-plus/es/components/message/index.mjs'
+import { ElMessageBox } from 'element-plus/es/components/message-box/index.mjs'
 import 'element-plus/es/components/input-number/style/css'
 import bullImg from '@/assets/img/bull.png'
 import pandaImg from '@/assets/img/panda.png'
@@ -347,6 +431,12 @@ const loanAmount = ref(1000)
 const loanLoading = ref(false)
 const loanErr = ref('')
 
+// 高利贷面板（spec §6.6）：视图对象始终是个对象，模板里不必到处判空
+const shark = ref({})
+const sharkAmount = ref(1000)
+const sharkLoading = ref(false)
+const sharkErr = ref('')
+
 // 流水 Tab
 const tab = ref('trade')
 
@@ -357,8 +447,9 @@ const hasDebt = computed(() => assets.value && assets.value.debt > 0 && assets.v
 // 总盈亏 = 净资产 - 初始资金
 const totalProfit = computed(() => (assets.value ? assets.value.netAsset - INIT_CAPITAL : 0))
 
-// 可用融资额度：有真实响应用 borrowable，否则按净资产减负债估算
+// 可用融资额度：服务端下发（assets.borrowable），前端不再自己估
 const loanBorrowable = computed(() => {
+  if (assets.value && assets.value.borrowable != null) return assets.value.borrowable
   if (loanInfo.value) return loanInfo.value.borrowable
   if (assets.value) return Math.max(assets.value.netAsset - assets.value.debt, 0)
   return 0
@@ -462,8 +553,29 @@ const curveOption = computed(() => {
 
 // ---- 工具函数 ----
 // 融资流水类型：后端 loan_record.loan_type 原文 -> 中文标签 / 配色类
-const LOAN_LABEL = { BORROW: '借款', REPAY: '还款', INTEREST: '结息', LIQUIDATE: '强平还款' }
-const LOAN_CLS = { BORROW: 'loan-borrow', REPAY: 'loan-repay', INTEREST: 'loan-interest', LIQUIDATE: 'loan-liquidate' }
+const LOAN_LABEL = {
+  BORROW: '借款',
+  REPAY: '还款',
+  INTEREST: '结息',
+  LIQUIDATE: '强平还款',
+  SHARK_BORROW: '借高利贷',
+  SHARK_REPAY: '还高利贷',
+  SHARK_INTEREST: '高利贷利息',
+  SHARK_LIQUIDATE: '高利贷清仓'
+}
+const LOAN_CLS = {
+  BORROW: 'loan-borrow',
+  REPAY: 'loan-repay',
+  INTEREST: 'loan-interest',
+  LIQUIDATE: 'loan-liquidate',
+  SHARK_BORROW: 'loan-shark',
+  SHARK_REPAY: 'loan-shark',
+  SHARK_INTEREST: 'loan-shark',
+  SHARK_LIQUIDATE: 'loan-shark'
+}
+// 高利贷台账状态
+const TRANCHE_LABEL = { OPEN: '在借', OVERDUE: '逾期', REPAID: '已结清' }
+const TRANCHE_CLS = { OPEN: 'loan-borrow', OVERDUE: 'loan-shark', REPAID: 'tag-flat' }
 // 打新状态：后端 user_ipo_record.status 原文 -> 中文标签 / 配色类
 const IPO_LABEL = { SUBSCRIBED: '已申购', PAID: '已中签', LOST: '未中签', ABANDONED: '放弃缴款', SETTLED: '已结算' }
 const IPO_CLS = { SUBSCRIBED: 'ipo-sub', PAID: 'ipo-paid', LOST: 'ipo-flat', ABANDONED: 'ipo-flat', SETTLED: 'ipo-settled' }
@@ -522,11 +634,120 @@ async function doRepay() {
   }
 }
 
+// ---- 金额快捷填充：比例的对象是「还能借多少」与「还欠多少」，向下取整到 100 元 ----
+function setLoanPart(f) {
+  loanAmount.value = Math.floor((Number(loanBorrowable.value) * f) / 100) * 100
+}
+function setLoanPayPart(f) {
+  const debt = Number(assets.value?.debt ?? loanInfo.value?.debt ?? 0)
+  loanAmount.value = f >= 1 ? Number(debt.toFixed(2)) : Math.floor((debt * f) / 100) * 100
+}
+function setSharkPart(f) {
+  sharkAmount.value = Math.floor((Number(sharkRoom.value) * f) / 100) * 100
+}
+function setSharkPayPart(f) {
+  const bal = Number(shark.value?.balance || 0)
+  sharkAmount.value = f >= 1 ? Number(bal.toFixed(2)) : Math.floor((bal * f) / 100) * 100
+}
+
+// ---- 高利贷面板：规则与文案都由接口下发，这里只负责显示与确认 ----
+const sharkRoom = computed(() => Number(shark.value?.borrowable || 0))
+function pctText(v) {
+  return ((Number(v) || 0) * 100).toFixed(1) + '%'
+}
+const annualText = computed(() => {
+  const s = shark.value || {}
+  if (!Number(s.balance || 0)) return pctText(s.baseAnnual) + '（还没借）'
+  return (
+    pctText(s.annualRate) +
+    '（起始 ' + pctText(s.baseAnnual) + '，每 ' + s.stepDays + ' 天 +' + pctText(s.stepAnnual) +
+    '，封顶 ' + pctText(s.maxAnnual) + '）'
+  )
+})
+const dueText = computed(() => {
+  const s = shark.value || {}
+  if (!s.dueDay) return '—'
+  const left = Number(s.daysToDue || 0)
+  if (left > 0) return '第 ' + s.dueDay + ' 天（还剩 ' + left + ' 天）'
+  if (left === 0) return '第 ' + s.dueDay + ' 天（今天到期）'
+  return '第 ' + s.dueDay + ' 天（已逾期 ' + -left + ' 天）'
+})
+const dueClass = computed(() => {
+  const s = shark.value || {}
+  if (!s.dueDay) return ''
+  return Number(s.daysToDue || 0) <= 2 ? 'up' : ''
+})
+function trancheLabel(s) {
+  return TRANCHE_LABEL[s] || s
+}
+function trancheCls(s) {
+  return TRANCHE_CLS[s] || 'tag-flat'
+}
+
+async function doSharkBorrow() {
+  if (sharkLoading.value || !sharkAmount.value) return
+  const amount = Number(sharkAmount.value)
+  const s = shark.value || {}
+  const dueDay = (market.currentDay || 1) + (s.termDays || 0)
+  const firstInterest = (amount * (s.baseAnnual || 0)) / (s.daysPerYear || 1)
+  try {
+    await ElMessageBox.confirm(
+      '借 ' + fmtMoney(amount) + ' 元高利贷：到期日第 ' + dueDay + ' 个交易日，第一天利息约 ' +
+        fmtMoney(firstInterest) + ' 元，之后每 ' + s.stepDays + ' 天涨一档（封顶年化 ' + pctText(s.maxAnnual) + '）。' +
+        '到期还不上，营业部会按市值替你卖出持仓，跌停封死卖不掉的接着滚利息。确定要借？',
+      '高利贷风险提示',
+      { type: 'warning', confirmButtonText: '我看懂了，借', cancelButtonText: '再想想' }
+    )
+  } catch {
+    return // 玩家点了再想想
+  }
+  sharkLoading.value = true
+  sharkErr.value = ''
+  try {
+    shark.value = await sharkBorrow(amount)
+    await refreshAfterLoan()
+    ElMessage.success('高利贷已到账')
+  } catch (e) {
+    sharkErr.value = e.message || '借款失败'
+  } finally {
+    sharkLoading.value = false
+  }
+}
+
+async function doSharkRepay() {
+  if (sharkLoading.value || !sharkAmount.value) return
+  sharkLoading.value = true
+  sharkErr.value = ''
+  try {
+    shark.value = await sharkRepay(Number(sharkAmount.value))
+    await refreshAfterLoan()
+    ElMessage.success('已还款')
+  } catch (e) {
+    sharkErr.value = e.message || '还款失败'
+  } finally {
+    sharkLoading.value = false
+  }
+}
+
+/** 借还之后：资产、流水、高利贷视图都跟着重算。 */
+async function refreshAfterLoan() {
+  const a = await fetchAssets().catch(() => null)
+  if (a) assets.value = a
+  await user.fetchAssets().catch(() => {})
+  await loadLoanRecords()
+  await loadShark()
+}
+
 // 融资流水 / 打新记录：GET /api/me/loan-records 与 /api/me/ipo-records，失败降级空态
+
 async function loadLoanRecords() {
   const lr = await fetchLoanRecords().catch(() => ({ records: [] }))
   loanRecords.value = lr.records || []
 }
+async function loadShark() {
+  shark.value = await fetchShark().catch(() => ({}))
+}
+
 async function loadIpoRecords() {
   const ir = await fetchIpoRecords().catch(() => ({ records: [] }))
   ipoRecords.value = ir.records || []
@@ -542,6 +763,7 @@ async function loadAll() {
   const tr = await fetchTrades().catch(() => ({ records: [] }))
   trades.value = tr.records || []
   await loadLoanRecords()
+  await loadShark()
   await loadIpoRecords()
   titles.value = await fetchTitles().catch(() => [])
   // 净值曲线：真实接口，失败降级空态
@@ -698,6 +920,48 @@ onMounted(loadAll)
 .side-buy { color: var(--up); border-color: var(--up); }
 .side-sell { color: var(--down); border-color: var(--down); }
 /* 融资/打新状态标签：配色走令牌，红绿只用于金额涨跌，状态本身用橙/蓝/灰/印章红 */
+/* 金额快捷填充按钮：与买卖委托面板的 quick 按钮同一套样式 */
+.quick-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: var(--sp-2);
+}
+.quick-lab { font-size: var(--fs-xs); }
+.quick {
+  flex: 1;
+  min-width: 46px;
+  border: var(--border-thin);
+  background: var(--card);
+  color: var(--ink-2);
+  border-radius: var(--radius-sm);
+  padding: 4px 0;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: 0.08s;
+}
+.quick:hover { background: var(--hover); color: var(--ink); border-color: var(--ink); }
+.quick:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* 高利贷：整张卡片用印泥红描边，一眼和营业部的正规融资分开 */
+.shark-card { border-color: var(--seal); }
+.shark-ic { color: var(--seal); }
+.shark-flag { color: var(--seal); border-color: var(--seal); }
+.shark-warn {
+  margin: 0 0 var(--sp-3);
+  padding-left: 1.2em;
+  font-size: var(--fs-xs);
+  line-height: 1.7;
+  color: var(--ink-2);
+}
+.shark-warn li { list-style: disc; }
+.shark-kv { margin-bottom: var(--sp-2); font-size: var(--fs-sm); }
+.shark-ledger { margin-top: var(--sp-3); }
+.loan-shark { color: var(--seal); border-color: var(--seal); }
+
 .loan-borrow { color: var(--orange); border-color: var(--orange); }
 .loan-repay { color: var(--blue); border-color: var(--blue); }
 .loan-interest { color: var(--ink-2); border-color: var(--dash); }

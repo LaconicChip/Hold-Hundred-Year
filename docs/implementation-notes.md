@@ -34,7 +34,7 @@
 4. **一局一档案，节奏只有 `GameMode` 一个真源**：跳数固定 45+45=90（波动标定按跳消费，改墙钟不动行情）；年长、跳毫秒、午休、涨跌停幅度、最短纪元长度都在 `game/model/enums/GameMode.java`（标准 24 天/年·1000ms·10s·±10%·纪元≥3 天；快速 12 天/年·500ms·5s·±20%·纪元≥2 天）。
    纪元边界写在"36 交易日/年"基准日历里、由 `EraScheduler.scale()` 按本局年长等比映射，剧本撒点的区间同样推导——**加一档节奏 = GameMode 加一行**，不要往 `GameConstants` 里再加"当前节奏"常量（`TICK_MS/LUNCH_MS/DAYS_PER_YEAR/TOTAL_DAYS` 已于 2026-09-29 删除，它们和每局档案并存必然漂移）。
    前端也不镜像节奏：倒计时与轮询读 `/api/market/state` 的 `tickMs/daySeconds/totalDays`，模式选择器读 `/api/game/modes`（原 `constants/rhythm.js` 已删）。
-5. **交易规则**：红涨绿跌、T+1、涨停只可卖不可买、普通股 ±10%（ST ±5%）——**快速模式档案下为 ±20%（ST ±10%）**，涨跌停幅度由 `Quote.limitPct` 承载（行情板恢复时按本局 `GameMode` 下发），ST 恒取本局幅度的一半、所以戴帽摘帽不用回改；佣金万 3 最低 5 元、印花税千 1（仅卖出）、追保 140% / 强平 120%、年化 8%（日息 = 年化/36）。
+5. **交易规则**：红涨绿跌、T+1、涨停只可卖不可买、普通股 ±10%（ST ±5%）——**快速模式档案下为 ±20%（ST ±10%）**，涨跌停幅度由 `Quote.limitPct` 承载（行情板恢复时按本局 `GameMode` 下发），ST 恒取本局幅度的一半、所以戴帽摘帽不用回改；佣金万 3 最低 5 元、印花税千 1（仅卖出）、追保 140% / 强平 120%、年化 8%（日息 = 年化 ÷ 本局年交易日数，标准 24、快速 12）。**高利贷另算**（spec §6.6）：额度净资产 4 倍、日息按账龄递增、到期强卖，只进净资产与资不抵债判定、不进维持担保比例。
 6. **指数口径**：等权（`IndexCalculator`）；**开盘管线在所有价格变动完成后必须统一重算开盘指数**（跳空/复牌/剧本钉板全部计入，`e6fbc19` 修复，不得回退）。
 7. **视觉**：贴纸风三件套（2px 墨描边 / 硬阴影 / 圆角）、标题用 `--font-fun`、全站禁 emoji、图标走 sprite + currentColor、色值只走 `tokens.css` 令牌（唯一例外 `styles/theme.js`）。
 8. **吉祥物**：牛市 = 牛小牛（暖棕 + 大弯角），熊市 = 熊猫滚滚（黑白 + 黑眼圈）；**不靠红绿区分物种**；大图 PNG、小图 SVG symbol（`bear` 画的是熊猫，id 不改）。
@@ -63,7 +63,8 @@
 - **倒计时口径**：`MarketStateDTO.countdownTicks` 是**本会话剩余跳数**（早盘 `45 - tick_index`、午盘 `90 - tick_index`、非交易态 0、越界夹到 0），不是全天剩余跳数——早盘拿 90 做基准会让早盘倒计时正好是午盘的两倍。前端 `StatusBar` 用"截止时间戳"而不是本地每秒 -1：快速模式每跳 0.5 秒，倒计时是小数，`-1` 会跨过 0 变成 `-01:-0.5` 那种负数。
 - **重开一局清表**：`GameEndService.doRestart` 必须连 `stock_daily_bar` 一起清——它是日K数据源，漏清会让新的一局开局就带着上一局的蜡烛图。以后加"按用户"维度的新表，记得同步进这份清单。
 - **个股历史消息**：`MessageService.list` 的第 6/7 个参数是 `stockId` + `includeSector`。个股页用 `stockId&includeSector=true`，一次拿回"本票专属（stock_id 命中）+ 本票所属板块（sector 命中且 stock_id 为空）"；板块名由后端按 `StockDefs` 反查，前端不需要知道。板块级消息的 `sector` 由 `EventFactory` 在 SECTOR 级事件落库时写入（迁移 `V20260929_02`）。历史存量消息的 sector 为 NULL，只有升级后新产生的板块消息能被个股页捞到。
-- **文案库六份文件**（`src/main/resources/content/`，见 §7）：`stock-personas.txt`（24 股 × 8 弹幕 + 6 事件）、`sector-flavor.txt`（21 板块 + 大盘 × 权威/媒体/传闻含追报/玩梗各 2）、`npc-lines.txt`（4 场景 × 5 + 8 NPC × 5 闲聊）、`danmu.txt`（9 全局池 + 21 板块池）、`event-copy.txt`（75 条事件骨架的标题/正文变体与追报）、`era-narratives.txt`（11 个纪元叙事，每组恰好一行）。除 `event-copy.txt`（由 `EventSkeletonsTest` 一一对应把关）外的五份被 `StockPersonasTest` 的"全局零重复"总校验覆盖（≥700 条唯一），任何一处抄重直接红。
+- **文案库七份文件**（`src/main/resources/content/`，见 §7）：`stock-personas.txt`（24 股 × 8 弹幕 + 6 事件）、`sector-flavor.txt`（21 板块 + 大盘 × 权威/媒体/传闻含追报/玩梗各 2）、`npc-lines.txt`（4 场景 × 5 + 8 NPC × 5 闲聊）、`danmu.txt`（9 全局池 + 21 板块池）、`event-copy.txt`（75 条事件骨架的标题/正文变体与追报）、`era-narratives.txt`（11 个纪元叙事，每组恰好一行）、`shark-lines.txt`（高利贷 7 个场景台词）。除 `event-copy.txt`（由 `EventSkeletonsTest` 一一对应把关）外的六份被 `StockPersonasTest` 的"全局零重复"总校验覆盖（≥700 条唯一），任何一处抄重直接红。
+- **高利贷的两本债（2026-10-10）**：`sys_user.debt` 是融资债、`sys_user.shark_debt` 是高利贷未清余额，后者恒等于台账 `user_shark_loan` 各笔之和（`SharkService.syncBalance` 每次重算，不做手工加减）。**担保比例只读前者，净资产与资不抵债读两者之和**——所以 `MarginService.marginCheck` 的入口短路条件是"两种债都没有"，只看融资债为 0 就短路会让欠高利贷的人永远死不了（测试 `insolventThroughSharkAloneStillEndsOnTheRooftop` 钉住这一点）。融资可借额度公式收在 `MarginService.marginBorrowableOf` 一处：`现金 + 市值 −（融资债 + 高利贷）× (1 + BORROW_LIMIT_RATIO)`，借款校验与 `/api/me/assets.borrowable` 共用；高利贷可借额在 `SharkService.borrowableOf`。到期强卖不复用 `MarginService.liquidate`（还款对象与目标线不同），但跳过规则完全一致：停牌 / 跌停封死 / 可卖 0 跳过。
 - **三条"排期尾巴"（2026-09-30 修）**：① 纪元 3 长度下限 4 天（`EraScheduler.CRASH_CHAIN_MIN_ERA_LEN`）——`ScriptDayScheduler` 要排"≥2 天千股跌停 → 救市 → 次日千股涨停"，快速模式年长 12 天、抖动会把纪元压到 2 天，股灾就演成一日游、涨停还会漏到下一个纪元的第一格；② 救市日最多排在纪元 3 倒数第二天，保证"救市次日"的涨停留在本纪元内；③ 申购日 ≤ 收官日 - 4（`IPO_LIFECYCLE_TAIL`），给 D+2/D+4 留路。三条都由 `EraSchedulerTest`/`ScriptDaySchedulerTest` 用 200~1000 个种子扫过。
 - **快速模式加密度、不砍名场面**（2026-10-10）：黑7月崩盘日的撒点窗口按档走，写在 `GameMode.crashWindowFullEra`（标准 false = 纪元 10 前半段、快速 true = 整个纪元）。500 seed 实测：改前快速模式 60% 的局只有 1 个崩盘日（纪元 10 只剩 2 天，前半段只剩 1 天，掷到 2~3 都被夹成 1），改后最少 2 个、掷到 3 就落 3；名场面日占比标准 16.8% / 快速 31.2%。唯一残留的夹逼在股灾链——快速模式纪元 3 恒为 4 天，"跌跌救涨"排满整段，第 3 个跌停日没有格子（再给纪元 3 加一天就有别的纪元跌破 `minEraLen`）。两条都写死成 `ScriptDaySchedulerTest` 的断言，标准模式的分布改前改后逐 seed 相同（不影响老存档）。
 - **一局一档案（GameMode）**：标准/快速两套节奏在 `game/model/enums/GameMode.java` 里各自带值（年长、跳毫秒、午休、涨跌停、最短纪元长度），建局时选定写进 `user_game_state.game_mode`，**一局一选、本局进行中不可改**：注册不绑模式，开局前（大盘页状态条的模式选择器）与终局后（"再来一局"旁的选择器）都走 `POST /api/game/restart {mode}`；restart 允许"终局后"与"从未开过局"两种时机，其余一律拒绝。**不要**再用 `GameConstants.TICK_MS/DAYS_PER_YEAR/TOTAL_DAYS` 做运行时判定——那些只是标准模式的默认值，运行时一律 `GameMode.of(gs.getGameMode())`。调度器改成 500ms 心跳（`SCHEDULER_HEARTBEAT_MS`）+ 每账户按本局 `tickMs` 门控（`QuoteBoard.lastTickAtNanos`）；快进与测试直接调 `tickOne`，不看墙钟，所以"快进=逐跳"等价与同种子可复现都不受影响。前端从 `/api/market/state` 读 `mode/tickMs/daySeconds/totalDays/limitPct`，模式清单（代码/名称/一句话说明/天数）由 `GET /api/game/modes` 下发给 `ModePicker`，注册不绑模式。
@@ -91,11 +92,13 @@
 ## 5. 验收状态
 
 - **Phase 0-13 全部完成并通过验收**（后端引擎/调度/交易/融资/事件/NPC/剧本/打新/WS/REST → 前端 8 页 + 组件 → 终局验收）。
-- 后端全量 **396 tests，0 Failures / 0 Errors**（同种子可复现、快进=逐跳、人设与板块/NPC 文案零重复总校验、事件骨架 75 条与 event-copy.txt 一一对应、文案文件全部登记、剧本日撒点不死循环、prev_index 基准、三类流水查询、模式档案与 /api/game/modes、提醒消息落库惯例（NotifyPublisher）、心跳冷用户节流）；标准局 72 交易日约 2 小时、快速局 36 天约 30 分钟；前端 `npm run build` 通过，入口主包 17.6 kB（vendor 按 echarts / element-plus / vue 拆块）。
+- 后端全量 **419 tests，0 Failures / 0 Errors**（同种子可复现、快进=逐跳、人设与板块/NPC/高利贷文案零重复总校验、事件骨架 75 条与 event-copy.txt 一一对应、文案文件全部登记、剧本日撒点不死循环、prev_index 基准、三类流水查询、模式档案与 /api/game/modes、提醒消息落库惯例（NotifyPublisher）、心跳冷用户节流、**高利贷额度与递增计息、到期强卖、卖不掉转逾期、只有高利贷也能爆仓、重开清台账**）；标准局 72 交易日约 2 小时、快速局 36 天约 30 分钟；前端 `npm run build` 通过，入口主包 17.34 kB（vendor 按 echarts / element-plus / vue 拆块）。
 - 验收图集 `docs/design/shots/`：01-login / 02-market / 03-stock / 03b-limit-sealed / 04-assets / 05-messages / 05-stock-bought / 06-rank / 07-summary / 08-result / 09-notice-popup（右下角浮层）/ 10-danmu-board（分道弹幕）/ 11-quick-mode-picker（模式选择）/ 12-quick-market（快速模式实盘：±20% 行情）/ 13-stock-detail（个股页：涨跌停虚线在 ±20% 处）。
 - 后续维护轮次（2026-09-29）：资产页三类流水接口与接入 → 结构整理与占位文案清理 → `prev_index` 根治 → 规格 §11 对齐 → 前端拆包 → 节奏压缩与弹幕/消息体验重做 → 一局一档案 GameMode → 倒计时三连修 → 涨跌停价由后端按本局下发 → **全部游戏文案外置到 `resources/content/`（含 75 条事件骨架的标题正文）、删掉前端手抄的股票表与节奏镜像、清掉死常量/死配置/未用图标/未用 import 与死导出**
 - 同日第二轮（结构整治）：`game/content` 收拢全部文案读取层 → `EventSkeletons` 499→227 行 → 7 份重复的"提醒消息落库"样板收进 `event/NotifyPublisher`（纪元切换标题不再把 `BULL_START` 这种枚举名漏给玩家）→ 心跳对"还没缓存行情板"的在线用户按 1 秒节流（原来每个未开盘账号每秒 10 次空查库）→ 换行符统一 LF。
 - 第三轮（2026-10-10）：**纪元叙事 11 条外置**——`EraCode.java` 删掉 `narrative` 字段（只剩标识与显示名），文案进 `content/era-narratives.txt`、读取入口 `game/content/EraNarratives.java`（一组恰好一行，多写即启动失败），并加入 `StockPersonasTest` 全局零重复总校验 → 资产页融资卡片的"borrowable 仅在借款/还款响应返回、无独立查询接口"那句工程口径改成玩家话 → 快速模式黑7月窗口按档铺满整个纪元（`GameMode.crashWindowFullEra`），名场面日占比 29.0% → 31.2%、崩盘日不再只剩 1 天 → 后端 403 tests 全绿（标准模式分布逐 seed 未变）。
+
+- 第四轮（2026-10-10）：**全量拼写修正** `Hunderd` → `Hundred`（Java 包 `com.holdhundredyear`、主类、pom、`spring.application.name`、前端包名、README，188 个文件走 `git mv` 保留历史）→ **终局接口两处修复**：盘中爆仓没有当日快照导致 `GET /api/game/result` 500（改为取最后一个已结算日）、`GameResultDTO` 缺 `debt` 字段导致天台页负债恒为 0.00 → **高利贷板块落地**（spec §6.6）：`user_shark_loan` 台账 + `sys_user.shark_debt`、`SharkService` 额度与递增计息与到期强卖、结算第⑤步插入、`/api/loan/shark*` 三条接口、资产页高利贷卡片与融资/高利贷的按额度快捷填单、`content/shark-lines.txt` 七组台词。
 
 ## 6. 还值得做的事（都不是缺陷）
 
@@ -105,7 +108,7 @@
 
 ## 7. 文案维护（改文案不用改代码）
 
-全部游戏文案在 `src/main/resources/content/` 六个纯文本文件里，**中文一行一条**，改完重启后端即生效；格式故意不用 JSON/YAML，避免引号与转义把文案搞成代码。
+全部游戏文案在 `src/main/resources/content/` 七个纯文本文件里，**中文一行一条**，改完重启后端即生效；格式故意不用 JSON/YAML，避免引号与转义把文案搞成代码。
 
 | 文件 | 管什么 | 分组写法 |
 | --- | --- | --- |
@@ -115,6 +118,7 @@
 | `npc-lines.txt` | 4 个角色线场景台词 + 8 位 NPC 的性格闲聊 | `@SCENE:DAMA_RECOMMEND`、`@CHATTER:DAMA` |
 | `event-copy.txt` | 75 条事件骨架的标题/正文变体与证实·辟谣追报 | `@fund-big-order`，条目 `标题\|正文` / `sector:白酒\|标题\|正文` / `>追报` |
 | `era-narratives.txt` | 11 个纪元的叙事（纪元切换通知的正文） | `@BULL_START`（枚举名，每组恰好一行） |
+| `shark-lines.txt` | 高利贷的 7 个场景台词（借到手 / 每日催债 / 到期 / 逾期 / 强卖 / 结清 / 板块告示） | `@CHATTER`、`@WARNING` |
 
 规则：`#` 开头是注释、空行忽略、`@分组名` 开一个分组、其余每行一条。**分组缺失或为空会在启动时直接抛错**（宁可起不来，也不要运行时静默没文案）。
 
@@ -125,6 +129,7 @@
 - `ContentCatalogTest`：目录里每个 .txt 都必须已在 `ContentCatalog.loadAll()` 登记（新增文件忘了登记会红）。
 - `StockPersonasTest`：股数/板块覆盖齐、跨全部文案池**零重复**（重复凑数会红）、无 emoji、无"占位/TODO"。
 - `EventSkeletonsTest`：骨架与 `event-copy.txt` 分组**一一对应**、每条骨架 ≥2 变体、槽位白名单、追报与来源匹配。
+- `SharkLinesTest`：7 个场景各有话、彼此不重复、无 emoji 无占位，且同种子同一天抽到同一句（催债话术走 `WorldRandom`，不许 `Math.random`）。
 - `EraNarrativesTest`：11 个纪元都有且只有一句叙事、分组名与 `EraCode` 枚举名一一对应（打错字的分组不会被任何代码读到，会红）、不重复也不复读纪元标题。
 
 注意：**增删文案条目会改变同种子下的抽取结果**（随机数按序消费）。引擎行为、可复现性与"快进=逐跳"等价都不受影响，但老存档用同一个种子 replay 出的事件/弹幕序列会和以前不同——这是改文案的预期代价，不必为它做兼容分支。

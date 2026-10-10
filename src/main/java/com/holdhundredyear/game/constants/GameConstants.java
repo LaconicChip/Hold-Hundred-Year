@@ -122,6 +122,20 @@ public final class GameConstants {
     /** 融资年化利率。 */
     public static final double ANNUAL_INTEREST = 0.08;
 
+    // ---- 高利贷（spec §6.6：场外配资，风险自担；不入担保比例，但入净资产）----
+    /** 高利贷额度上限：净资产的 4 倍（融资是 1 倍），借满即 5 倍仓位。 */
+    public static final double SHARK_LIMIT_RATIO = 4.0;
+    /** 起始年化 24%：日息 = 年化 ÷ 本局年交易日数 → 标准 1%/天、快速 2%/天。 */
+    public static final double SHARK_ANNUAL_BASE = 0.24;
+    /** 账龄每满 SHARK_RATE_STEP_DAYS 个计息日，年化再上调一档。 */
+    public static final double SHARK_ANNUAL_STEP = 0.12;
+    /** 升档步长（交易日）。 */
+    public static final int SHARK_RATE_STEP_DAYS = 5;
+    /** 年化封顶 72%：标准 3%/天、快速 6%/天。 */
+    public static final double SHARK_ANNUAL_MAX = 0.72;
+    /** 借款期限 = 本局一个游戏年（标准 24 个交易日、快速 12 个），到期必须还。 */
+    public static final int SHARK_TERM_YEARS = 1;
+
     /** 熔断阈值：指数日内自昨收跌幅（spec §3/§4.4）。 */
     public static final double CIRCUIT_BREAKER_DROP = 0.07;
     /** 指数基期值：无前日快照时日收益评价的指数基准（spec §3 结算⑥）。 */

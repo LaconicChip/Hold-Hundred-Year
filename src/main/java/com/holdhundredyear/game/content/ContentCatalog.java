@@ -69,7 +69,7 @@ public final class ContentCatalog {
 
     private static Map<String, Map<String, List<String>>> loadAll() {
         Map<String, Map<String, List<String>>> loaded = new LinkedHashMap<>();
-        for (String file : List.of("danmu", "stock-personas", "sector-flavor", "npc-lines", "event-copy", "era-narratives")) {
+        for (String file : List.of("danmu", "stock-personas", "sector-flavor", "npc-lines", "event-copy", "era-narratives", "shark-lines")) {
             loaded.put(file, parse(file));
         }
         return Collections.unmodifiableMap(loaded);

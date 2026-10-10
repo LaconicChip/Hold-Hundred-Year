@@ -24,6 +24,9 @@ public class UserDailySnapshot {
 
     private BigDecimal debt;
 
+    /** 高利贷未清余额（当日快照口径，net_asset 已扣掉它）。 */
+    private BigDecimal sharkDebt;
+
     private BigDecimal netAsset;
 
     private Double dayReturnPct;

@@ -2,7 +2,7 @@
 
 A 股模拟炒股游戏：一局 72 个交易日（3 年 × 24 天），约 1 分 40 秒一个交易日、**整局约 2 小时**，11 个历史纪元剧本；
 开每一局时可选**快速模式**（36 个交易日、约 30 分钟、涨跌停 ±20%）——模式一局一选，注册不绑定，
-世界种子可复现，支持保证金交易与强平，双结局（爆仓天台 / 通关成绩单）。单机多用户。
+世界种子可复现，支持保证金交易与强平，另有**高利贷**（净资产 4 倍额度、日息按账龄递增、到期强制平仓还债），双结局（爆仓天台 / 通关成绩单）。单机多用户。
 
 - 后端：Spring Boot 4.1.1 / Java 17 / MySQL / MyBatis-Plus / WebSocket(STOMP)，**不使用 Redis 与 MQ**
 - 前端：Vue 3 + Vite + Element Plus + ECharts + Pinia
@@ -34,9 +34,9 @@ src/main/resources/db/
 
 src/main/resources/content/
   danmu.txt / stock-personas.txt / sector-flavor.txt / npc-lines.txt / event-copy.txt /
-  era-narratives.txt
+  era-narratives.txt / shark-lines.txt
   全部游戏文案（弹幕、24 股人设、板块与大盘消息、NPC 台词、75 条事件骨架的标题正文与追报、11 条纪元叙事）
-  —— 改文案只改这六个 txt，不动 Java；格式与校验见 docs/implementation-notes.md §7
+  —— 改文案只改这七个 txt，不动 Java；格式与校验见 docs/implementation-notes.md §7
 
 frontend/src/
   views/        8 个页面（Login/Market/StockDetail/Assets/Messages/Leaderboard/DailySummary/GameResult）
@@ -100,7 +100,7 @@ cd frontend; npm run build
 | 实现备忘 | `docs/implementation-notes.md` |
 | 视觉基准 | `docs/design/style-tile.html` |
 | 数据库迁移 | `docs/db-migrations.md` |
-| 游戏文案 | `src/main/resources/content/`（6 个 .txt，改文案不用改代码） |
+| 游戏文案 | `src/main/resources/content/`（7 个 .txt，改文案不用改代码） |
 | 验收截图 | `docs/design/shots/` |
 
 ## 改动前必读的硬约束
@@ -110,6 +110,6 @@ cd frontend; npm run build
 - 引擎/结算路径禁用 `new Random()` / `Math.random()`，一律 `WorldRandom.of(seed, salt)`；同 seed 必同结果，快进与正常推进等价。
 - 并发：`QuoteBoardRegistry.worldLock(userId)` 覆盖调度/快进/交易；`sys_user`、`user_position` 悲观锁；`user_stock_state.version` 乐观锁。
 - 开盘管线在所有价格变动完成后**必须统一重算开盘指数**（`e6fbc19` 修复，不得回退）。
-- 交易规则：T+1、涨停只可卖不可买、涨跌停按本局模式（标准 ±10%/ST ±5%，快速 ±20%/ST ±10%）、佣金万 3 最低 5 元、印花税千 1（卖出）、追保 140% / 强平 120%、年化 8%。
+- 交易规则：T+1、涨停只可卖不可买、涨跌停按本局模式（标准 ±10%/ST ±5%，快速 ±20%/ST ±10%）、佣金万 3 最低 5 元、印花税千 1（卖出）、追保 140% / 强平 120%、年化 8%；高利贷不进担保比例但进净资产与爆仓判定。
 - 视觉：色值只走 `tokens.css` 令牌（仅 `styles/theme.js` 例外）、全站禁 emoji、图标走 SVG sprite。
 - 任何触及开盘管线/结算/引擎的改动，必跑 `VolatilityEngineTest`、`FastForwardServiceTest`、`TradeConcurrencyTest`、`WorldTickServiceTest`。

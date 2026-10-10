@@ -15,7 +15,13 @@ public class AssetsDTO {
 
     private double debt;
 
+    /** 高利贷未清余额：与融资负债分列，netAsset 里已经扣掉。 */
+    private double sharkDebt;
+
     private double netAsset;
 
     private double guardRatio;
+
+    /** 融资还能借多少（服务端算好，前端不再自己估）。 */
+    private double borrowable;
 }
