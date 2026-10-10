@@ -218,6 +218,9 @@ class GameEndServiceTest {
         // 快照：曾经这里按 gameDay == endDay 取到 null，终局接口 500，玩家永远看不到「天台见」。
         long userId = seedInMarket();
         insertSnapshot(userId, 3, "2000.00", "0.00", "98000.00", "2000.00", 980.0, null);
+        SysUser debtor = sysUserMapper.selectById(userId);
+        debtor.setDebt(new BigDecimal("799763.80"));
+        sysUserMapper.updateById(debtor);
         setTerminalState(userId, "BANKRUPT", "BANKRUPT", 4, "RETAIL");
 
         GameResultDTO result = gameEndService.result(userId);
@@ -230,6 +233,8 @@ class GameEndServiceTest {
         assertEquals(1, result.getRankings().size());
         assertEquals(2000.0, result.getRankings().get(0).getAsset(), 0.0001);
         assertEquals("BANKRUPT", result.getRankings().get(0).getStatus());
+        assertEquals(799763.80, result.getDebt().doubleValue(), 0.0001,
+                "the rooftop page reads its 负债 from this field");
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.holdhundredyear.game.model.dto;
 import com.holdhundredyear.market.entity.LoanRecord;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -21,6 +22,9 @@ public class GameResultDTO {
 
     /** 存活天数（终局日 game_day） */
     private Integer endDay;
+
+    /** 终局时点的融资负债：「天台见」要显示欠多少，盘中爆仓没有收盘快照，只能取账户现值 */
+    private BigDecimal debt;
 
     /** 总收益率（%）=（终局净资产 / 10 万 − 1）× 100 */
     private Double totalReturnPct;

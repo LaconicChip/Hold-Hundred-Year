@@ -163,6 +163,8 @@ public class GameEndService {
         result.setFinalTier(gs.getTier());
         result.setFinalTierName(SettlementService.tierNameOf(gs.getTier()));
         result.setWorldSeed(String.valueOf(gs.getWorldSeed()));
+        SysUser account = sysUserMapper.selectById(userId);
+        result.setDebt(account == null ? BigDecimal.ZERO : account.getDebt());
         result.setLiquidations(liquidations(userId));
         result.setCurve(curve(userId, gs.getEndDay()));
         result.setRankings(rankings(state, finalSnapshot));
