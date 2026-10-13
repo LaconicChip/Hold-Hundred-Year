@@ -38,7 +38,7 @@ src/main/resources/db/
 src/main/resources/content/
   danmu.txt / stock-personas.txt / sector-flavor.txt / npc-lines.txt / event-copy.txt /
   era-narratives.txt / shark-lines.txt
-  全部游戏文案（弹幕、24 股人设、板块与大盘消息、NPC 台词、75 条事件骨架的标题正文与追报、11 条纪元叙事）
+  全部游戏文案（弹幕、24 股人设、板块与大盘消息、NPC 台词、75 条事件骨架的标题正文与追报、11 条纪元叙事、高利贷台词）
   —— 改文案只改这七个 txt，不动 Java；格式与校验见 docs/implementation-notes.md §7
 
 frontend/src/
