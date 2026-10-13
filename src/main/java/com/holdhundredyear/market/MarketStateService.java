@@ -9,6 +9,7 @@ import com.holdhundredyear.game.constants.StockDefs.StockDef;
 import com.holdhundredyear.game.constants.StockDefs;
 import com.holdhundredyear.game.content.EraNarratives;
 import com.holdhundredyear.game.model.enums.EraCode;
+import com.holdhundredyear.game.model.enums.GameMode;
 import com.holdhundredyear.game.model.enums.MarketState;
 import com.holdhundredyear.game.model.enums.ScriptType;
 import com.holdhundredyear.game.model.enums.SealState;
@@ -202,7 +203,7 @@ public class MarketStateService {
         UserGameState gameState = requireGameState(userId);
         long worldSeed = gameState.getWorldSeed();
         int day = gameState.getCurrentDay();
-        board.setCurrentEra(eraInstanceForDay(worldSeed, day));
+        board.setCurrentEra(eraInstanceForDay(worldSeed, day, GameMode.of(gameState.getGameMode())));
         board.setVolRegime(rollVolRegime(worldSeed, day));
         board.setReverseDay(WorldRandom.of(worldSeed, "reverse" + day).nextDouble() < 0.08);
         board.setCircuitBreakerDay(scriptDaysFor(userId, day).stream()
@@ -237,7 +238,7 @@ public class MarketStateService {
             board.getShocks().clear();
             board.setTickIndex(0);
 
-            board.setCurrentEra(eraInstanceForDay(worldSeed, newDay));
+            board.setCurrentEra(eraInstanceForDay(worldSeed, newDay, GameMode.of(gameState.getGameMode())));
             board.setVolRegime(regime);
             board.setCircuitBreakerDay(scriptDays.stream()
                     .anyMatch(day -> ScriptType.CIRCUIT_BREAKER.name().equals(day.getScriptType())));
@@ -467,10 +468,16 @@ public class MarketStateService {
         return rows;
     }
 
-    /** day 所属纪元（EraScheduler 按 worldSeed 重掷——与 WorldSeeder 播种的 user_era 行
-     *  同 seed 同结果，11 个纪元恰好铺满 1..TOTAL_DAYS）。 */
-    private EraScheduler.EraInstance eraInstanceForDay(long worldSeed, int day) {
-        for (EraScheduler.EraInstance era : new EraScheduler().roll(worldSeed)) {
+    /**
+     * day 所属纪元：EraScheduler 按 worldSeed + 本局模式重掷，与 WorldSeeder 播种的
+     * user_era 行同 seed 同模式同结果，11 个纪元恰好铺满 1..本局 totalDays。
+     *
+     * <p>模式必须传进来：纪元带着 muMkt 与板块系数，是行情漂移的唯一来源，也决定事件工厂
+     * 挑哪些骨架、NPC 有没有"黑7月"反应、打新开板按几连板定价。漏传（走无模式的重载）就等于
+     * 让快速模式的账户按标准日历漂移——通知写着"股灾降临"，盘面却在走牛市的漂移。
+     */
+    private EraScheduler.EraInstance eraInstanceForDay(long worldSeed, int day, GameMode mode) {
+        for (EraScheduler.EraInstance era : new EraScheduler().roll(worldSeed, mode)) {
             if (era.startDay() <= day && day <= era.endDay()) {
                 return era;
             }

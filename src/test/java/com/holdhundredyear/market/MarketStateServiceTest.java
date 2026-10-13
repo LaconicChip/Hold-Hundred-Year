@@ -602,6 +602,28 @@ class MarketStateServiceTest {
         assertEquals(era5Start, gameState(userId).getCurrentDay());
     }
 
+    @Test
+    void quickModeBoardContextFollowsTheQuickEraSchedule() {
+        long userId = worldSeeder.seedUser("mkt_eraquick", "$2a$10$bcrypthash", GameMode.QUICK);
+
+        // 快速模式一年 12 天：第 13 天已进第二个游戏年（纪元 5 熔断开局），
+        // 标准日历的第 13 天却还停在纪元 3。纪元带 muMkt 与板块系数，漏传模式
+        // 就是"通知写着股灾、盘面按牛市漂"，所以这里拿播种的 user_era 行当权威比对。
+        int day = GameMode.QUICK.getDaysPerYear() + 1;
+        QuoteBoard board = startDayAt(userId, day);
+        UserEra seeded = userEraMapper.selectList(new LambdaQueryWrapper<UserEra>()
+                        .eq(UserEra::getUserId, userId)).stream()
+                .filter((era) -> era.getStartDay() <= day && day <= era.getEndDay())
+                .findFirst().orElseThrow();
+
+        assertEquals(seeded.getEraIndex().intValue(), board.getCurrentEra().eraIndex(),
+                "quick-mode board era must be the seeded quick schedule, not the standard one");
+        assertEquals(seeded.getEndDay().intValue(), board.getCurrentEra().endDay(),
+                "era span must match the seeded user_era row");
+        assertTrue(board.getCurrentEra().endDay() <= GameMode.QUICK.totalDays(),
+                "a standard-calendar era would reach past the quick horizon: " + board.getCurrentEra().endDay());
+    }
+
     private UserGameState gameState(long userId) {
         return userGameStateMapper.selectOne(new LambdaQueryWrapper<UserGameState>()
                 .eq(UserGameState::getUserId, userId));
