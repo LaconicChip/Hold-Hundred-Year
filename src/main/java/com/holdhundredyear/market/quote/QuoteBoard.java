@@ -93,6 +93,13 @@ public class QuoteBoard {
     @ToString.Exclude
     private volatile long lunchStartedNanos;
 
+    /** 暂停实时推进（spec §12.1 消息分级）：玩家被重要消息的模态弹窗挡住时，他的这一份世界
+     *  冻在原地，关掉弹窗才继续。纯内存挂钟闸门，只有调度器读它——快进、结算与随机协议一律
+     *  不看它，所以"同 seed 同结果"与"快进=逐跳等价"都不受影响（P5/P6 不破）。
+     *  不持久化：进程重启后回到未暂停，避免"世界被冻在无人看管的暂停态"。 */
+    @ToString.Exclude
+    private volatile boolean paused;
+
     /**
      * 从 stock_state 快照恢复行情板：价格、连板数、停牌、ST 从实体读取；
      * gapPct 不在此应用——那是开盘管线（跳空落地）的事；sealed=NONE、garchK=1、

@@ -62,6 +62,12 @@ public class MarketScheduler {
     public void tickOnlineWorlds() {
         for (long userId : wsSessionRegistry.onlineUserIds()) {
             try {
+                // 玩家正被模态弹窗挡住（重要消息）：这一份世界冻住，午休计时也一并停，
+                // 关掉弹窗（或刷新页面重新连上）就继续。只看内存标记，不查库、不抢锁。
+                QuoteBoard pausedBoard = quoteBoardRegistry.peek(userId);
+                if (pausedBoard != null && pausedBoard.isPaused()) {
+                    continue;
+                }
                 // 100ms 一拍，但绝大多数拍在这一步就被内存预判挡掉：不抢世界锁、不查库。
                 // 只有真的到了本局跳间隔（或板子还没缓存、午休待恢复）才往下走。
                 if (!dueForBeat(userId)) {

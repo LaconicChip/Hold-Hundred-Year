@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhundredyear.common.BizException;
 import com.holdhundredyear.common.ErrorCode;
 import com.holdhundredyear.game.constants.GameConstants;
+import com.holdhundredyear.game.constants.PreHistoryDefs;
 import com.holdhundredyear.game.constants.StockDefs;
 import com.holdhundredyear.game.model.dto.DailySummaryDTO;
 import com.holdhundredyear.game.model.dto.EquityCurveDTO;
@@ -193,9 +194,11 @@ public class MarketQueryService {
                         && "EVENT".equals(message.getType()))
                 .map(UserMessage::getTitle)
                 .toList());
+        // 提醒栏收 NOTIFY 与 ALERT 两种（ALERT 是"弹窗暂停"那一档，但晚报里同样要列出来，
+        // 否则追保/强平/停牌潮这些最要紧的话反而从收盘总结里消失了）
         dto.setNotices(messages.stream()
                 .filter(message -> "SYSTEM".equals(message.getSource())
-                        && "NOTIFY".equals(message.getType()))
+                        && ("NOTIFY".equals(message.getType()) || "ALERT".equals(message.getType())))
                 .map(UserMessage::getTitle)
                 .toList());
         dto.setComment(comment(gameState.getWorldSeed(), day, dayReturnPct - indexDayPct));
@@ -358,8 +361,8 @@ public class MarketQueryService {
 
     /**
      * 个股日K序列（GET /api/stocks/{id}/kline）：stock_daily_bar 按 game_day 升序、
-     * limit 截取最近 N 根（1..本局 totalDays 夹逼）。未知 stockId 抛 NOT_FOUND；
-     * 尚无结算日的股票返回空列表（前端展示空态）。
+     * limit 截取最近 N 根（1..本局 totalDays + 开局前历史根数夹逼，历史在 game_day <= 0，
+     * 见 WorldSeeder#buildPreHistoryBars）。未知 stockId 抛 NOT_FOUND。
      */
     public List<KlinePointDTO> stockKline(long userId, long stockId, int limit) {
         UserGameState gs = requireGameState(userId);
@@ -368,7 +371,8 @@ public class MarketQueryService {
         } catch (IllegalArgumentException unknown) {
             throw new BizException(ErrorCode.NOT_FOUND);
         }
-        int capped = Math.max(1, Math.min(limit, GameMode.of(gs.getGameMode()).totalDays()));
+        int capped = Math.max(1, Math.min(limit,
+                GameMode.of(gs.getGameMode()).totalDays() + PreHistoryDefs.BARS));
         List<StockDailyBar> bars = stockDailyBarMapper.selectList(
                 new LambdaQueryWrapper<StockDailyBar>()
                         .eq(StockDailyBar::getUserId, userId)

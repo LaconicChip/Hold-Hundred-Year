@@ -140,7 +140,7 @@ class MeQueryServiceTest {
         PositionDTO row = rows.get(0);
         assertEquals(8L, row.getStockId());
         assertEquals("600008", row.getCode());
-        assertEquals("牛途证券", row.getName());
+        assertEquals("东财证券", row.getName());
         assertEquals(200, row.getShares());
         assertEquals(0, row.getAvailableShares(), "T+1: bought shares are frozen until close");
         assertEquals(18.03, row.getCostPrice(), 1e-9, "avg cost = 3605/200 HALF_UP to 2 decimals");

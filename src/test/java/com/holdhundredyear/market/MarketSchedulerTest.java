@@ -112,6 +112,29 @@ class MarketSchedulerTest {
         }
     }
 
+    /**
+     * 暂停闸门（spec §12.1）：玩家被重要消息的模态弹窗挡住时，他的世界要真的停在原地，
+     * 关掉弹窗后继续走。setPaused 在世界锁内写标记，所以返回后不可能还有在途的一跳，
+     * 这个断言不会 flaky。
+     */
+    @Test
+    void schedulerFreezesPausedWorldAndResumesOnDemand() {
+        userId = worldSeeder.seedUser("sched_pause1", "$2a$10$bcrypthash");
+        marketStateService.startDay(userId);
+        wsSessionRegistry.register(userId);
+
+        marketStateService.setPaused(userId, true);
+        int frozenAt = boardTick(userId);
+        Awaitility.await().pollDelay(Duration.ofMillis(2500))
+                .atMost(Duration.ofSeconds(10))
+                .until(() -> true);
+        assertEquals(frozenAt, boardTick(userId), "a paused world must not advance a single tick");
+
+        marketStateService.setPaused(userId, false);
+        Awaitility.await().atMost(Duration.ofSeconds(15))
+                .until(() -> boardTick(userId) > frozenAt);
+    }
+
     @AfterEach
     void cleanup() {
         cleanupUser(userId);

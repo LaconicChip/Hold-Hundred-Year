@@ -48,7 +48,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Transactional
 class CorporateActionServiceTest {
 
-    /** 测试用股票（九坛老窖，现价 168.00 = prevClose，基准价）。 */
+    /** 测试用股票（茅王酒业，现价 168.00 = prevClose，基准价）。 */
     private static final long STOCK = 1L;
     private static final double BASE = 168.00;
 
@@ -206,11 +206,18 @@ class CorporateActionServiceTest {
 
     @Test
     void stHatAndHighTransferEventsDispatchCorporateActions() {
-        // 种子 10 在前 300 跳内确定性掷出 fund-st-hat（扫描确定）；以此验证戴帽接线与 is_st 落库。
-        long hatUser = seedInMarket(10L);
-        advance(hatUser, 300);
-        UserMessage hatMessage = notificationTitled(hatUser, "ST 戴帽");
-        assertNotNull(hatMessage, "a fund-st-hat skeleton must dispatch an ST 戴帽 corporate action");
+        // 接线测试不能靠运气等某个种子：骨架池是加权抽签，池子增删会让抽签序列整体换位
+        // （notes §7 记着这个代价）。所以按固定顺序扫 1..12 号种子、每个跑 600 跳，
+        // 取第一个真的掷出 fund-st-hat 的世界——扫法确定，不依赖"历史上某个号一定出"。
+        long hatUser = 0L;
+        UserMessage hatMessage = null;
+        for (long seed = 1; hatMessage == null && seed <= 12; seed++) {
+            hatUser = seedInMarket(seed);
+            advance(hatUser, 600);
+            hatMessage = notificationTitled(hatUser, "ST 戴帽");
+        }
+        assertNotNull(hatMessage, "no seed in 1..12 rolled fund-st-hat within 600 ticks: "
+                + "the skeleton pool moved, widen the scan instead of deleting the wiring check");
         assertTrue(Boolean.TRUE.equals(stockState(hatUser, hatMessage.getStockId()).getIsSt()),
                 "the hatted stock must persist is_st=true");
 

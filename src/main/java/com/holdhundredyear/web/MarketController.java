@@ -55,6 +55,23 @@ public class MarketController {
         return R.ok(marketQueryService.state(userId));
     }
 
+    /**
+     * 暂停本账户世界的实时推进（重要消息弹窗弹出时调用）。只停"墙钟推进"，不动价格与库，
+     * 也不拦快进/结算：玩家想直接跳过当日随时可以。
+     */
+    @PostMapping("/pause")
+    public R<Void> pause(@AuthenticationPrincipal Long userId) {
+        marketStateService.setPaused(userId, true);
+        return R.ok();
+    }
+
+    /** 恢复推进（弹窗关闭、或页面刷新后没有弹窗在等玩家时调用；幂等）。 */
+    @PostMapping("/resume")
+    public R<Void> resume(@AuthenticationPrincipal Long userId) {
+        marketStateService.setPaused(userId, false);
+        return R.ok();
+    }
+
     /** 快进到当日收官：终局态（BANKRUPT/FINISHED）显式拒绝，返回刚收官日的总结。 */
     @PostMapping("/skip")
     public R<DailySummaryDTO> skip(@AuthenticationPrincipal Long userId) {

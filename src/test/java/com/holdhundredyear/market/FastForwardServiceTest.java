@@ -214,8 +214,8 @@ class FastForwardServiceTest {
 
     /**
      * 用固定种子重播种一个用户的完整世界：seedUser 以随机种子建号（其日程随机）；
-     * 等价性对比要求两用户的世界（含脚本日/IPO 日程）完全一致，故删除该用户的随机种子
-     * 游戏数据后从固定种子重建（复用生产播种器 seedWorld），再同步 game_state.world_seed。
+     * 等价性对比要求两用户的世界（含脚本日/IPO 日程与开局前日K）完全一致，故删除该用户
+     * 随机种子的游戏数据后从固定种子重建（复用生产播种器 seedWorld），再同步 world_seed。
      */
     private long seedWithFixedSeed(String username, long worldSeed) {
         long userId = worldSeeder.seedUser(username, "$2a$10$bcrypthash");
@@ -227,6 +227,9 @@ class FastForwardServiceTest {
                 .eq(UserScriptDay::getUserId, userId));
         userDailySnapshotMapper.delete(new LambdaQueryWrapper<UserDailySnapshot>()
                 .eq(UserDailySnapshot::getUserId, userId));
+        // seedWorld 现在连开局前的历史日K一起铺，所以重播种前必须清掉旧世界的日K
+        stockDailyBarMapper.delete(new LambdaQueryWrapper<StockDailyBar>()
+                .eq(StockDailyBar::getUserId, userId));
         worldSeeder.seedWorld(userId, worldSeed);
         UserGameState gs = gameState(userId);
         gs.setWorldSeed(worldSeed);

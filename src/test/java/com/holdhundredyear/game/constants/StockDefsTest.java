@@ -62,17 +62,28 @@ class StockDefsTest {
         assertEquals(EXPECTED_SECTORS, sectors);
     }
 
+    /**
+     * 每个板块都必须登记开局前史档案（漏登记不会报错，只会静默退化成横盘——
+     * 那种"某只票开局前十年不动"的怪事没人会去查，所以在这里拦住）。
+     */
+    @Test
+    void everySectorHasAPreHistoryProfile() {
+        for (String sector : StockDefs.ALL_SECTORS) {
+            assertTrue(PreHistoryDefs.hasProfile(sector), "missing pre-history profile for sector: " + sector);
+        }
+    }
+
     @Test
     void namedStocksHaveExpectedCodes() {
-        assertStockCode("九坛老窖", "600001");
-        assertStockCode("芯火半导体", "600002");
-        assertStockCode("回春堂", "600005");
-        assertStockCode("万间置业", "600006");
-        assertStockCode("大通银号", "600007");
-        assertStockCode("汪洋水产", "600012");
-        assertStockCode("造梦传媒", "600014");
-        assertStockCode("天算算力", "600015");
-        assertStockCode("千里信联", "600024");
+        assertStockCode("茅王酒业", "600001");
+        assertStockCode("寒武芯能", "600002");
+        assertStockCode("恒瑞药堂", "600005");
+        assertStockCode("万柯置业", "600006");
+        assertStockCode("葵花银行", "600007");
+        assertStockCode("獐岛水产", "600012");
+        assertStockCode("乐梦影业", "600014");
+        assertStockCode("曙光算力", "600015");
+        assertStockCode("兴芯通讯", "600024");
     }
 
     @Test
@@ -94,7 +105,7 @@ class StockDefsTest {
     void byCodeLooksUpStockAndReturnsEmptyForUnknown() {
         Optional<StockDef> found = StockDefs.byCode("600001");
         assertTrue(found.isPresent());
-        assertEquals("九坛老窖", found.get().name());
+        assertEquals("茅王酒业", found.get().name());
         assertTrue(StockDefs.byCode("999999").isEmpty());
     }
 

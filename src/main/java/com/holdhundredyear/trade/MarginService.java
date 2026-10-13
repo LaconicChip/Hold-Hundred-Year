@@ -238,14 +238,14 @@ public class MarginService {
             gs.setMarketState(MarketState.BANKRUPT.name());
             gs.setEndReason("BANKRUPT");
             gs.setEndDay(day);
-            notify(userId, day, "爆仓",
+            alert(userId, day, "爆仓",
                     (liquidated ? "强制平仓后仍资不抵债" : "欠的债已经盖过全部资产")
                             + "，本局宣告爆仓。您坚持了 " + day + " 个交易日，"
                             + "营业部天台风大，排队请趁早。", null);
             return true;
         }
         if (liquidated) {
-            notify(userId, day, "强制平仓",
+            alert(userId, day, "强制平仓",
                     "维持担保比例跌破 " + percentText(GameConstants.LIQUIDATION_RATIO)
                             + "%，已按市值从大到小强制卖出部分持仓并偿还负债。", null);
         }
@@ -378,7 +378,7 @@ public class MarginService {
         if (count != null && count > 0) {
             return;
         }
-        notify(userId, day, "追保通知",
+        alert(userId, day, "追保通知",
                 "维持担保比例已低于 " + percentText(GameConstants.MARGIN_CALL_RATIO)
                         + "%，请补充担保物或偿还负债。", null);
     }
@@ -386,6 +386,11 @@ public class MarginService {
     /** 系统通知落库（字段惯例统一在 {@link NotifyPublisher}）。 */
     private void notify(long userId, int day, String title, String content, Long stockId) {
         notifyPublisher.system(userId, day, title, content, stockId);
+    }
+
+    /** 最高一档提醒：追保/强平/爆仓都是"钱已经出事"，前端要弹窗并把行情冻住。 */
+    private void alert(long userId, int day, String title, String content, Long stockId) {
+        notifyPublisher.alert(userId, day, title, content, stockId);
     }
 
     /** 比例转百分比文本（1.4 → "140"），文案由常量派生（同 SettlementService）。 */

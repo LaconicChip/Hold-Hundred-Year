@@ -32,6 +32,9 @@ import java.util.Set;
  *   <li>救市日（无随机，params 为空）；</li>
  *   <li>千股涨停：救市次日先掷 sealRatio（1 次 nextDouble）→ m = 1+nextInt(2) →
  *       m 次 pickDay 于 era2 → 按挑选顺序逐日掷 sealRatio；</li>
+ *   <li>妖股三幕（纪元 3 崩盘前后）：独立 salt {@code "hotstreak"}，不消费下面那条流；
+ *       崩盘首日前 3 天 HOT_STREAK（连板 2~3 只，取自高 β 池）→ 崩盘当日 HALT_SWARM
+ *       （同一批票停牌 2~3 天）→ 救市日后 1~2 天 HUN_DAO（断魂刀砍向这批票里的 1~2 只）；</li>
  *   <li>制裁闪崩（era7）：s = 1+nextInt(2) → s 次 pickDay 于 era7 → 按挑选顺序掷
  *       targetStockId = 科技股池（半导体/算力/通信/传媒，按 StockDefs 声明顺序派生）中
  *       nextInt 取一；</li>
@@ -63,6 +66,18 @@ public class ScriptDayScheduler {
 
     /** 打新生命周期：申购日 → D+2 上市 → D+4 结算（IpoService），收官前要留这么多天。 */
     private static final int IPO_LIFECYCLE_TAIL = 4;
+
+    /**
+     * 妖股池：高 β（≥1.2）的那几只——连板、停牌潮与断魂刀都从这里掷。
+     * 按 StockDefs 派生，不硬编码 id（改档案不用回来改这里）。
+     */
+    private static final List<Long> HOT_STOCK_IDS = StockDefs.ALL.stream()
+            .filter(s -> s.beta() >= 1.2)
+            .map(StockDefs.StockDef::id)
+            .toList();
+
+    /** 股灾前连板几天（3 天正好凑成"三连板"的观感，第 4 幕由停牌接管）。 */
+    private static final int HOT_STREAK_DAYS = 3;
 
     /** 制裁闪崩可命中的科技板块。 */
     private static final Set<String> TECH_SECTORS = Set.of("半导体", "算力", "通信", "传媒");
@@ -156,6 +171,12 @@ public class ScriptDayScheduler {
                     params("sealRatio", 0.85 + 0.10 * r.nextDouble())));
         }
 
+        // 4.5 妖股三幕（股灾前连板 → 股灾日集体停牌 → 救市后断魂刀）。掷骰走独立 salt
+        //     "hotstreak"，不消费上面这条随机流：老种子的既有排期一字不变，新增名场面
+        //     只往新世界加行，不会把 200 个种子的旧剧本全挪位。
+        out.addAll(rollHotStreak(WorldRandom.of(seed, "hotstreak"), gameMode,
+                downDays.get(0), rescueDay));
+
         // 5. 制裁闪崩（纪元7，目标为科技股池）
         int s = Math.min(1 + r.nextInt(2), era7.endDay() - era7.startDay() + 1);
         Set<Integer> sanctionUsed = new HashSet<>();
@@ -209,6 +230,40 @@ public class ScriptDayScheduler {
         out.sort(Comparator.comparingInt(ScriptDayInstance::gameDay)
                 .thenComparingInt(d -> d.type().ordinal()));
         return Collections.unmodifiableList(out);
+    }
+
+    /**
+     * 妖股三幕（spec §4.4）：{@code crashDay} 前 3 天钉涨停连板 → 崩盘当天集体停牌躲跌
+     * → 救市后 1~2 只一字断魂刀。停牌的那几只由既有"复牌补跌"接管（halt_until_day 到期
+     * 即 −5%~−10%），本方法只管排期与参数，不改价。
+     *
+     * <p>边界：连板日不越过第 1 天；断魂刀不越过收官日，且同一天同类型只排一行
+     * （{@code user_script_day} 对 (user_id, game_day, script_type) 有唯一键）。
+     */
+    private static List<ScriptDayInstance> rollHotStreak(Random r, GameMode mode, int crashDay, int rescueDay) {
+        List<ScriptDayInstance> out = new ArrayList<>();
+        List<Long> pool = new ArrayList<>(HOT_STOCK_IDS);
+        Collections.shuffle(pool, r);
+        List<Long> hot = List.copyOf(pool.subList(0, Math.min(2 + r.nextInt(2), pool.size())));
+        Map<String, Object> streakParams = params("stockIds", hot);
+
+        for (int day = Math.max(1, crashDay - HOT_STREAK_DAYS); day < crashDay; day++) {
+            out.add(new ScriptDayInstance(day, ScriptType.HOT_STREAK, streakParams));
+        }
+        out.add(new ScriptDayInstance(crashDay, ScriptType.HALT_SWARM,
+                params("stockIds", hot, "haltDays", 2 + r.nextInt(2))));
+
+        int dao = 1 + r.nextInt(2);
+        Set<Integer> daoDays = new HashSet<>();
+        for (int i = 0; i < dao; i++) {
+            int day = rescueDay + 2 + i;
+            if (day > mode.totalDays() || !daoDays.add(day)) {
+                continue;
+            }
+            out.add(new ScriptDayInstance(day, ScriptType.HUN_DAO,
+                    params("targetStockId", hot.get(r.nextInt(hot.size())))));
+        }
+        return out;
     }
 
     /** 在 [lo, hi] 内掷一天，命中已用日期则重掷（确定性），最终登记并返回。 */

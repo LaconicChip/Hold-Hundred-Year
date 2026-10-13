@@ -93,12 +93,15 @@ export const SRC_FILTERS = [
 
 // ============================================================
 // 呈现通道（spec §12.1 消息中心之外，重要消息要"当面"告诉玩家）
+//   MODAL  模态弹窗：后端 type=ALERT（追保/强平/爆仓/高利贷到期强卖与逾期/停牌潮），
+//          必须玩家亲手点掉，期间服务端暂停这一份世界的推进
 //   BANNER 头条大弹幕：横贯屏幕的粗体大字，慢速飘过，pointer-events:none，绝不打断操作
 //   POPUP  浮层提醒：右下角堆叠卡片，6 秒自动收起，可点进消息中心
 //   FEED   普通消息：只在消息中心排队，不打扰
-// 判定只看 source/type/title，后端不改协议，REST 列表与 WS 推送共用同一套规则。
+// MODAL 只认后端 type=ALERT：重要性分级由服务端判（NotifyPublisher.alert 是唯一出口）。
+// 前端不靠标题猜重要性——历史上这里抄过一份关键词表，后端改个标题就悄悄降级一整类消息。
 // ============================================================
-export const CHANNEL = { BANNER: 'banner', POPUP: 'popup', FEED: 'feed' }
+export const CHANNEL = { MODAL: 'modal', BANNER: 'banner', POPUP: 'popup', FEED: 'feed' }
 
 // 市场级大事：值得全屏通报一次
 const BANNER_HINTS = ['千股跌停', '千股涨停', '熔断', '救市', '崩盘', '制裁', '黑7月', '强制平仓', '停牌核查']
@@ -107,6 +110,7 @@ const POPUP_SOURCES = ['SYSTEM', 'INSIDER']
 
 export function channelOf(m) {
   if (!m) return CHANNEL.FEED
+  if (m.type === 'ALERT') return CHANNEL.MODAL
   const source = m.source || ''
   const title = m.title || ''
   const body = m.content || ''

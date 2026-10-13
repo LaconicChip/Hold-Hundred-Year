@@ -48,16 +48,18 @@
     <button
       class="collapse-btn"
       :title="collapsed ? '展开菜单' : '收起菜单'"
-      @click="collapsed = !collapsed"
+      @click="toggleCollapsed"
     >
       <SvgIcon :name="collapsed ? 'chevron-right' : 'chevron-left'" />
     </button>
 
     <main class="main">
       <router-view />
-    <!-- 全站"当面提醒"层：头条大弹幕 + 右下角浮层，均不阻塞操作（spec §12.1） -->
+    <!-- 全站"当面提醒"层（spec §12.1 消息分级）：ALERT 模态窗在最上层（阻塞 + 暂停行情），
+         头条大弹幕与右下角浮层都不阻塞操作 -->
     <HeadlineDanmu />
     <NoticePopup />
+    <AlertModal />
     </main>
   </div>
 </template>
@@ -68,23 +70,35 @@ import { useRoute, useRouter } from 'vue-router'
 import SvgIcon from './SvgIcon.vue'
 import HeadlineDanmu from './HeadlineDanmu.vue'
 import NoticePopup from './NoticePopup.vue'
+import AlertModal from './AlertModal.vue'
 import TierBadge from './TierBadge.vue'
 import bullImg from '@/assets/img/bull.png'
 import { useMarketStore } from '@/stores/market'
 import { useMessagesStore } from '@/stores/messages'
+import { useQuotesStore } from '@/stores/quotes'
 import { useUserStore } from '@/stores/user'
+import { fetchStockList } from '@/api/stocks'
+import { resumeMarket } from '@/api/market'
 
 const route = useRoute()
 const router = useRouter()
 const market = useMarketStore()
 const messages = useMessagesStore()
 const user = useUserStore()
+const quotes = useQuotesStore()
 
-// 折叠态：<1280px 自动收窄为图标栏
-const collapsed = ref(false)
-const COLLAPSE_AT = 1280
+// 折叠态：默认展开。只有窗口真的很窄（<900px，此时侧栏会挤掉内容区）才自动收窄；
+// 用户手动点过折叠按钮就记住他的选择，此后不再被窗口宽度改回去。
+const MENU_KEY = 'hold-year-menu-collapsed'
+const COLLAPSE_AT = 900
+const collapsed = ref(localStorage.getItem(MENU_KEY) === '1')
 function syncCollapsed() {
+  if (localStorage.getItem(MENU_KEY) !== null) return
   collapsed.value = window.innerWidth < COLLAPSE_AT
+}
+function toggleCollapsed() {
+  collapsed.value = !collapsed.value
+  localStorage.setItem(MENU_KEY, collapsed.value ? '1' : '0')
 }
 
 // 个股：记住最近看过的股票，菜单项回到它
@@ -140,6 +154,30 @@ function isActive(item) {
   }
 }
 
+// 当日口径的封板/停牌/涨跌停价只在 REST 里，WS 不推。交易日一变就清掉旧值并重拉，
+// 否则会出现"新的一天已经跌停了、行情表还挂着昨天涨停封板"的错位（切页面才恢复）。
+let lastDay = 0
+watch(
+  () => market.currentDay,
+  (day) => {
+    if (!day || day === lastDay) {
+      lastDay = day
+      return
+    }
+    lastDay = day
+    quotes.invalidateDayFlags()
+    refreshStocks()
+  }
+)
+
+async function refreshStocks() {
+  try {
+    quotes.applyStockList(await fetchStockList())
+  } catch {
+    // 拉不到就保持现状：后端不可达的提示由 http 层统一弹，这里不重复刷屏
+  }
+}
+
 function onLogout() {
   user.logout()
   router.push('/login')
@@ -152,6 +190,8 @@ onMounted(() => {
   if (!market.currentDay) market.fetchState()
   // 铃铛角标：连接建立之前落库的未读不会推送过来，这里补拉一次（不播报）
   messages.syncUnread()
+  // 安全阀：上一次会话留下的暂停标记不该把新世界一直冻住——页面刚打开时没有弹窗在等玩家
+  if (!messages.modals.length) resumeMarket().catch(() => {})
 })
 onUnmounted(() => {
   window.removeEventListener('resize', syncCollapsed)

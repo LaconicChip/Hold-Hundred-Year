@@ -144,6 +144,29 @@ export const useQuotesStore = defineStore('quotes', {
         }
       })
       this.rows = next
+    },
+
+    /**
+     * 跨日失效（bug 修复）：开高低 / 涨跌停价 / 连板 / 停牌 / ST / 封板都是【当日口径】，
+     * 只来自 REST GET /api/stocks（WS 快照只有 current 与 changePct）。新的一天已经开始、
+     * REST 还没重拉时，留着昨天的值就会画成"跌停 -20% 却还挂着涨停封板红底"的错位。
+     * 所以日期一变先把它们清空（页面按"—"展示），等重拉回来再填。
+     */
+    invalidateDayFlags() {
+      for (const id of Object.keys(this.rows)) {
+        this.rows[id] = {
+          ...this.rows[id],
+          open: null,
+          high: null,
+          low: null,
+          limitUp: null,
+          limitDown: null,
+          limitUpStreak: 0,
+          halted: false,
+          st: false,
+          sealed: 'NONE'
+        }
+      }
     }
   }
 })

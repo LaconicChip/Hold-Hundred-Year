@@ -34,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
@@ -41,6 +42,7 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -376,11 +378,14 @@ class MarketStateServiceTest {
 
         QuoteBoard board = startDayAt(userId, script.getGameDay());
 
-        int expectedSealed = (int) Math.round(board.getQuotes().size() * sealRatio);
+        // 首个跌停日与"停牌潮"同日：那几只连板股在钉板前就被冻住，跌停板只能钉在还能交易的
+        // 那批上——取"比例×总数"与"可交易数"两者的小值（这就是"停牌躲过股灾"的字面意思）
+        int tradable = (int) board.getQuotes().values().stream().filter(q -> !q.isHalted()).count();
+        int expectedSealed = Math.min((int) Math.round(board.getQuotes().size() * sealRatio), tradable);
         List<Quote> sealed = board.getQuotes().values().stream()
                 .filter(q -> q.getSealed() == SealState.DOWN)
                 .collect(Collectors.toList());
-        assertEquals(expectedSealed, sealed.size(), "sealRatio=" + sealRatio);
+        assertEquals(expectedSealed, sealed.size(), "sealRatio=" + sealRatio + " tradable=" + tradable);
         for (Quote q : sealed) {
             assertEquals(q.limitDownPrice(), q.getCurrent(), 1e-9, "stock " + q.getStockId());
             assertEquals(GameConstants.TOTAL_TICKS, q.getSealTicksLeft(), "stock " + q.getStockId());
@@ -487,6 +492,80 @@ class MarketStateServiceTest {
                 assertEquals(SealState.NONE, q.getSealed(), "non-target stock " + q.getStockId());
             }
         }
+    }
+
+    /**
+     * 妖股三幕·第一幕（spec §4.4 连板日）：名单里的票全部钉在涨停价。
+     * 若它们已被别的剧本冻住（停牌中价格不动），那就跳过——连板不能覆盖停牌。
+     */
+    @Test
+    void startDayOnHotStreakDayPinsTheNamedStocksLimitUp() {
+        long userId = worldSeeder.seedUser("mkt_streak1", "$2a$10$bcrypthash");
+        UserScriptDay streak = firstScriptDay(userId, ScriptType.HOT_STREAK);
+        List<Long> hot = stockIdsOf(streak);
+
+        QuoteBoard board = startDayAt(userId, streak.getGameDay());
+
+        for (Long stockId : hot) {
+            Quote quote = board.quote(stockId);
+            if (quote.isHalted()) {
+                continue;
+            }
+            assertEquals(SealState.UP, quote.getSealed(), "hot stock " + stockId + " must open sealed up");
+            assertEquals(quote.limitUpPrice(), quote.getCurrent(), 1e-9,
+                    "a 连板 stock must sit exactly on its limit-up price");
+        }
+    }
+
+    /**
+     * 妖股三幕·第二幕（停牌潮）：股灾当天名单里的票被集体冻住，而且不能被同日的
+     * "千股跌停"一起钉成跌停板——前置阶段的顺序就是这里守的。同时必须发通知，
+     * 否则玩家次日点进去只会以为系统坏了。
+     */
+    @Test
+    void startDayOnHaltSwarmDayFreezesHotStocksInsteadOfSealingThemDown() {
+        long userId = worldSeeder.seedUser("mkt_swarm1", "$2a$10$bcrypthash");
+        UserScriptDay swarm = firstScriptDay(userId, ScriptType.HALT_SWARM);
+        int haltDays = MAPPER.readTree(swarm.getParamsJson()).get("haltDays").asInt();
+        List<Long> hot = stockIdsOf(swarm);
+
+        QuoteBoard board = startDayAt(userId, swarm.getGameDay());
+
+        for (Long stockId : hot) {
+            Quote quote = board.quote(stockId);
+            assertTrue(quote.isHalted(), "hot stock " + stockId + " must be halted on the crash day");
+            assertNotEquals(SealState.DOWN, quote.getSealed(),
+                    "the swarm must be frozen BEFORE the market-wide limit-down seal, not pinned with it");
+            assertEquals(swarm.getGameDay() + haltDays, stockState(userId, stockId).getHaltUntilDay(),
+                    "halt_until_day must come from the script, not from the 三连板 default");
+        }
+        assertTrue(messages(userId).stream().anyMatch(m -> m.getTitle().contains("停牌潮")),
+                "the swarm has to be announced, or the player cannot tell why these stocks are untradeable");
+    }
+
+    /** 妖股三幕·第三幕（一字断魂刀）：目标股开盘即跌停、全天封死，并有一条台词。 */
+    @Test
+    void startDayOnHunDaoDayPinsTheTargetAtLimitDownAndNotifies() {
+        long userId = worldSeeder.seedUser("mkt_dao1", "$2a$10$bcrypthash");
+        UserScriptDay dao = firstScriptDay(userId, ScriptType.HUN_DAO);
+        long target = MAPPER.readTree(dao.getParamsJson()).get("targetStockId").asLong();
+
+        QuoteBoard board = startDayAt(userId, dao.getGameDay());
+
+        Quote quote = board.quote(target);
+        if (!quote.isHalted()) {
+            assertEquals(SealState.DOWN, quote.getSealed(), "the knife stock must open at its limit-down price");
+            assertEquals(quote.limitDownPrice(), quote.getCurrent(), 1e-9);
+        }
+        assertTrue(messages(userId).stream().anyMatch(m -> m.getTitle().contains("一字断魂刀")),
+                "the knife must be announced, it is the payoff of the whole three-act setup");
+    }
+
+    /** 剧本参数里的 stockIds（名单三幕共用一份）。 */
+    private static List<Long> stockIdsOf(UserScriptDay scriptDay) {
+        List<Long> ids = new ArrayList<>();
+        MAPPER.readTree(scriptDay.getParamsJson()).path("stockIds").forEach(node -> ids.add(node.asLong()));
+        return ids;
     }
 
     @Test

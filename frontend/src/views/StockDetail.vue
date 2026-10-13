@@ -229,7 +229,8 @@ const tab = ref('intraday')
 const kline = ref([])
 async function loadKline() {
   try {
-    kline.value = await fetchStockKline(stockId.value, 60)
+    // 一次要满整局 + 开局前历史（标准 72+10、快速 36+10），服务端按档案夹逼
+    kline.value = await fetchStockKline(stockId.value, 90)
   } catch {
     kline.value = []
   }
@@ -285,6 +286,10 @@ onMounted(async () => {
   market.fetchState().catch(() => {})
   statePoll = setInterval(() => {
     market.fetchState().catch(() => {})
+    // 封板/停牌/连板/ST 只在 REST 全量行情里（WS 快照不下发），2 秒随状态一起校正
+    fetchStockList()
+      .then((list) => quotes.applyStockList(list))
+      .catch(() => {})
   }, 2000)
   await loadChartData()
   intradayPoll = setInterval(() => {

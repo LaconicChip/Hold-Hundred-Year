@@ -30,6 +30,7 @@ export const useMessagesStore = defineStore('messages', {
     notifications: [], // 轻量通知对象（字段不定）
     banners: [], // 头条大弹幕队列（新消息按通道入队，播一条移一条）
     popups: [], // 右下角浮层队列（最多 3 条，组件侧定时收起）
+    modals: [], // 模态弹窗队列（后端 type=ALERT：不点掉不消失，且期间这一份世界冻住）
   }),
 
   getters: {
@@ -113,6 +114,17 @@ export const useMessagesStore = defineStore('messages', {
     present(m) {
       const channel = channelOf(m)
       if (channel === CHANNEL.FEED) return
+      if (channel === CHANNEL.MODAL) {
+        // 要紧事一条一条摆，全看完才恢复行情（暂停/恢复由 AlertModal 成对处理）
+        this.modals.push({
+          id: m.id,
+          title: m.title || '要紧事',
+          text: m.content || '',
+          stockId: m.stockId != null ? m.stockId : null,
+          tone: toneOf((m.title || '') + (m.content || ''))
+        })
+        return
+      }
       const item = {
         id: m.id,
         title: m.title || '消息',
@@ -139,6 +151,11 @@ export const useMessagesStore = defineStore('messages', {
     // 浮层收起（超时或玩家点掉）
     dismissPopup(id) {
       this.popups = this.popups.filter((p) => p.id !== id)
+    },
+
+    /** 模态弹窗：玩家亲手点掉一条才移下一条（队列空了才恢复行情）。 */
+    shiftModal() {
+      this.modals.shift()
     },
 
     // 弹幕入列：容错解析“股吧ID：内容”格式

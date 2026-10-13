@@ -37,16 +37,24 @@ class ScriptDaySchedulerTest {
     /** 名场面日：能把玩家从随机游走里拽出来的那些天（打新是机制，不算名场面）。 */
     private static final Set<ScriptType> SET_PIECES = Set.of(ScriptType.CIRCUIT_BREAKER,
             ScriptType.LIMIT_DOWN_ALL, ScriptType.RESCUE, ScriptType.LIMIT_UP_ALL,
-            ScriptType.SANCTION, ScriptType.CRASH_WEEK);
+            ScriptType.SANCTION, ScriptType.CRASH_WEEK,
+            ScriptType.HOT_STREAK, ScriptType.HALT_SWARM, ScriptType.HUN_DAO);
+
+    /** 高 β 妖股池（与 ScriptDayScheduler 的口径一致，按 StockDefs 派生）。 */
+    private static final Set<Long> HOT_POOL = StockDefs.ALL.stream()
+            .filter(s -> s.beta() >= 1.2)
+            .map(StockDefs.StockDef::id)
+            .collect(Collectors.toUnmodifiableSet());
 
     private final EraScheduler eraScheduler = new EraScheduler();
     private final ScriptDayScheduler scheduler = new ScriptDayScheduler();
 
     @Test
     void scriptTypeValuesAndDisplayNamesMatchSpecExactly() {
-        String[] expectedNames = {"千股涨停", "千股跌停", "救市日", "熔断日", "制裁闪崩", "黑7月崩盘", "新股申购"};
+        String[] expectedNames = {"千股涨停", "千股跌停", "救市日", "熔断日", "制裁闪崩", "黑7月崩盘",
+                "妖股连板", "停牌潮", "一字断魂刀", "新股申购"};
         ScriptType[] types = ScriptType.values();
-        assertEquals(7, types.length);
+        assertEquals(10, types.length);
         for (int i = 0; i < types.length; i++) {
             assertEquals(expectedNames[i], types[i].getName(), "display name of " + types[i]);
         }
@@ -56,7 +64,74 @@ class ScriptDaySchedulerTest {
         assertEquals("CIRCUIT_BREAKER", types[3].name());
         assertEquals("SANCTION", types[4].name());
         assertEquals("CRASH_WEEK", types[5].name());
-        assertEquals("IPO", types[6].name());
+        assertEquals("HOT_STREAK", types[6].name());
+        assertEquals("HALT_SWARM", types[7].name());
+        assertEquals("HUN_DAO", types[8].name());
+        // 打新是机制不是名场面，留在最后：同一天既有名场面又有申购时，展示顺序不能变
+        assertEquals("IPO", types[9].name());
+    }
+
+    /**
+     * 妖股三幕（spec §4.4）：股灾首日之前 3 天连板、崩盘当天集体停牌、救市后 1~2 天断魂刀。
+     * 名单前后一致、都取自高 β 池、日期不许越界到第 1 天之前或收官日之后。
+     */
+    @Test
+    void hotStreakStopsOnCrashDayAndHaltsTheSameStocks() {
+        for (GameMode mode : GameMode.values()) {
+            for (long seed = 1; seed <= MAX_SEED; seed++) {
+                List<ScriptDayInstance> days = scheduler.roll(seed, eraScheduler.roll(seed, mode), mode);
+                int crashDay = ofType(days, ScriptType.LIMIT_DOWN_ALL).get(0).gameDay();
+                List<ScriptDayInstance> streaks = ofType(days, ScriptType.HOT_STREAK);
+                ScriptDayInstance swarm = ofType(days, ScriptType.HALT_SWARM).get(0);
+
+                assertEquals(1, ofType(days, ScriptType.HALT_SWARM).size(),
+                        "mode " + mode + " seed " + seed + " one halt swarm per run");
+                assertEquals(crashDay, swarm.gameDay(), "mode " + mode + " seed " + seed
+                        + " the halt swarm must land exactly on the first limit-down day");
+                assertEquals(3, streaks.size(), "mode " + mode + " seed " + seed + " streak days");
+                for (ScriptDayInstance streak : streaks) {
+                    assertTrue(streak.gameDay() >= 1 && streak.gameDay() < crashDay,
+                            "mode " + mode + " seed " + seed + " streak day " + streak.gameDay()
+                                    + " must precede the crash day " + crashDay);
+                    assertEquals(hotIds(swarm), hotIds(streak),
+                            "mode " + mode + " seed " + seed + " streak and swarm must name the same stocks");
+                }
+                assertTrue(hotIds(swarm).size() >= 2 && hotIds(swarm).size() <= 3,
+                        "mode " + mode + " seed " + seed + " hot swarm size " + hotIds(swarm).size());
+                assertTrue(HOT_POOL.containsAll(hotIds(swarm)),
+                        "mode " + mode + " seed " + seed + " hot stocks must come from the high-beta pool");
+                assertTrue(MAPPER.readTree(swarm.paramsJson()).get("haltDays").asInt() >= 2,
+                        "mode " + mode + " seed " + seed + " a 2-day halt is the minimum that reads as 躲股灾");
+
+                for (ScriptDayInstance dao : ofType(days, ScriptType.HUN_DAO)) {
+                    int rescue = ofType(days, ScriptType.RESCUE).get(0).gameDay();
+                    assertTrue(dao.gameDay() >= rescue + 2 && dao.gameDay() <= mode.totalDays(),
+                            "mode " + mode + " seed " + seed + " 断魂刀 day " + dao.gameDay()
+                                    + " must fall after the rescue and inside the run");
+                    assertTrue(hotIds(swarm).contains(MAPPER.readTree(dao.paramsJson())
+                                    .get("targetStockId").asLong()),
+                            "mode " + mode + " seed " + seed + " the knife must cut one of the hot stocks");
+                }
+                assertTrue(ofType(days, ScriptType.HUN_DAO).size() >= 1,
+                        "mode " + mode + " seed " + seed + " every run needs its 断魂刀");
+            }
+        }
+    }
+
+    /** 三幕掷骰与主流程同 seed 可复现。 */
+    @Test
+    void hotStreakIsReproducibleForTheSameSeed() {
+        for (long seed = 1; seed <= 40; seed++) {
+            List<ScriptDayInstance> eras = scheduler.roll(seed, eraScheduler.roll(seed));
+            List<ScriptDayInstance> again = scheduler.roll(seed, eraScheduler.roll(seed));
+            assertEquals(eras, again, "seed " + seed + " hot-streak rows must be reproducible");
+        }
+    }
+
+    private static List<Long> hotIds(ScriptDayInstance day) {
+        List<Long> ids = new java.util.ArrayList<>();
+        MAPPER.readTree(day.paramsJson()).path("stockIds").forEach(node -> ids.add(node.asLong()));
+        return ids;
     }
 
     @Test

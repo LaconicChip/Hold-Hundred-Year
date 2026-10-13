@@ -51,6 +51,27 @@ class MarketControllerTest {
         assertEquals(ErrorCode.UNAUTHORIZED.getCode(), body.path("code").asInt(), "UNAUTHORIZED, body=" + body);
     }
 
+    /** 暂停/恢复：只动内存标记，可重复调用；未认证一律 401（不能让外人冻住别人的世界）。 */
+    @Test
+    void pauseAndResumeRequireAuthAndAreIdempotent() throws Exception {
+        JsonNode anonymous = json(mockMvc.perform(post("/api/market/pause"))
+                .andExpect(status().isUnauthorized()));
+        assertEquals(ErrorCode.UNAUTHORIZED.getCode(), anonymous.path("code").asInt(),
+                "pause must require auth, body=" + anonymous);
+
+        String token = registerAndLogin("pause");
+        for (int attempt = 0; attempt < 2; attempt++) {
+            assertEquals(0, json(mockMvc.perform(post("/api/market/pause")
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk())).path("code").asInt(),
+                    "pause must succeed on every call, attempt " + attempt);
+            assertEquals(0, json(mockMvc.perform(post("/api/market/resume")
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk())).path("code").asInt(),
+                    "resume must succeed on every call, attempt " + attempt);
+        }
+    }
+
     @Test
     void stateReturnsAggregatedMarketState() throws Exception {
         String token = registerAndLogin("mk_state1");

@@ -13,10 +13,10 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * 事件骨架池（Phase 8.1，spec §8.1）：75 条骨架分三池——
- * 池① fund- 前缀 35 条个股公告/报道（STOCK），池② policy- 前缀 20 条宏观与板块政策
- * （MARKET 6 + SECTOR 14），池③ rumor- 前缀 20 条持股偏置的传闻/内幕（RUMOR 15 +
- * INSIDER 5）。池①②的 STOCK 骨架用 ANY_STOCK；池③全部 HOLDING_BIASED；
+ * 事件骨架池（Phase 8.1，spec §8.1）：92 条骨架分三池——
+ * 池① fund- 前缀 35 条个股公告/报道（STOCK），池② policy- 前缀 37 条宏观与板块政策
+ * （MARKET 7 + SECTOR 30，其中 17 条是 2026-10 补的真实历史名场面），池③ rumor- 前缀 20 条
+ * 持股偏置的传闻/内幕（RUMOR 15 + INSIDER 5）。池①②的 STOCK 骨架用 ANY_STOCK；池③全部 HOLDING_BIASED；
  * SECTOR/MARKET 骨架 target 填 ANY_STOCK（流程不使用）。
  *
  * <p>本文件只写"结构"：作用域、来源、纪元、权重、目标选择器、冲击模式、幅度区间。
@@ -146,6 +146,45 @@ public final class EventSkeletons {
                     2, TargetSelector.ANY_STOCK, ImpactPattern.OVERSHOOT_REVERT, -0.07, -0.03),
             sk("policy-trade-tariff", Scope.SECTOR, Source.AUTHORITY, Set.of(EraCode.TRADE_WAR),
                     1, TargetSelector.ANY_STOCK, ImpactPattern.CHAIN, -0.09, -0.04),
+            // ---- 历史名场面补充×17（spec §4.4/§7.3：真实事件化用，按板块/大盘归档）----
+            sk("policy-soe-valuation", Scope.SECTOR, Source.AUTHORITY,
+                    Set.of(EraCode.AI_BULL, EraCode.REBALANCE),
+                    2, TargetSelector.ANY_STOCK, ImpactPattern.SLOW_DRIFT, 0.04, 0.09),
+            sk("policy-double-reduction", Scope.SECTOR, Source.AUTHORITY, Set.of(EraCode.NEW_ENERGY),
+                    1, TargetSelector.ANY_STOCK, ImpactPattern.OVERSHOOT_REVERT, -0.12, -0.06),
+            sk("policy-plasticizer-liquor", Scope.SECTOR, Source.AUTHORITY,
+                    1, TargetSelector.ANY_STOCK, ImpactPattern.OVERSHOOT_REVERT, -0.09, -0.04),
+            sk("policy-scallop-migration", Scope.SECTOR, Source.AUTHORITY,
+                    1, TargetSelector.ANY_STOCK, ImpactPattern.INSTANT, -0.10, -0.05),
+            sk("policy-chip-shortage", Scope.SECTOR, Source.AUTHORITY, Set.of(EraCode.NEW_ENERGY),
+                    2, TargetSelector.ANY_STOCK, ImpactPattern.SLOW_DRIFT, 0.05, 0.12),
+            sk("policy-polysilicon-squeeze", Scope.SECTOR, Source.AUTHORITY, Set.of(EraCode.AI_BULL),
+                    1, TargetSelector.ANY_STOCK, ImpactPattern.SPIKE_FADE, 0.06, 0.12),
+            sk("policy-guzi-ip-boom", Scope.SECTOR, Source.AUTHORITY, Set.of(EraCode.REBALANCE),
+                    1, TargetSelector.ANY_STOCK, ImpactPattern.SPIKE_FADE, 0.05, 0.10),
+            sk("policy-rare-earth-control", Scope.SECTOR, Source.AUTHORITY, Set.of(EraCode.TRADE_WAR),
+                    2, TargetSelector.ANY_STOCK, ImpactPattern.INSTANT, 0.04, 0.09),
+            sk("policy-insurance-rate-cut", Scope.SECTOR, Source.AUTHORITY,
+                    Set.of(EraCode.AI_BULL, EraCode.REBALANCE),
+                    1, TargetSelector.ANY_STOCK, ImpactPattern.INSTANT, -0.07, -0.03),
+            sk("policy-appliance-trade-in", Scope.SECTOR, Source.AUTHORITY, Set.of(EraCode.REBALANCE),
+                    2, TargetSelector.ANY_STOCK, ImpactPattern.INSTANT, 0.03, 0.07),
+            sk("policy-express-price-war", Scope.SECTOR, Source.AUTHORITY, Set.of(EraCode.NEW_ENERGY),
+                    1, TargetSelector.ANY_STOCK, ImpactPattern.SLOW_DRIFT, -0.10, -0.04),
+            sk("policy-air-route-halt", Scope.SECTOR, Source.AUTHORITY, Set.of(EraCode.BLUE_CHIP),
+                    1, TargetSelector.ANY_STOCK, ImpactPattern.OVERSHOOT_REVERT, -0.11, -0.05),
+            sk("policy-ship-order-full", Scope.SECTOR, Source.AUTHORITY, Set.of(EraCode.REBALANCE),
+                    1, TargetSelector.ANY_STOCK, ImpactPattern.SLOW_DRIFT, 0.04, 0.10),
+            sk("policy-compute-voucher", Scope.SECTOR, Source.AUTHORITY, Set.of(EraCode.AI_BULL),
+                    2, TargetSelector.ANY_STOCK, ImpactPattern.SLOW_DRIFT, 0.05, 0.12),
+            sk("policy-satellite-network", Scope.SECTOR, Source.AUTHORITY, Set.of(EraCode.NEW_ENERGY),
+                    1, TargetSelector.ANY_STOCK, ImpactPattern.SPIKE_FADE, 0.05, 0.10),
+            sk("policy-broker-merger", Scope.SECTOR, Source.AUTHORITY, Set.of(EraCode.REBALANCE),
+                    2, TargetSelector.ANY_STOCK, ImpactPattern.INSTANT, 0.05, 0.10),
+            // 大盘：化用 2024 年 9 月末的政策组合拳（与 §4.4 千股涨停日同一条叙事线）
+            sk("policy-bazooka-924", Scope.MARKET, Source.AUTHORITY,
+                    Set.of(EraCode.AI_BULL, EraCode.REBALANCE),
+                    2, TargetSelector.ANY_STOCK, ImpactPattern.INSTANT, 0.03, 0.06),
             // ================= 池③ rumor- ：20 条持股偏置传闻/内幕 =================
             // ---- RUMOR×15（truthProb=0.45，全部 HOLDING_BIASED）----
             sk("rumor-restructure", Scope.STOCK, Source.RUMOR,

@@ -1,8 +1,10 @@
 package com.holdhundredyear.world;
 
 import com.holdhundredyear.game.constants.NpcDefs;
+import com.holdhundredyear.game.constants.PreHistoryDefs;
 import com.holdhundredyear.game.constants.StockDefs;
 import com.holdhundredyear.game.model.enums.GameMode;
+import com.holdhundredyear.market.entity.StockDailyBar;
 import com.holdhundredyear.market.entity.StockInfo;
 import com.holdhundredyear.market.entity.SysUser;
 import com.holdhundredyear.market.entity.UserDailySnapshot;
@@ -10,6 +12,7 @@ import com.holdhundredyear.market.entity.UserEra;
 import com.holdhundredyear.market.entity.UserGameState;
 import com.holdhundredyear.market.entity.UserScriptDay;
 import com.holdhundredyear.market.entity.UserStockState;
+import com.holdhundredyear.market.mapper.StockDailyBarMapper;
 import com.holdhundredyear.market.mapper.StockInfoMapper;
 import com.holdhundredyear.market.mapper.SysUserMapper;
 import com.holdhundredyear.market.mapper.UserDailySnapshotMapper;
@@ -32,6 +35,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -58,6 +62,9 @@ class WorldSeederTest {
 
     @Autowired
     private StockInfoMapper stockInfoMapper;
+
+    @Autowired
+    private StockDailyBarMapper stockDailyBarMapper;
 
     @Autowired
     private UserStockStateMapper userStockStateMapper;
@@ -137,6 +144,56 @@ class WorldSeederTest {
         UserStockState stock1 = states.stream()
                 .filter(s -> s.getStockId() == 1L).findFirst().orElseThrow();
         assertEquals(0, new BigDecimal("168.00").compareTo(stock1.getCurrentPrice()), "stock 1 price");
+    }
+
+    /**
+     * 开局前的 10 根日K：每股都有、日期连续到 day 0、最新一根收盘正好是发行价——
+     * 这样第 1 天的日K接得上，图上不会出现"开盘前凭空少一截"的断点。
+     */
+    @Test
+    void seedUserSeedsPreHistoryBarsEndingAtBasePrice() {
+        long userId = worldSeeder.seedUser("seeder_prehistory", "$2a$10$bcrypthash");
+        List<StockDailyBar> bars = stockDailyBarMapper.selectList(new LambdaQueryWrapper<StockDailyBar>()
+                .eq(StockDailyBar::getUserId, userId)
+                .eq(StockDailyBar::getStockId, 1L)
+                .orderByAsc(StockDailyBar::getGameDay));
+
+        assertEquals(PreHistoryDefs.BARS, bars.size(), "pre-history bars must arrive with the world");
+        assertEquals(1 - PreHistoryDefs.BARS, bars.get(0).getGameDay(), "oldest bar");
+        assertEquals(0, bars.get(bars.size() - 1).getGameDay(), "the newest bar is day 0, right before day 1");
+        assertEquals(0, new BigDecimal("168.00").compareTo(bars.get(bars.size() - 1).getClose()),
+                "day 0 close must be base price, or the K-line breaks at market open");
+        for (StockDailyBar bar : bars) {
+            assertTrue(bar.getHigh().compareTo(bar.getLow()) >= 0, "high >= low");
+            assertTrue(bar.getHigh().compareTo(bar.getOpen()) >= 0 && bar.getHigh().compareTo(bar.getClose()) >= 0,
+                    "high must contain the body");
+            assertTrue(bar.getLow().compareTo(bar.getOpen()) <= 0 && bar.getLow().compareTo(bar.getClose()) <= 0,
+                    "low must contain the body");
+            assertTrue(Math.abs(bar.getChangePct()) <= GameMode.STANDARD.getLimitPct() + 1e-9,
+                    "a pre-history day must not move further than the daily limit, got " + bar.getChangePct());
+        }
+        assertEquals(24L * PreHistoryDefs.BARS, stockDailyBarMapper.selectCount(
+                        new LambdaQueryWrapper<StockDailyBar>().eq(StockDailyBar::getUserId, userId)),
+                "every one of the 24 stocks gets a pre-history");
+    }
+
+    /** 前史由 worldSeed 决定：同 seed 同形状，不同 seed 换形状（可复现协议 P6）。 */
+    @Test
+    void preHistoryBarsAreDeterministic() {
+        StockDefs.StockDef def = StockDefs.byId(2L);
+        List<StockDailyBar> first = WorldSeeder.buildPreHistoryBars(424242L, def, GameMode.STANDARD);
+        List<StockDailyBar> second = WorldSeeder.buildPreHistoryBars(424242L, def, GameMode.STANDARD);
+        assertEquals(shape(first), shape(second), "same seed must produce the same pre-history");
+        assertNotEquals(shape(first), shape(WorldSeeder.buildPreHistoryBars(1313L, def, GameMode.STANDARD)),
+                "a different seed must produce a different pre-history");
+        for (StockDailyBar bar : WorldSeeder.buildPreHistoryBars(7L, def, GameMode.QUICK)) {
+            assertTrue(bar.getClose().signum() > 0, "quick-mode prices must stay positive");
+        }
+    }
+
+    private static String shape(List<StockDailyBar> bars) {
+        return bars.stream().map(b -> b.getGameDay() + ":" + b.getOpen() + "/" + b.getHigh()
+                + "/" + b.getLow() + "/" + b.getClose()).collect(Collectors.joining(","));
     }
 
     @Test

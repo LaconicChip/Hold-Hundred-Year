@@ -45,6 +45,23 @@ class NotifyPublisherTest {
         assertEquals(12, saved.getGameDay(), "game day");
     }
 
+    /**
+     * 最高一档提醒落 type=ALERT：前端按 type 决定"模态弹窗 + 暂停行情"，所以这个字段就是
+     * 分级的唯一载体，不能被 system 的惯例带跑。
+     */
+    @Test
+    void alertIsTheCriticalTier() {
+        MessageService messages = mock(MessageService.class);
+        new NotifyPublisher(messages).alert(7L, 12, "追保通知", "维持担保比例已低于 140%", null);
+
+        UserMessage saved = capture(messages);
+        assertEquals("ALERT", saved.getType(), "critical notices must carry the alert type");
+        assertEquals("SYSTEM", saved.getSource(), "still a system message for the source chip");
+        assertEquals(7L, saved.getUserId(), "user id");
+        assertEquals(12, saved.getGameDay(), "game day");
+        assertFalse(saved.getIsRead(), "alerts start unread");
+    }
+
     /** 取交给 MessageService.publish 的那条消息（publish 返回入参，所以直接透传 mock 返回值）。 */
     private static UserMessage capture(MessageService messages) {
         ArgumentCaptor<UserMessage> captor = ArgumentCaptor.forClass(UserMessage.class);

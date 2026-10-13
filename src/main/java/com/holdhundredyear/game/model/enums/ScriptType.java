@@ -14,6 +14,9 @@ public enum ScriptType {
     CIRCUIT_BREAKER("熔断日"),
     SANCTION("制裁闪崩"),
     CRASH_WEEK("黑7月崩盘"),
+    HOT_STREAK("妖股连板"),
+    HALT_SWARM("停牌潮"),
+    HUN_DAO("一字断魂刀"),
     IPO("新股申购");
 
     private final String name;

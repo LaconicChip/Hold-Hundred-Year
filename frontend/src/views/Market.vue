@@ -93,9 +93,13 @@ onMounted(async () => {
   } catch {
     // 消息拉取失败不阻塞大盘
   }
-  // 盘中轮询：每 2s 校正状态与倒计时（WS 只推行情不推状态，这里兜住阶段/跳号变化）
+  // 盘中轮询：每 2s 校正状态与倒计时（WS 只推行情不推状态，这里兜住阶段/跳号变化），
+  // 顺带校正封板/停牌/涨跌停价——这些当日口径同样只在 REST 里，盘中会随时变化
   pollTimer = setInterval(() => {
     market.fetchState().catch(() => {})
+    fetchStockList()
+      .then((list) => quotes.applyStockList(list))
+      .catch(() => {})
   }, 2000)
 })
 onUnmounted(() => {

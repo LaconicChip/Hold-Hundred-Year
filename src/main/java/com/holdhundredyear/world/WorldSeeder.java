@@ -3,7 +3,9 @@ package com.holdhundredyear.world;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhundredyear.game.constants.NpcDefs;
 import com.holdhundredyear.game.model.enums.GameMode;
+import com.holdhundredyear.game.constants.PreHistoryDefs;
 import com.holdhundredyear.game.constants.StockDefs;
+import com.holdhundredyear.market.entity.StockDailyBar;
 import com.holdhundredyear.market.entity.StockInfo;
 import com.holdhundredyear.market.entity.SysUser;
 import com.holdhundredyear.market.entity.UserDailySnapshot;
@@ -11,6 +13,7 @@ import com.holdhundredyear.market.entity.UserEra;
 import com.holdhundredyear.market.entity.UserGameState;
 import com.holdhundredyear.market.entity.UserScriptDay;
 import com.holdhundredyear.market.entity.UserStockState;
+import com.holdhundredyear.market.mapper.StockDailyBarMapper;
 import com.holdhundredyear.market.mapper.StockInfoMapper;
 import com.holdhundredyear.market.mapper.SysUserMapper;
 import com.holdhundredyear.market.mapper.UserDailySnapshotMapper;
@@ -23,10 +26,12 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -45,6 +50,7 @@ public class WorldSeeder {
     private final UserEraMapper userEraMapper;
     private final UserScriptDayMapper userScriptDayMapper;
     private final UserDailySnapshotMapper userDailySnapshotMapper;
+    private final StockDailyBarMapper stockDailyBarMapper;
 
     public WorldSeeder(SysUserMapper sysUserMapper,
                        UserGameStateMapper userGameStateMapper,
@@ -52,7 +58,8 @@ public class WorldSeeder {
                        UserStockStateMapper userStockStateMapper,
                        UserEraMapper userEraMapper,
                        UserScriptDayMapper userScriptDayMapper,
-                       UserDailySnapshotMapper userDailySnapshotMapper) {
+                       UserDailySnapshotMapper userDailySnapshotMapper,
+                       StockDailyBarMapper stockDailyBarMapper) {
         this.sysUserMapper = sysUserMapper;
         this.userGameStateMapper = userGameStateMapper;
         this.stockInfoMapper = stockInfoMapper;
@@ -60,6 +67,7 @@ public class WorldSeeder {
         this.userEraMapper = userEraMapper;
         this.userScriptDayMapper = userScriptDayMapper;
         this.userDailySnapshotMapper = userDailySnapshotMapper;
+        this.stockDailyBarMapper = stockDailyBarMapper;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -135,6 +143,16 @@ public class WorldSeeder {
             userStockStateMapper.insert(stockState);
         }
 
+        // 开局前的 10 根日K（game_day 0..-9，纯展示）：第 1 天点开个股页就有历史可看，
+        // 也让日K图交代清"这只票开局前被怎么对待"。走势档案见 PreHistoryDefs。
+        GameMode preHistoryMode = modeOf(userId);
+        for (StockDefs.StockDef def : StockDefs.ALL) {
+            for (StockDailyBar bar : buildPreHistoryBars(worldSeed, def, preHistoryMode)) {
+                bar.setUserId(userId);
+                stockDailyBarMapper.insert(bar);
+            }
+        }
+
         // 排期按本局模式掷：快速模式纪元密度翻倍，但 11 个纪元仍按序全覆盖
         List<EraScheduler.EraInstance> eras = new EraScheduler().roll(worldSeed, modeOf(userId));
         for (EraScheduler.EraInstance era : eras) {
@@ -171,7 +189,65 @@ public class WorldSeeder {
         userDailySnapshotMapper.insert(snapshot);
     }
 
+    /**
+     * 一只票的开局前日K（{@link PreHistoryDefs#BARS} 根，game_day 0..-9）。
+     *
+     * <p>先按板块档案掷出逐日收益铺一段价格路径，再整体缩放，让最新一根（day 0）的收盘价
+     * 正好等于发行价——日K图上"开盘前"与"第 1 天"之间因此没有断点，第 1 天的涨跌幅照旧拿
+     * 发行价当昨收。单日收益夹在本局涨跌停幅度内：前史也得像个股，不能出现 -30% 的假单日。
+     *
+     * <p>掷骰用独立 salt（{@code "prehistory" + stockId}），与行情/事件/剧本序列互不消费，
+     * 同 seed 必得同前史。包内可见是为了单测能直接断言形状与边界。
+     */
+    static List<StockDailyBar> buildPreHistoryBars(long worldSeed, StockDefs.StockDef def, GameMode mode) {
+        PreHistoryDefs.Profile profile = PreHistoryDefs.of(def.sector());
+        Random rng = WorldRandom.of(worldSeed, "prehistory" + def.id());
+        double limit = mode.getLimitPct();
+        int bars = PreHistoryDefs.BARS;
+
+        // 1) 掷 bars 个日收益，铺出 bars+1 个收盘价（closes[0] 是最老的一天）
+        double[] closes = new double[bars + 1];
+        closes[0] = 1.0;
+        for (int i = 1; i <= bars; i++) {
+            double ret = profile.dailyDrift() + profile.dailyVol() * rng.nextGaussian();
+            closes[i] = closes[i - 1] * (1 + Math.max(-limit, Math.min(limit, ret)));
+        }
+        // 2) 整体缩放到"最新一根收盘 = 发行价"，与本局昨收完全衔接
+        double scale = def.basePrice() / closes[bars];
+
+        List<StockDailyBar> out = new ArrayList<>(bars);
+        for (int i = 1; i <= bars; i++) {
+            double prevClose = round2(closes[i - 1] * scale);
+            double close = round2(closes[i] * scale);
+            double open = round2(Math.max(0.01, prevClose * (1 + (rng.nextDouble() - 0.5) * profile.dailyVol())));
+            double bodyHigh = Math.max(open, close);
+            double bodyLow = Math.min(open, close);
+            // 上下影线夹在涨跌停价与实体之间：high 必 >= 实体上沿、low 必 <= 实体下沿
+            double high = Math.max(Math.min(round2(prevClose * (1 + limit)),
+                    round2(bodyHigh * (1 + rng.nextDouble() * profile.dailyVol() * 0.5))), bodyHigh);
+            double low = Math.min(Math.max(round2(prevClose * (1 - limit)),
+                    round2(bodyLow * (1 - rng.nextDouble() * profile.dailyVol() * 0.5))), bodyLow);
+
+            StockDailyBar bar = new StockDailyBar();
+            bar.setStockId(def.id());
+            bar.setGameDay(i - bars); // 1 → -9 …… bars → 0
+            bar.setOpen(BigDecimal.valueOf(open));
+            bar.setHigh(BigDecimal.valueOf(high));
+            bar.setLow(BigDecimal.valueOf(low));
+            bar.setClose(BigDecimal.valueOf(close));
+            bar.setChangePct(prevClose > 0 ? close / prevClose - 1 : 0.0);
+            out.add(bar);
+        }
+        return out;
+    }
+
+    /** 落库口径：金额分位 HALF_UP（与结算/交易一致）。 */
+    private static double round2(double value) {
+        return BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP).doubleValue();
+    }
+
     /** 幂等播种 stock_info：24 只 StockDefs 以显式 id 写入，已存在则跳过。 */
+
     private void ensureStockInfoSeeded() {
         for (StockDefs.StockDef def : StockDefs.ALL) {
             StockInfo info = new StockInfo();

@@ -3,6 +3,7 @@ package com.holdhundredyear.market;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhundredyear.common.BizException;
 import com.holdhundredyear.common.ErrorCode;
+import com.holdhundredyear.game.constants.PreHistoryDefs;
 import com.holdhundredyear.game.model.dto.DailySummaryDTO;
 import com.holdhundredyear.game.model.dto.EquityCurveDTO;
 import com.holdhundredyear.game.model.dto.IndexPointDTO;
@@ -158,7 +159,7 @@ class MarketQueryServiceTest {
         StockQuoteDTO first = rows.get(0);
         assertEquals(1L, first.getStockId());
         assertEquals("600001", first.getCode());
-        assertEquals("九坛老窖", first.getName());
+        assertEquals("茅王酒业", first.getName());
         assertEquals("白酒", first.getSector());
         assertEquals(168.00, first.getBasePrice(), 1e-9);
         assertEquals(168.00, first.getPrevClose(), 1e-9);
@@ -372,10 +373,13 @@ class MarketQueryServiceTest {
         settleDay(userId, 2, 1004.0);
         settleDay(userId, 3, 1006.0);
 
+        // 开局前的历史 K 排在最前（game_day <= 0），结算日接在后面
         List<KlinePointDTO> full = marketQueryService.stockKline(userId, 1L, 60);
-        assertEquals(3, full.size(), "three settled days produce three bars");
-        assertEquals(1, full.get(0).getGameDay(), "bars must be ascending by game_day");
-        assertEquals(3, full.get(2).getGameDay());
+        assertEquals(PreHistoryDefs.BARS + 3, full.size(), "pre-history plus three settled days");
+        assertEquals(1 - PreHistoryDefs.BARS, full.get(0).getGameDay(), "oldest bar is the first pre-history day");
+        assertEquals(0, full.get(PreHistoryDefs.BARS - 1).getGameDay(), "pre-history ends at day 0");
+        assertEquals(1, full.get(PreHistoryDefs.BARS).getGameDay(), "bars must be ascending by game_day");
+        assertEquals(3, full.get(full.size() - 1).getGameDay());
 
         List<KlinePointDTO> window = marketQueryService.stockKline(userId, 1L, 2);
         assertEquals(2, window.size(), "limit caps to the latest bars");

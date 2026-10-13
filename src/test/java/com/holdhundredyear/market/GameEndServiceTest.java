@@ -3,6 +3,7 @@ package com.holdhundredyear.market;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhundredyear.common.BizException;
 import com.holdhundredyear.common.ErrorCode;
+import com.holdhundredyear.game.constants.PreHistoryDefs;
 import com.holdhundredyear.game.model.enums.GameMode;
 import com.holdhundredyear.market.entity.GameEvent;
 import com.holdhundredyear.market.entity.LoanRecord;
@@ -354,12 +355,14 @@ class GameEndServiceTest {
         bar.setClose(new BigDecimal("168.00"));
         bar.setChangePct(0.0);
         stockDailyBarMapper.insert(bar);
-        assertEquals(1L, dailyBars(userId), "precondition: one daily bar exists");
+        assertEquals(1L, settledBars(userId), "precondition: one settled bar exists");
 
         gameEndService.restart(userId, GameMode.STANDARD);
 
-        assertEquals(0L, dailyBars(userId),
-                "restart must wipe stock_daily_bar, otherwise the new run opens with the old K-lines");
+        assertEquals(0L, settledBars(userId),
+                "restart must wipe this run's settled bars, otherwise the new run opens with the old K-lines");
+        assertEquals(24L * PreHistoryDefs.BARS, dailyBars(userId),
+                "what is left must be exactly the new world's own pre-history");
     }
 
     @Test
@@ -384,6 +387,14 @@ class GameEndServiceTest {
 
         assertThrows(BizException.class, () -> gameEndService.restart(userId, GameMode.QUICK),
                 "a run already underway cannot be re-rolled just to change the mode");
+    }
+
+    /** 本局内（game_day > 1 起）结算落的日K；开局前的历史 K 不在此列。 */
+    private long settledBars(long userId) {
+        Long count = stockDailyBarMapper.selectCount(new LambdaQueryWrapper<StockDailyBar>()
+                .eq(StockDailyBar::getUserId, userId)
+                .gt(StockDailyBar::getGameDay, 0));
+        return count == null ? 0L : count;
     }
 
     private long dailyBars(long userId) {

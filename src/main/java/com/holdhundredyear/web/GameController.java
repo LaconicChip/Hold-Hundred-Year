@@ -41,11 +41,19 @@ public class GameController {
         return R.ok(gameEndService.result(userId));
     }
 
-    /** 开新的一局：body 可带 mode（STANDARD/QUICK），省略则沿用本局模式。 */
+    /**
+     * 开新的一局：body 可带 mode（STANDARD/QUICK），省略或留空则沿用本局模式。
+     *
+     * <p>留空必须走"沿用"而不是 {@link GameMode#of} 的未知兜底：终局页的"再来一局"不再
+     * 提供模式选择器（模式在下一局第 1 天的状态栏选），它发的就是空 mode；若在这里兜成
+     * 标准模式，快速模式的玩家重开一次就被悄悄换了档。
+     */
     @PostMapping("/restart")
     public R<Void> restart(@AuthenticationPrincipal Long userId,
                            @RequestBody(required = false) RestartDTO dto) {
-        gameEndService.restart(userId, dto == null ? null : GameMode.of(dto.getMode()));
+        String raw = dto == null ? null : dto.getMode();
+        GameMode mode = (raw == null || raw.isBlank()) ? null : GameMode.of(raw);
+        gameEndService.restart(userId, mode);
         return R.ok();
     }
 }

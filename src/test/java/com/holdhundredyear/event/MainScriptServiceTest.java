@@ -11,12 +11,14 @@ import com.holdhundredyear.market.entity.UserEra;
 import com.holdhundredyear.market.entity.UserGameState;
 import com.holdhundredyear.market.entity.UserMessage;
 import com.holdhundredyear.market.entity.UserScriptDay;
+import com.holdhundredyear.market.entity.StockDailyBar;
 import com.holdhundredyear.market.entity.UserStockState;
 import com.holdhundredyear.market.mapper.UserDailySnapshotMapper;
 import com.holdhundredyear.market.mapper.UserEraMapper;
 import com.holdhundredyear.market.mapper.UserGameStateMapper;
 import com.holdhundredyear.market.mapper.UserMessageMapper;
 import com.holdhundredyear.market.mapper.UserScriptDayMapper;
+import com.holdhundredyear.market.mapper.StockDailyBarMapper;
 import com.holdhundredyear.market.mapper.UserStockStateMapper;
 import com.holdhundredyear.market.quote.Quote;
 import com.holdhundredyear.market.quote.QuoteBoard;
@@ -56,6 +58,7 @@ class MainScriptServiceTest {
     @Autowired private UserEraMapper userEraMapper;
     @Autowired private UserScriptDayMapper userScriptDayMapper;
     @Autowired private UserDailySnapshotMapper userDailySnapshotMapper;
+    @Autowired private StockDailyBarMapper stockDailyBarMapper;
 
     @Test
     void shakeoutCompletesToNewHigh() {
@@ -231,6 +234,9 @@ class MainScriptServiceTest {
                 .eq(UserScriptDay::getUserId, userId));
         userDailySnapshotMapper.delete(new LambdaQueryWrapper<UserDailySnapshot>()
                 .eq(UserDailySnapshot::getUserId, userId));
+        // seedWorld 会连开局前的历史日K一起铺，重播种前必须先清掉旧世界的日K
+        stockDailyBarMapper.delete(new LambdaQueryWrapper<StockDailyBar>()
+                .eq(StockDailyBar::getUserId, userId));
         worldSeeder.seedWorld(userId, worldSeed);
         setWorldSeed(userId, worldSeed);
         return userId;

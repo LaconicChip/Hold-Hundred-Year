@@ -140,8 +140,8 @@
           <span class="num seed-val">{{ result.worldSeed || '—' }}</span>
         </div>
         <div class="reroll">
-          <!-- 模式一局一选：重开前可以换一种打法 -->
-          <ModePicker v-model="nextMode" compact />
+          <!-- 模式只在下一局的第 1 天页面选（未开盘时状态栏给选择器）：
+               这里再放一个选择器等于同一件事问两遍，点了也不算数，故删除 -->
           <button class="btn btn-primary btn-lg" :disabled="restarting" @click="onRestart">
             <SvgIcon name="play" />{{ restarting ? '播种中…' : '再来一局' }}
           </button>
@@ -157,7 +157,6 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus/es/components/message/index.mjs'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index.mjs'
 import { fetchGameResult, restartGame } from '@/api/game'
-import ModePicker from '@/components/ModePicker.vue'
 import { useMarketStore } from '@/stores/market'
 import { useUserStore } from '@/stores/user'
 import { token } from '@/styles/theme'
@@ -180,9 +179,6 @@ use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent
 const router = useRouter()
 const user = useUserStore()
 const market = useMarketStore()
-
-// 再来一局选的模式：默认沿用刚打完这局（后端 market.mode），没拉到状态时按标准模式
-const nextMode = ref('STANDARD')
 
 const result = ref(null)
 const loading = ref(false)
@@ -351,7 +347,7 @@ async function onRestart() {
   }
   restarting.value = true
   try {
-    await restartGame(nextMode.value)
+    await restartGame()
     ElMessage.success('新世界已播种')
     router.push('/market')
   } catch (e) {

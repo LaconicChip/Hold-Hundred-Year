@@ -350,9 +350,14 @@ public class SharkService {
             title = "高利贷涨息";
         }
         if (scene != null) {
-            notifyPublisher.system(userId, day, title,
-                    SharkLines.pick(scene, rng) + " 未清余额 " + money(sharkOf(user))
-                            + " 元，今日利息 " + money(interest) + " 元。");
+            String line = SharkLines.pick(scene, rng) + " 未清余额 " + money(sharkOf(user))
+                    + " 元，今日利息 " + money(interest) + " 元。";
+            if (forced || overdue) {
+                // 到期强卖与逾期是"刀已经落下来"，弹窗暂停让玩家看清楚少了什么
+                notifyPublisher.alert(userId, day, title, line, null);
+            } else {
+                notifyPublisher.system(userId, day, title, line, null);
+            }
         }
     }
 

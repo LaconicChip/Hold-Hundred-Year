@@ -87,6 +87,39 @@ class GameControllerTest {
                 "a fresh world has no final result yet, body=" + result);
     }
 
+    /**
+     * 空 body 的 restart 必须是"沿用本局模式"。终局页去掉了模式选择器（模式在下一局
+     * 第 1 天选），它发的就是空 mode；若被兜底成 STANDARD，快速模式玩家重开就被悄悄换档。
+     */
+    @Test
+    void restartWithEmptyBodyKeepsCurrentMode() throws Exception {
+        String username = unique("keepmode");
+        long userId = json(register(username, "password123")
+                .andExpect(status().isOk()))
+                .path("data").path("userId").asLong();
+        String token = json(login(username, "password123")
+                .andExpect(status().isOk()))
+                .path("data").path("token").asString();
+
+        UserGameState before = userGameStateMapper.selectOne(new LambdaQueryWrapper<UserGameState>()
+                .eq(UserGameState::getUserId, userId));
+        before.setMarketState("FINISHED");
+        before.setGameMode(GameMode.QUICK.name());
+        userGameStateMapper.updateById(before);
+
+        JsonNode restart = json(mockMvc.perform(post("/api/game/restart")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk()));
+        assertEquals(0, restart.path("code").asInt(), "restart must succeed, body=" + restart);
+
+        UserGameState after = userGameStateMapper.selectOne(new LambdaQueryWrapper<UserGameState>()
+                .eq(UserGameState::getUserId, userId));
+        assertEquals(GameMode.QUICK.name(), after.getGameMode(),
+                "empty mode must keep this run's mode instead of falling back to STANDARD");
+    }
+
     @Test
     void modesListEveryProfileForTheModePicker() throws Exception {
         String username = unique("modes");

@@ -48,6 +48,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 /**
@@ -210,6 +211,22 @@ public class MarketStateService {
                 .anyMatch(scriptDay -> ScriptType.CIRCUIT_BREAKER.name().equals(scriptDay.getScriptType())));
     }
 
+    /**
+     * 暂停 / 恢复本账户世界的实时推进（重要消息模态弹窗期间用，spec §12.1）。
+     *
+     * <p>只动内存标记：不开事务、不改价格与任何库内状态；快进（skip）与结算不看这个标记，
+     * 所以玩家仍然可以随时"跳过当日"。幂等，重复调用无副作用。
+     */
+    public void setPaused(long userId, boolean paused) {
+        ReentrantLock lock = quoteBoardRegistry.worldLock(userId);
+        lock.lock();
+        try {
+            quoteBoardRegistry.getOrLoad(userId).setPaused(paused);
+        } finally {
+            lock.unlock();
+        }
+    }
+
     /** 开启第 newDay 个交易日：跳空落地（非首日，先于一切）→ 清板重载 → 当日上下文
      *  （纪元/体制/熔断标记）→ 停牌复牌补跌 → 反向意外日掷点 → 剧本日强制行为
      *  （钉板覆盖跳空落地的价格）→ 纪元消息 → 状态落库。 */
@@ -329,12 +346,21 @@ public class MarketStateService {
     /** 剧本日强制行为（spec §4.4）：千股涨停/跌停按 sealRatio 洗牌选股钉板（rng salt
      *  "script"+day，停牌股排除）；救市日全市场 +2%~4% ONCE 冲击入队（salt "rescue"+day）；
      *  制裁闪崩把 params.targetStockId 钉死跌停；黑7月按板块钉板（半导体/算力/通信 跌停、
-     *  银行/煤炭 涨停）；熔断/IPO 开盘无行为。强制钉板覆盖跳空落地的价格，
+     *  银行/煤炭 涨停）；妖股连板把 params.stockIds 钉涨停；停牌潮（前置阶段，早于钉板）
+     *  冻结那几只票并通知；一字断魂刀把 params.targetStockId 钉死跌停并通知；
+     *  熔断/IPO 开盘无行为。强制钉板覆盖跳空落地的价格，
      *  current_price 回写 stock_state 保持库内一致。 */
     private void applyScriptDayBehaviors(long userId, QuoteBoard board, List<UserScriptDay> scriptDays,
                                          int newDay, long worldSeed) {
         if (scriptDays.isEmpty()) {
             return;
+        }
+        // 前置：停牌潮要先落地。它和"千股跌停"排在同一天，若按声明顺序让跌停先钉板，
+        // 这批连板妖股会被一起钉成跌停板，"停牌躲股灾、复牌再补跌"那一幕就演不成了。
+        for (UserScriptDay scriptDay : scriptDays) {
+            if (ScriptType.HALT_SWARM.name().equals(scriptDay.getScriptType())) {
+                haltHotSwarm(userId, board, MAPPER.readTree(scriptDay.getParamsJson()), newDay);
+            }
         }
         Random shuffleRng = WorldRandom.of(worldSeed, "script" + newDay);
         for (UserScriptDay scriptDay : scriptDays) {
@@ -357,6 +383,22 @@ public class MarketStateService {
                 }
                 case CRASH_WEEK -> sealCrashSectors(userId, board);
                 case CIRCUIT_BREAKER -> applyCircuitBreakerOpen(userId, board, newDay, worldSeed);
+                case HOT_STREAK -> {
+                    // 连板：名单里的票钉在涨停价（停牌中的由 forceSealStock 自己跳过）
+                    for (JsonNode id : params.get("stockIds")) {
+                        forceSealStock(userId, board, id.asLong(), SealState.UP);
+                    }
+                }
+                case HALT_SWARM -> {
+                    // 已在上面的前置阶段落地（顺序要求，不看声明次序）
+                }
+                case HUN_DAO -> {
+                    long daoStockId = params.get("targetStockId").asLong();
+                    forceSealStock(userId, board, daoStockId, SealState.DOWN);
+                    notifyPublisher.system(userId, newDay, "一字断魂刀",
+                            StockDefs.byId(daoStockId).name() + " 开盘即跌停、全天封死，救市后的第一刀砍在它身上。",
+                            daoStockId);
+                }
                 case IPO -> {
                     // IPO 由打新流程处理（Phase 9.2）。
                 }
@@ -406,6 +448,25 @@ public class MarketStateService {
                 .map(q -> StockDefs.byId(q.getStockId()))
                 .toList();
         board.setIndexValue(indexCalculator.nextIndex(board.getPrevIndex(), active, openReturns));
+    }
+
+    /**
+     * 停牌潮（spec §4.4）：把连板妖股在股灾这天集体冻住——躲过当日跌停，{@code haltDays}
+     * 天后由既有"复牌补跌"接管（−5%~−10%，15% 概率"妖股出关"）。停牌时价不动（HaltService
+     * 语义）。必须发通知：玩家次日点这几只票会买不到，得知道是停牌而不是坏了。
+     */
+    private void haltHotSwarm(long userId, QuoteBoard board, JsonNode params, int newDay) {
+        List<Long> stockIds = new ArrayList<>();
+        for (JsonNode id : params.get("stockIds")) {
+            stockIds.add(id.asLong());
+        }
+        int haltDays = params.get("haltDays").asInt();
+        for (Long stockId : stockIds) {
+            haltService.haltForDays(userId, board, stockId, newDay, haltDays);
+        }
+        String names = stockIds.stream().map(id -> StockDefs.byId(id).name()).collect(Collectors.joining("、"));
+        notifyPublisher.alert(userId, newDay, "停牌潮：" + stockIds.size() + " 只连板股集体停牌",
+                names + " 今日起停牌 " + haltDays + " 天，躲过了今天的千股跌停——复牌那天要还的，一分都不会少。", null);
     }
 
     /** 千股涨停/跌停：非停牌股洗牌后取前 round(24×sealRatio) 只钉板。 */

@@ -9,7 +9,7 @@
           <i class="lg-line" :style="{ background: m.color }"></i>{{ m.name }}
         </span>
       </span>
-      <span class="chart-sub muted-2 push">红涨绿跌 · 副图为当日涨跌幅</span>
+      <span class="chart-sub muted-2 push">红涨绿跌 · 滚轮缩放 · 底部滑块拖看历史</span>
     </div>
 
     <!-- 空态：尚无结算日，蜡烛一根都还没长出来 -->
@@ -49,6 +49,10 @@ const props = defineProps({
   kline: { type: Array, default: () => [] }
 })
 
+// 默认只看最近这么多根：证券软件的口径。全部 K 线塞进一屏时，开局只有几根蜡烛
+// 会被拉到满屏宽，视觉上就是"一条爆炸高的线"——固定窗口 + 限制蜡烛宽度才对。
+const KLINE_WINDOW = 30
+
 // MA 均线定义（颜色收敛到既有令牌：黄/蓝/橙）
 const MA_DEFS = [
   { name: 'MA5', n: 5, color: token('--yellow') },
@@ -74,7 +78,11 @@ const option = computed(() => {
   const cCard = token('--card')
   const cDash = token('--dash')
 
-  const days = props.kline.map((b) => '第' + b.gameDay + '日')
+  // 开局前播种的历史 K 线（game_day <= 0）标成 T-N，与局内"第 N 日"区分开
+  const days = props.kline.map((b) => (b.gameDay > 0 ? '第' + b.gameDay + '日' : 'T' + b.gameDay))
+  // 窗口起点：不足一窗就全显，超出则只留最近 KLINE_WINDOW 根（滑块可拖回历史）
+  const nBars = props.kline.length
+  const zoomStart = nBars <= KLINE_WINDOW ? 0 : ((nBars - KLINE_WINDOW) / (nBars - 1)) * 100
   const candles = props.kline.map((b) => [b.open, b.close, b.low, b.high])
   const closes = props.kline.map((b) => b.close)
   // 涨跌幅副图（%），红涨绿跌
@@ -170,8 +178,27 @@ const option = computed(() => {
       }
     ],
     dataZoom: [
-      { type: 'inside', xAxisIndex: [0, 1], start: 0, end: 100 },
-      { type: 'slider', xAxisIndex: [0, 1], bottom: 2, height: 18, borderColor: cInk }
+      // 滚轮缩放（拖动平移只在滑块上来，避免和十字光标抢操作）
+      {
+        type: 'inside',
+        xAxisIndex: [0, 1],
+        start: zoomStart,
+        end: 100,
+        zoomOnMouseWheel: true,
+        moveOnMouseMove: false,
+        moveOnMouseWheel: false
+      },
+      // 底部滑块：K 线攒多了以后拖回去看历史
+      {
+        type: 'slider',
+        xAxisIndex: [0, 1],
+        start: zoomStart,
+        end: 100,
+        bottom: 2,
+        height: 18,
+        borderColor: cInk,
+        moveHandleSize: 4
+      }
     ],
     series: [
       {
@@ -180,6 +207,8 @@ const option = computed(() => {
         xAxisIndex: 0,
         yAxisIndex: 0,
         data: candles,
+        // 统一蜡烛宽度：根数少的时候不让它撑满屏宽（"爆炸高"的成因）
+        barMaxWidth: 16,
         itemStyle: {
           color: cUp,          // 阳线（收>开）红
           color0: cDown,       // 阴线（收<开）绿
