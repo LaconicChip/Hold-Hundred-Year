@@ -126,6 +126,6 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ## 九、项目落地约定（本仓库特有）
 
-- 文档只有三份，别找第四份：`docs/spec.md`（设计规格，最高权威）、`docs/implementation-notes.md`（实现备忘：冻结决策/机制速查/运维/验收）、`docs/db-migrations.md`（迁移）。仓库根 `README.md` 是入口。
+- 文档只有两份，别找第三份：`docs/spec.md`（设计规格，最高权威）、`docs/implementation-notes.md`（实现备忘：冻结决策/机制速查/运维/验收）。仓库根 `README.md` 是入口。表结构只有 `src/main/resources/db/schema.sql` 一份权威：改表就重建库，不维护增量迁移脚本与迁移文档。
 - Shell 一律用 PowerShell 7（`pwsh`，需要显式起 shell 时用 `pwsh -NoProfile -Command ...`），**禁止 Windows PowerShell 5.1**（`powershell.exe`）。`.\mvnw.cmd` 与 Maven 的已知坑见 `docs/implementation-notes.md` §4。
 - 语言约定：交流与 Javadoc/注释/用户文案用中文；日志与测试断言消息用英文。

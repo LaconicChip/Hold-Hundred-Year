@@ -30,7 +30,7 @@ public class UserGameState {
 
     private Double indexValue;
 
-    /** 当日开盘基准指数（昨收口径）：熔断阈值与盘中重启的唯一基准，见迁移 V20260929_01。 */
+    /** 当日开盘基准指数（昨收口径）：熔断阈值与盘中重启的唯一基准，与盘中不断覆盖的 index_value 分列两列。 */
     private Double prevIndex;
 
     private BigDecimal prevTotalAsset;

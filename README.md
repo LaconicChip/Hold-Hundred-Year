@@ -32,8 +32,7 @@ src/main/java/com/holdhundredyear/
   config/ + common/  安全与 JWT、WebSocket、统一响应 R / PageResult / BizException
 
 src/main/resources/db/
-  schema.sql                        全量建表（新库直接执行这一个文件）
-  V20260914_01__*.sql 等            旧库增量迁移脚本（需手工执行，见 docs/db-migrations.md）
+  schema.sql                        表结构的唯一权威：新库执行它；改表就重建库（本项目不维护增量迁移脚本）
 
 src/main/resources/content/
   danmu.txt / stock-personas.txt / sector-flavor.txt / npc-lines.txt / event-copy.txt /
@@ -53,8 +52,7 @@ frontend/src/
 
 docs/
   spec.md                  设计规格（最高权威：架构/数值/API/视觉）
-  implementation-notes.md  实现备忘（冻结决策、机制速查、运维手册、验收状态）
-  db-migrations.md         旧库升级说明
+  implementation-notes.md  实现备忘（冻结决策、机制速查、运维手册、验收基线）
   design/                  style-tile.html 视觉基准、mascot-*.jpg 吉祥物定稿、shots/ 验收截图
 ```
 
@@ -90,7 +88,7 @@ cd frontend; npm run build
    它内部固定调用 Windows PowerShell 5.1 解析 `~/.m2`。绕法＝直接用 wrapper 已下载好的 Maven：
    `& "$env:USERPROFILE\.m2\wrapper\dists\apache-maven-<ver>\*\apache-maven-<ver>\bin\mvn.cmd" test`（需先设 `$env:JAVA_HOME` 指向 JDK 17）。
 2. **测试没有 H2 兜底**：`hold_year_test` 不存在会直接大面积 `Unknown database` 报错，按上面第 1 步建库即可。
-3. **旧库必须手工执行迁移脚本**（`docs/db-migrations.md`），否则「收盘涨跌幅 / 日K / 指数昨收」相关功能报错。
+3. **表结构只有一份权威：`src/main/resources/db/schema.sql`**。本项目是单机本地游戏、没有线上库，所以不维护增量迁移脚本——改表后直接重建两个库：`DROP DATABASE hold_year; CREATE DATABASE hold_year ...` 再 `source schema.sql`（`hold_year_test` 同理）。存档可以不要，但绝不会出现"库里少一列"这种错。
 4. 前端页面依赖后端 8080，**先起后端再起前端**。后端没跑时前端会统一弹「连不上营业部系统」（8 秒内只弹一次）——
    但如果标签页是后端重启前就开着的，它里面的 WS 与 store 都是旧的，按钮点了没反应，**先 Ctrl+F5 硬刷新**。
 5. **在 IDEA 里改过 Java 包名（或 `git mv` 挪过源码目录）之后，必须先 Maven 面板 → Reload All Maven Projects，
@@ -113,7 +111,7 @@ cd frontend; npm run build
 | 设计规格 | `docs/spec.md` |
 | 实现备忘 | `docs/implementation-notes.md` |
 | 视觉基准 | `docs/design/style-tile.html` |
-| 数据库迁移 | `docs/db-migrations.md` |
+| 表结构 | `src/main/resources/db/schema.sql`（16 张表；改表就重建库，无增量迁移） |
 | 游戏文案 | `src/main/resources/content/`（7 个 .txt，改文案不用改代码） |
 | 验收截图 | `docs/design/shots/` |
 

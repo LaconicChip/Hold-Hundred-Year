@@ -46,7 +46,7 @@
 - **状态机**：`NOT_STARTED → MORNING_OPEN → LUNCH_BREAK → AFTERNOON_OPEN → SETTLING → CLOSED → BANKRUPT/FINISHED`；`MarketStateService.startDay` 是唯一日入口（隔夜跳空/纪元/复牌/剧本/打新时序都在里面）。
 - **单跳引擎**：`WorldTickService.tickOne`（世界锁 + TransactionTemplate 锁内提交）；每跳以 `WorldRandom.of(seed,"tick{day}.{tick}")` 重播种，消费顺序固定（beginTick → 逐股 → 封板掷骰）。
 - **结算 12 步**：`SettlementService.settle` —— prev_close 双写、T+1 解冻、融资计息、追保/强平/爆仓、日评、段位、快照、**日K落库（在重置 OHL 之前）**、OHL 重置、状态落位。
-- **指数两个口径**：`user_game_state.prev_index` = 当日开盘基准（昨收，开盘写入、盘中只读）；`index_value` = 当前指数（每跳 checkpoint 覆盖）。熔断判定与弹幕触发读 `board.prevIndex`，盘中重启靠 prev_index 恢复基准（迁移 `V20260929_01`）。
+- **指数两个口径**：`user_game_state.prev_index` = 当日开盘基准（昨收，开盘写入、盘中只读）；`index_value` = 当前指数（每跳 checkpoint 覆盖）。熔断判定与弹幕触发读 `board.prevIndex`，盘中重启靠 prev_index 恢复基准。
 - **收盘涨跌幅**：结算写 `user_stock_state.day_change_pct`；收盘态行情用当日日K bar 还原 OHLC 与昨收（`9e22f14`）。原因：结算把 prev_close 双写成收盘价，实时口径恒 0。
 - **分时与日K**：`GET /api/stocks/{id}/quotes`、`GET /api/market/index` 返回**固定 90 点时间轴**（未到点为 null、午休断轴），前端按本局 `tickMs` 轮询；`GET /api/stocks/{id}/kline?limit=60` 读 `stock_daily_bar`（快进与正常推进同路径落库）。
 - **事件系统**：`EventFactory.maybeRoll` 单 salt 掷骰（`"event{day}.{tick}"`），PendingAction 入队时预填文案，flush 阶段零掷骰；消息三态 PENDING → CONFIRMED/DENIED。
@@ -61,7 +61,7 @@
 - **弹幕黑板（前端）**：`DanmuBar.vue` 5 条道 + 限速队列（240ms 一拍、道忙就等），按 `stores/messages.js` 的 `danmuVersion/danmuSeq` 取增量——**不要 watch 数组长度**，环形缓冲封顶到 30 条后长度不再变化，监听器会永久失效（就是历史上"不开关一次不飘、一开关糊一屏"的病根）。默认开启，重新开启时把游标推到最新，不回放过期积压。
 - **倒计时口径**：`MarketStateDTO.countdownTicks` 是**本会话剩余跳数**（早盘 `45 - tick_index`、午盘 `90 - tick_index`、非交易态 0、越界夹到 0），不是全天剩余跳数——早盘拿 90 做基准会让早盘倒计时正好是午盘的两倍。前端 `StatusBar` 用"截止时间戳"而不是本地每秒 -1：快速模式每跳 0.5 秒，倒计时是小数，`-1` 会跨过 0 变成 `-01:-0.5` 那种负数。
 - **重开一局清表**：`GameEndService.doRestart` 必须连 `stock_daily_bar` 一起清——它是日K数据源，漏清会让新的一局开局就带着上一局的蜡烛图。以后加"按用户"维度的新表，记得同步进这份清单。
-- **个股历史消息**：`MessageService.list` 的第 6/7 个参数是 `stockId` + `includeSector`。个股页用 `stockId&includeSector=true`，一次拿回"本票专属（stock_id 命中）+ 本票所属板块（sector 命中且 stock_id 为空）"；板块名由后端按 `StockDefs` 反查，前端不需要知道。板块级消息的 `sector` 由 `EventFactory` 在 SECTOR 级事件落库时写入（迁移 `V20260929_02`）。历史存量消息的 sector 为 NULL，只有升级后新产生的板块消息能被个股页捞到。
+- **个股历史消息**：`MessageService.list` 的第 6/7 个参数是 `stockId` + `includeSector`。个股页用 `stockId&includeSector=true`，一次拿回"本票专属（stock_id 命中）+ 本票所属板块（sector 命中且 stock_id 为空）"；板块名由后端按 `StockDefs` 反查，前端不需要知道。板块级消息的 `sector` 由 `EventFactory` 在 SECTOR 级事件落库时写入。
 - **文案库七份文件**（`src/main/resources/content/`，见 §7）：`stock-personas.txt`（24 股 × 8 弹幕 + 6 事件）、`sector-flavor.txt`（21 板块 + 大盘 × 权威/媒体/传闻含追报/玩梗各 2）、`npc-lines.txt`（4 场景 × 5 + 8 NPC × 5 闲聊）、`danmu.txt`（9 全局池 + 21 板块池）、`event-copy.txt`（75 条事件骨架的标题/正文变体与追报）、`era-narratives.txt`（11 个纪元叙事，每组恰好一行）、`shark-lines.txt`（高利贷 7 个场景台词）。除 `event-copy.txt`（由 `EventSkeletonsTest` 一一对应把关）外的六份被 `StockPersonasTest` 的"全局零重复"总校验覆盖（≥700 条唯一），任何一处抄重直接红。
 - **高利贷的两本债（2026-10-10）**：`sys_user.debt` 是融资债、`sys_user.shark_debt` 是高利贷未清余额，后者恒等于台账 `user_shark_loan` 各笔之和（`SharkService.syncBalance` 每次重算，不做手工加减）。**担保比例只读前者，净资产与资不抵债读两者之和**——所以 `MarginService.marginCheck` 的入口短路条件是"两种债都没有"，只看融资债为 0 就短路会让欠高利贷的人永远死不了（测试 `insolventThroughSharkAloneStillEndsOnTheRooftop` 钉住这一点）。融资可借额度公式收在 `MarginService.marginBorrowableOf` 一处：`现金 + 市值 −（融资债 + 高利贷）× (1 + BORROW_LIMIT_RATIO)`，借款校验与 `/api/me/assets.borrowable` 共用；高利贷可借额在 `SharkService.borrowableOf`。到期强卖不复用 `MarginService.liquidate`（还款对象与目标线不同），但跳过规则完全一致：停牌 / 跌停封死 / 可卖 0 跳过。
   **催债只在节点提醒，不每天刷屏**（2026-10-13）：结算播报优先级是 到期强卖 > 逾期 > 到期结清 > 临近到期（剩 3 天 / 剩 1 天）> 利率涨档，其余日子静默；
@@ -82,7 +82,7 @@
 | 操作 | 命令（仓库根） |
 | --- | --- |
 | 新库初始化 | 建库后对 `hold_year`、`hold_year_test` 各执行一次 `src/main/resources/db/schema.sql` |
-| 旧库升级 | 按 [db-migrations.md](db-migrations.md) 手工执行 5 份 V2026xx 脚本（两个库都要） |
+| 改了表结构 | 重建两个库：`DROP DATABASE hold_year; CREATE DATABASE hold_year DEFAULT CHARACTER SET utf8mb4;` 后 `source src/main/resources/db/schema.sql`（`hold_year_test` 同理）。**本项目不维护增量迁移脚本**，`schema.sql` 是唯一权威 |
 | 启动后端 | `.\mvnw.cmd spring-boot:run`（8080） |
 | 启动前端 | `cd frontend; npm run dev`（5173，`/api`、`/ws` 代理到 8080） |
 | 后端测试 | `.\mvnw.cmd test` |
