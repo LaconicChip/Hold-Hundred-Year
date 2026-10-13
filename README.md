@@ -18,15 +18,17 @@ src/main/java/com/holdhundredyear/
              FastForwardService 快进、MarketQueryService 查询聚合、QuoteBoardRegistry 世界锁）
     engine/  引擎四件套（VolatilityEngine、SealMachine、ShockQueue、IndexCalculator）
     quote/   内存行情板（Quote 分时缓冲 90 点、QuoteBoard）
-  trade/     交易与特色机制（TradeService、MarginService、IpoService、CorporateActionService、MeQueryService）
+  trade/     交易与特色机制（TradeService、MarginService、SharkService 高利贷、IpoService、
+             CorporateActionService、MeQueryService）
   event/     事件与内容（EventFactory、MessageService、DanmuService、NpcService、MainScriptService、
              HaltService、ProgressService）
   ws/        实时推送四通道 /user/queue/{quotes,messages,notifications,danmu}
   web/       REST 控制器（Auth/Stock/Trade/Loan/Ipo/Market/Message/Me/Game）
   game/      constants（引擎标定 GameConstants、静态档案 StockDefs/EraDefs/NpcDefs/Titles、事件骨架结构 EventSkeletons）
-             content（全部游戏文案的读取入口：ContentCatalog + DanmuTexts/StockPersonas/SectorFlavor/NpcLines/EventCopy）
+             content（全部游戏文案的读取入口：ContentCatalog + DanmuTexts/StockPersonas/SectorFlavor/
+             NpcLines/EventCopy/EraNarratives/SharkLines 七个薄壳）
              model/dto（接口出参）、model/enums（状态机、纪元、一局模式 GameMode 等枚举）
-  market/entity/ + market/mapper/  MyBatis-Plus 实体与 Mapper（15 张表）
+  market/entity/ + market/mapper/  MyBatis-Plus 实体与 Mapper（16 张表）
   config/ + common/  安全与 JWT、WebSocket、统一响应 R / PageResult / BizException
 
 src/main/resources/db/

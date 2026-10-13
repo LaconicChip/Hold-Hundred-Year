@@ -56,9 +56,8 @@
 > 除权除息、打新 D+2/D+4、融资追保/强平一个都不减；快速模式只是把时间轴压密、把单日振幅放大。
 > 纪元最短长度随档案变化（标准 3 天、快速 2 天）：一年 12 天要装 4 个纪元，3 天下限没有余量。黑7月崩盘日的撒点窗口也随档案变化（标准 = 纪元 10 前半段，快速 = 整个纪元，见 §4.4）：短局的名场面靠"更密"而不是"更少"。
 
-> 2026-09-29 节奏压缩：原为 3 秒/跳、午休 30 秒、36 交易日/年、共 108 天（一局约 9 小时）。
-> 跳数（45+45）与每跳的波动标定**没有动**，所以行情形态、封板时长、日内 U 型完全不变，
-> 变的只有"每跳多少毫秒"与"一年多少交易日"；随机序列仍按跳消费，同种子同结果。
+> 跳数（45+45=90）与每跳的波动标定是**不动量**：改节奏只改"每跳多少毫秒"与"一年多少交易日"，
+> 所以行情形态、封板时长、日内 U 型完全不变，随机序列仍按跳消费、同种子同结果。
 
 市场状态机（每个账户独立）：
 
@@ -114,36 +113,13 @@ BANKRUPT / FINISHED（终局：冻结一切操作，展示结局结算页）
 
 ### 4.1 股票列表（24 只，覆盖市场主要方向）
 
-系统初始化播种 24 只虚构股票（名称玩梗、板块映射现实方向）：
+系统初始化播种 **24 只虚构股票**（名称玩梗、板块映射现实方向），覆盖白酒/半导体/新能源车/光伏/医药/地产/银行/证券/保险/汽车/家电/水产/军工/传媒/算力/通信/机器人/物流/农业/游戏等 21 个板块方向。
 
-| 代码     | 名称   | 板块方向     | 发行价    |
-| ------ | ---- | -------- | ------ |
-| 600001 | 九坛老窖 | 白酒       | 168.00 |
-| 600002 | 芯火半导体 | 半导体/芯片   | 88.00  |
-| 600003 | 卧龙新能 | 锂电池/新能源车 | 120.00 |
-| 600004 | 后羿光能 | 光伏       | 26.00  |
-| 600005 | 回春堂  | 医药生物/疫苗  | 45.00  |
-| 600006 | 万间置业 | 房地产      | 8.50   |
-| 600007 | 大通银号 | 银行       | 6.00   |
-| 600008 | 牛途证券 | 券商       | 18.00  |
-| 600009 | 安泰保险 | 保险       | 52.00  |
-| 600010 | 驰风汽车 | 汽车/特种车辆  | 33.00  |
-| 600011 | 巧手家电 | 家电制造     | 66.00  |
-| 600012 | 汪洋水产 | 水产养殖     | 12.00  |
-| 600013 | 烽火军工 | 军工       | 74.00  |
-| 600014 | 造梦传媒 | 影视传媒/互联网 | 22.00  |
-| 600015 | 天算算力 | 人工智能/算力  | 96.00  |
-| 600016 | 万家商社 | 零售电商     | 15.00  |
-| 600017 | 凌云航空 | 航空运输     | 9.50   |
-| 600018 | 黑金能源 | 煤炭石油     | 11.00  |
-| 600019 | 炉火钢铁 | 钢铁有色     | 4.50   |
-| 600020 | 神农种业 | 农业种业     | 17.00  |
-| 600021 | 青鸟速运 | 物流快递     | 38.00  |
-| 600022 | 逍遥互娱 | 游戏       | 41.00  |
-| 600023 | 天工智造 | 机器人/低空经济 | 58.00  |
-| 600024 | 千里信联 | 通信运营     | 7.50   |
+**名单与发行价的唯一权威是 `game/constants/StockDefs.java`**（`stock_info` 由它在注册时播种）。
+这里不复制表格：票名历史上改过 7 次，文档里的表每次都漏改，是漂移的源头。要看当前 24 只，读代码或 `GET /api/stocks`。
 
-高价股（如 168 元的九坛老窖）一手需 1.68 万以上，10 万初始资金天然只能集中持有几只——与真实市场一致。
+价格带刻意拉开（8 元级的银行/通信到 168 元级的高端白酒）：高价股一手就要 1.68 万以上，
+10 万初始资金天然只能集中持有几只——与真实市场一致，也是"满仓一只票"风险的来源。
 
 ### 4.2 百年指数（大盘基准）
 
@@ -524,57 +500,45 @@ BANKRUPT / FINISHED（终局：冻结一切操作，展示结局结算页）
 
 ## 10. 数据模型
 
-所有金额使用 `DECIMAL(12,2)`，价格 `DECIMAL(10,2)`。
+所有金额使用 `DECIMAL(12,2)`，价格 `DECIMAL(10,2)`。**字段清单的权威是 `src/main/resources/db/schema.sql`（16 张表）**，
+本节只记"为什么这么分表"——把列抄进文档必然与代码漂移（历史上票名改过 7 次、`index_value` 单列两用埋过雷）。
 
-1. **sys\_user**：id、username（唯一索引）、password（BCrypt）、balance、debt（融资负债）、created\_at。
-2. **stock\_info**（静态档案，全服共享）：id、stock\_code（唯一）、stock\_name、sector（板块）、base\_price（发行价）、beta（市场敏感度，0.6\~1.6，§5 三层因子）、index\_weight（指数权重）。初始化 24 只。
-3. **user\_stock\_state**（每账户每只股票的行情状态）：id、user\_id、stock\_id、prev\_close、open\_price、high\_price、low\_price、current\_price、limit\_up\_streak（连板数）、halted（是否停牌）、halt\_until\_day（复牌交易日）、is\_st（戴帽标志，±5% 涨跌停）、gap\_pct（待应用的隔夜/午间跳空）、version（乐观锁）；唯一索引 (user\_id, stock\_id)。
-4. **user\_position**：id、user\_id、stock\_id、shares（总股数）、available\_shares（可卖股数，T+1）、avg\_cost；唯一索引 (user\_id, stock\_id)。
-5. **trade\_record**：id、user\_id、stock\_id、trade\_type（BUY/SELL）、price、shares、amount、commission、tax、game\_day、created\_at。
-6. **loan\_record**（融资流水）：id、user\_id、loan\_type（BORROW/REPAY/INTEREST/LIQUIDATE）、amount、debt\_after（操作后负债余额）、game\_day、created\_at。
-7. **game\_event**（事件与剧本记录）：id、user\_id、stock\_id（可空，政策面为空）、scope（STOCK/SECTOR/MARKET）、script\_type（NONE/SHAKEOUT/PUMP\_DUMP/TAIL\_WHIP/SKY\_EARTH/POLICY/LIMIT\_UP\_ALL/LIMIT\_DOWN\_ALL/CIRCUIT\_BREAKER/SANCTION/CRASH\_WEEK）、event\_type（GOOD/BAD/NEUTRAL）、impact\_pattern（七种反应模式：INSTANT/SPIKE\_FADE/BUY\_RUMOR/SLOW\_DRIFT/OVERSHOOT\_REVERT/NEWS\_FLIP/CHAIN）、title、content、impact\_pct、game\_day、created\_at。
-8. **user\_message**（消息中心）：id、user\_id、source（AUTHORITY/MEDIA/RUMOR/INSIDER/FUN/NPC/SYSTEM）、stock\_id（可空）、sector（可空，板块级消息的归属板块）、truth\_status（PENDING/CONFIRMED/DENIED，FUN/NPC 为空）、type（NEWS/TIP/EVENT/NOTIFY）、title、content、stock\_id（可空）、followup\_of（原消息 id，辟谣/证实关联）、is\_read、game\_day、created\_at。
-9. **user\_game\_state**（单行/账户）：id、user\_id（唯一）、current\_day、market\_state、tick\_index、world\_seed（世界随机种子，§5）、index\_value（百年指数昨收/当前快照）、prev\_total\_asset（昨日结算总资产，用于日收益率）、vol\_regime（当日波动率体制 CALM/NORMAL/WILD）、tier（当前资产段位：RETAIL/MIDDLE/BIG/HOTSHOT/MASTER）、end\_reason（空/NORMAL\_FINISH/BANKRUPT）、end\_day、updated\_at。
-10. **user\_title**（称号与挑战徽章）：id、user\_id、title\_code、title\_name、kind（TITLE 称号/BADGE 阶段挑战徽章）、game\_day（解锁日）、created\_at；唯一索引 (user\_id, title\_code)。
-11. **user\_era**（本局纪元时间表，注册时掷出）：id、user\_id、era\_index（1..11）、era\_code、start\_day、end\_day、params\_json（该纪元随机掷出的 μ\_mkt、板块系数字段）；唯一索引 (user\_id, era\_index)。
-12. **user\_script\_day**（本局剧本日/打新排期，注册时掷出）：id、user\_id、game\_day、script\_type（LIMIT\_UP\_ALL/LIMIT\_DOWN\_ALL/RESCUE/CIRCUIT\_BREAKER/SANCTION/CRASH\_WEEK/IPO）、params\_json（封死比例、目标股、跌停日数、新股发行价/连板数等随机参数）；唯一索引 (user\_id, game\_day, script\_type)。
-13. **user\_daily\_snapshot**（每日收盘快照，复盘/曲线/排行榜数据源）：id、user\_id、game\_day、cash、market\_value、debt、net\_asset、day\_return\_pct（玩家日收益率）、index\_value、index\_day\_pct（指数日涨跌幅）、npc\_assets\_json（当日 8\~10 个营业部 NPC 资产值与状态）；唯一索引 (user\_id, game\_day)。
-14. **user\_ipo\_record**（打新记录）：id、user\_id、script\_day\_id（关联 user\_script\_day）、ipo\_name、issue\_price、status（SUBSCRIBED 已申购/WON 中签待缴款/LOST 未中签/PAID 已缴款/SETTLED 已结算/ABANDONED 资金不足放弃）、profit、game\_day、created\_at。
+| # | 表 | 角色 | 为什么要单独一张 |
+| --- | --- | --- | --- |
+| 1 | `sys_user` | 账户与钱 | `debt`（融资债）与 `shark_debt`（高利贷余额）分列：担保比例只读前者，净资产读两者之和（§6.6） |
+| 2 | `stock_info` | 24 只票静态档案 | 全服共享只读；行情状态按账户隔离，另立 `user_stock_state` |
+| 3 | `user_stock_state` | 每账户每票行情状态 | 同一只票在不同账户的停牌/连板/ST 状态可以不同（世界按账户推进）；`version` 是乐观锁 |
+| 4 | `user_position` | 持仓 | `available_shares` 承载 T+1 解冻 |
+| 5 | `trade_record` | 成交流水 | 只追加，供资产页三类流水 |
+| 6 | `loan_record` | 借贷流水 | `loan_type` 覆盖融资四类与高利贷四类（`SHARK_BORROW/REPAY/INTEREST/LIQUIDATE`）；它是流水不是台账 |
+| 7 | `user_shark_loan` | 高利贷台账 | 一笔一行、各自带起算日与到期日；日息不落库（按账龄现算），`sys_user.shark_debt` 是它的汇总缓存 |
+| 8 | `game_event` | 事件与剧本留痕 | 带 `impact_pct`/`impact_pattern`，与消息中心分离：那是给人看的，这是价格冲击的账 |
+| 9 | `user_message` | 消息中心 | `truth_status` + `followup_of` 支撑传闻→证实/辟谣链；`sector` 让个股页能捞回板块级消息 |
+| 10 | `user_game_state` | 每账户一行的世界时钟 | `prev_index`（当日开盘基准）与 `index_value`（盘中当前值）**必须分列**：合一时盘中 checkpoint 会把熔断阈值基数覆盖成盘中值；`game_mode` 让节奏一局一定 |
+| 11 | `user_title` | 称号与徽章 | 徽章只给称号不给现金（防经济崩坏） |
+| 12 | `user_era` | 本局 11 纪元时间表与强度参数 | 注册时一次掷出落库，重启与快进都读它（同 seed 同结果） |
+| 13 | `user_script_day` | 本局剧本日 + IPO 排期 | 同上，保证名场面每局保证发生且时点可复现 |
+| 14 | `user_daily_snapshot` | 每日收盘快照 | 曲线、排行榜、终局结算的唯一数据源；`shark_debt` 一并入快照 |
+| 15 | `stock_daily_bar` | 每账户每票每交易日 OHLC | 日K 数据源；必须在结算重置 OHL **之前**写入，快进与逐跳同路径 |
+| 16 | `user_ipo_record` | 打新记录 | 状态机 SUBSCRIBED→WON/LOST→PAID→SETTLED/ABANDONED |
 
 **注册事务内自动播种**：创建 sys\_user（balance=100,000, debt=0）+ user\_game\_state（current\_day=1, market\_state=NOT\_STARTED, tick\_index=0, index\_value=1000, vol\_regime=NORMAL, tier=RETAIL, world\_seed=随机 long）+ 24 行 user\_stock\_state（current/open/high/low/prev\_close 均 = base\_price, is\_st=false）+ **调用世界排期器（基于 world\_seed）掷出 11 行 user\_era（边界抖动 + 强度参数）与全部 user\_script\_day（剧本日 + 每年 2\~3 次 IPO 排期）**；同时写入第 0 天 user\_daily\_snapshot 作为排行榜与曲线起点（NPC 初始资产均 100,000）。
 
-### 称号一览（结算/成交时检测，解锁推送通知）
+### 称号一览
 
-- 初入股市：首次成交
-
-- 关灯吃面：单日总资产跌幅 ≥ 5%
-
-- 接盘侠：买入后 2 个交易日内该股跌 ≥ 15%
-
-- 逃顶大师：清仓后 1 个交易日内该股跌停或跌 ≥ 10%
-
-- 抄底能手：跌停附近买入后当日/次日涨停或涨 ≥ 10%
-
-- 股神：连续 5 个交易日跑赢百年指数
-
-- 长线是金：单笔持仓满 5 个交易日且盈利 ≥ 20%
-
-- 割肉专家：累计亏损卖出达 10 次
-
-- 妖股猎手：成功持有并卖出一只 3 连板股票
-
-- 韭菜王：累计总亏损 ≥ 20%
+称号与徽章的**清单与解锁条件以 `game/constants/Titles.java` 为准**（结算/成交时检测，解锁推通知）。
+设计约束只有两条：徽章**只给称号不给现金**（否则会变成刷钱目标）；`title_name` 落库存中文，前端不再抄一份映射。
 
 ## 11. REST API 概览
 
-> 本节为**已交付接口清单**，2026-09-29 逐条对照 `web/` 下控制器核验（29 个端点）。
+> 端点清单以 `web/` 下的控制器为准，本节只记契约与出参要点。新增/变更接口时同步本节。
 > 新增/变更接口时同步改本节，勿让规格与实现漂移。
 
 - `POST /api/auth/register`（body 可选 `mode`：STANDARD/QUICK，缺省 STANDARD）、`POST /api/auth/login`（返回 JWT）
 
 - `GET  /api/me`：当前登录用户（userId、username），前端刷新后恢复身份用
 
-- `GET  /api/me/assets`：现金、市值、总资产、总盈亏、当日收益率
+- `GET  /api/me/assets`：现金、市值、融资负债、高利贷余额、净资产、担保比例、**融资可借额度**（`borrowable` 由服务端计算，前端不再自己估）
 
 - `GET  /api/me/positions`：持仓列表（含可卖股数、成本、浮盈、停牌标识）
 

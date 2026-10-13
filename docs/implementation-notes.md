@@ -2,7 +2,6 @@
 
 > 本文件是**实现层的唯一备忘**：设计意图看 [spec.md](spec.md)，怎么落地、哪些不能动、坑在哪看这里。
 > 规则冲突时优先级：**设计规格 > 本备忘 > 其他**。
-> 它取代了此前散落的《实现计划》（Phase 0-13 已全部完成，任务清单已无参考价值）与两份窗口交接文档。
 
 ## 1. 设计阶段确认的痛点与结论（P1-P15，实现时不可回退）
 
@@ -74,6 +73,7 @@
 - **提醒消息只有一个出口**：任何"要告诉玩家一句话"的通知（纪元切换、结算播报、除权、追保/强平、打新、剧本收官、称号解锁、NPC 台词）一律走 `event/NotifyPublisher`（`system(...)` / `npc(...)`，字段惯例 type=NOTIFY、未读、当日、created_at 现取）。别再在各服务里 `new UserMessage()` 抄一份——历史上抄了 7 份，字段还各有出入。行情事件（EVENT/三态传闻）仍走 `EventFactory`/`MainScriptService`，它们要写 sector/truth_status/followup_of，语义不同。
 - **心跳与冷用户节流**：`MarketScheduler` 每 `SCHEDULER_HEARTBEAT_MS`(100ms) 扫一遍在线用户，但**先做内存预判**（`dueForBeat`）：有行情板的按本局 `tickMs` 判到点；没有板的（未开过局 / 刚重启 / 刚登出）按 1 秒节流放行一次。别去掉这个节流——每个停在"还没开盘"页面的在线账号都会变成每秒 10 次 `selectOne`。
 - **前端菜单/路由**：`GameLayout.vue` 竖排菜单；`/market /stock/:id /assets /messages /leaderboard /summary /result`；涨跌与金额格式化统一在 `frontend/src/utils/format.js`。
+- **Element Plus 只用四个组件，且必须走深层路径**：全站只用 `el-dialog` + `el-input-number` + `ElMessage`/`ElMessageBox`，按「用到哪个 import 哪个」引 `element-plus/es/components/<x>/index.mjs`——从桶口 `element-plus` 取会把全量组件拖进来（实测只降到 808 kB）。样式在组件内引 `.../style/css`，两个命令式的在 `main.js` 统一引。新增 `el-*` 时记得同处补 `style/css`，否则功能正常但没样式。
 
 ## 4. 环境与运维
 
@@ -92,25 +92,18 @@
 
 **回归防护**：任何触及开盘管线 / 结算 / 引擎的改动，必跑 `VolatilityEngineTest`、`FastForwardServiceTest`、`TradeConcurrencyTest`、`WorldTickServiceTest`，并复验"快进与正常推进同种子结果一致"。
 
-## 5. 验收状态
+## 5. 当前验收基线
 
-- **Phase 0-13 全部完成并通过验收**（后端引擎/调度/交易/融资/事件/NPC/剧本/打新/WS/REST → 前端 8 页 + 组件 → 终局验收）。
-- 后端全量 **421 tests，0 Failures / 0 Errors**（同种子可复现、快进=逐跳、人设与板块/NPC/高利贷文案零重复总校验、事件骨架 75 条与 event-copy.txt 一一对应、文案文件全部登记、剧本日撒点不死循环、prev_index 基准、三类流水查询、模式档案与 /api/game/modes、提醒消息落库惯例（NotifyPublisher）、心跳冷用户节流、**高利贷额度与递增计息、到期强卖、卖不掉转逾期、只有高利贷也能爆仓、重开清台账**）；标准局 72 交易日约 2 小时、快速局 36 天约 30 分钟；前端 `npm run build` 通过，入口主包 17.34 kB（vendor 按 echarts / element-plus / vue 拆块）。
-- 验收图集 `docs/design/shots/`：01-login / 02-market / 03-stock / 03b-limit-sealed / 04-assets / 05-messages / 05-stock-bought / 06-rank / 07-summary / 08-result / 09-notice-popup（右下角浮层）/ 10-danmu-board（分道弹幕）/ 11-quick-mode-picker（模式选择）/ 12-quick-market（快速模式实盘：±20% 行情）/ 13-stock-detail（个股页：涨跌停虚线在 ±20% 处）。
-- 后续维护轮次（2026-09-29）：资产页三类流水接口与接入 → 结构整理与占位文案清理 → `prev_index` 根治 → 规格 §11 对齐 → 前端拆包 → 节奏压缩与弹幕/消息体验重做 → 一局一档案 GameMode → 倒计时三连修 → 涨跌停价由后端按本局下发 → **全部游戏文案外置到 `resources/content/`（含 75 条事件骨架的标题正文）、删掉前端手抄的股票表与节奏镜像、清掉死常量/死配置/未用图标/未用 import 与死导出**
-- 同日第二轮（结构整治）：`game/content` 收拢全部文案读取层 → `EventSkeletons` 499→227 行 → 7 份重复的"提醒消息落库"样板收进 `event/NotifyPublisher`（纪元切换标题不再把 `BULL_START` 这种枚举名漏给玩家）→ 心跳对"还没缓存行情板"的在线用户按 1 秒节流（原来每个未开盘账号每秒 10 次空查库）→ 换行符统一 LF。
-- 第三轮（2026-10-10）：**纪元叙事 11 条外置**——`EraCode.java` 删掉 `narrative` 字段（只剩标识与显示名），文案进 `content/era-narratives.txt`、读取入口 `game/content/EraNarratives.java`（一组恰好一行，多写即启动失败），并加入 `StockPersonasTest` 全局零重复总校验 → 资产页融资卡片的"borrowable 仅在借款/还款响应返回、无独立查询接口"那句工程口径改成玩家话 → 快速模式黑7月窗口按档铺满整个纪元（`GameMode.crashWindowFullEra`），名场面日占比 29.0% → 31.2%、崩盘日不再只剩 1 天 → 后端 403 tests 全绿（标准模式分布逐 seed 未变）。
-
-- 第四轮（2026-10-10）：**全量拼写修正** `Hunderd` → `Hundred`（Java 包 `com.holdhundredyear`、主类、pom、`spring.application.name`、前端包名、README，188 个文件走 `git mv` 保留历史）→ **终局接口两处修复**：盘中爆仓没有当日快照导致 `GET /api/game/result` 500（改为取最后一个已结算日）、`GameResultDTO` 缺 `debt` 字段导致天台页负债恒为 0.00 → **高利贷板块落地**（spec §6.6）：`user_shark_loan` 台账 + `sys_user.shark_debt`、`SharkService` 额度与递增计息与到期强卖、结算第⑤步插入、`/api/loan/shark*` 三条接口、资产页高利贷卡片与融资/高利贷的按额度快捷填单、`content/shark-lines.txt` 七组台词。
-
-- 第五轮（2026-10-13）：**修掉一个快速模式的真 bug**——`MarketStateService.eraInstanceForDay` 重掷纪元时漏传模式，一直走 `roll(seed)` 的标准重载，于是快速模式账户的行情板纪元（连带 `muMkt` 漂移、板块系数、事件筛选、NPC 黑7月反应、打新连板数）全按标准日历算，而纪元通知读的是 DB 的 `user_era`，出现"通知写股灾、盘面走牛市"。改为按本局 `GameMode` 重掷，并加回归测试 `quickModeBoardContextFollowsTheQuickEraSchedule`（拿播种的 `user_era` 行当权威比对）。
-  同时：后端连不上时前端统一弹提示（`api/http.js` 对 status 0 去重弹一次）；催债播报改节流；清掉 6 处还在引用已删除常量（`TOTAL_DAYS`/`DAYS_PER_YEAR`）的注释与 spec 里"每 30 秒 checkpoint"的过时说法（实际是每 5 跳）；版本号统一 `0.0.1`（pom / package.json / package-lock / git tag）；删掉仓库根四个历史运行日志。
+- **后端 `.\mvnw.cmd test` = 421 tests / 0 Failures / 0 Errors**（需本机 `hold_year_test`）。覆盖：同种子可复现、快进=逐跳、并发守恒、结算 12 步、追保/强平/爆仓、高利贷额度与递增计息与到期强卖、事件骨架 75 条与 `event-copy.txt` 一一对应、文案文件全部登记且跨池零重复、剧本日撒点不死循环、`prev_index` 基准、三类流水查询、模式档案、提醒消息惯例、心跳节流、终局两结局。
+- **前端 `npm run build` 通过**：入口主包 17.6 kB、`vendor-element` 86.65 kB（按需引入，勿回退）。
+- **实机走查基线**：注册 → 开盘 → 行情/弹幕/消息 → 买卖（T+1、涨跌停、佣金）→ 融资 → 高利贷 → 打新 → 排行 → 日报 → 双结局 → 再来一局，全程 console error 0、非预期接口错误 0。
+- 截图只保留**当前版本**（`docs/design/shots/`）：界面改版后重截替换，不叠加历史截图。
+- **变更历史不在本文档里**：`git log` 与 tag `v0.0.1` 是唯一记录。
 
 ## 6. 还值得做的事（都不是缺陷）
 
-- **倍速按钮（1x/2x/4x）**：跳毫秒已经是每局档案里的值（`GameMode.getTickMs()`），再做倍速只需把它降级成"每账户运行时参数 + 档案默认值"，并让午休计时（`lunchStartedNanos` 用挂钟）与状态栏倒计时随动。随机序列按跳消费，倍速**不影响**同种子可复现性。
-- **Element Plus 按需引入（已完成 2026-09-30）**：全站只用 `el-dialog` + `el-input-number` + `ElMessage`/`ElMessageBox`，改成"用到哪个 import 哪个"。**必须走 `element-plus/es/components/<x>/index.mjs` 深层路径**——从桶口 `'element-plus'` 取仍然会把全量组件拖进来（实测只降到 808 kB）。样式在各自组件里引 `.../style/css`，命令式的两个（message / message-box）在 `main.js` 里统一引。`vendor-element` 960 kB → **86.65 kB**（gzip 294 → 29.8），杂项 `vendor` 205.85 → 101.04 kB。以后新增 el-* 组件时记得同处补 `style/css`，否则功能正常但没样式。
-- **生产化打包/部署说明**：当前只有开发模式运行手册，无部署文档。
+- **倍速按钮（1x/2x/4x）**：跳毫秒已经是每局档案里的值（`GameMode.getTickMs()`），再做倍速只需把它降级成「每账户运行时参数 + 档案默认值」，并让午休计时（`lunchStartedNanos` 用挂钟）与状态栏倒计时随动。随机序列按跳消费，倍速**不影响**同种子可复现性。
+- **生产化打包/部署说明**：当前只有开发模式运行手册，无部署文档。做之前要先定「部署给谁」——自用 / 局域网 / 公网三档的工作量差一个数量级（配置分档、HTTPS/WSS、进程守护、备份都只在公网档才需要）。
 
 ## 7. 文案维护（改文案不用改代码）
 
