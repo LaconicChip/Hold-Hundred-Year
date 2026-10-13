@@ -217,7 +217,7 @@ async function onStart() {
     }
     await market.start()
   } catch (e) {
-    ElMessage.error(e?.message || '开始失败')
+    ElMessage.error({ message: e?.message || '开始失败', grouping: true })
   }
 }
 
@@ -236,7 +236,7 @@ async function onSkip() {
     const summary = await market.skip() // DailySummaryDTO
     emit('skipped', summary) // 由 Market.vue 跳转收盘晚报页
   } catch (e) {
-    ElMessage.error(e?.message || '跳过失败')
+    ElMessage.error({ message: e?.message || '跳过失败', grouping: true })
   }
 }
 

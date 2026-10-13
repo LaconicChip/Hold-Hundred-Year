@@ -72,7 +72,7 @@ async function subscribe() {
     shown.add(ipo.value.scriptDayId) // 记住已申购，不再弹
     visible.value = false
   } catch (e) {
-    ElMessage.error(e?.message || '申购失败')
+    ElMessage.error({ message: e?.message || '申购失败', grouping: true })
   } finally {
     subscribing.value = false
   }

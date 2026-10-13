@@ -226,7 +226,7 @@ async function submit(side) {
     emit('traded') // 通知父页刷新持仓与资产
   } catch (err) {
     // 业务失败文案直接透传（后端 msg）
-    ElMessage.error(err && err.message ? err.message : '委托失败')
+    ElMessage.error({ message: err && err.message ? err.message : '委托失败', grouping: true })
   } finally {
     loading.value = false
   }

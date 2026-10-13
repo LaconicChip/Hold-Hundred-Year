@@ -22,6 +22,9 @@ export function setToken(token) {
   else localStorage.removeItem(TOKEN_KEY)
 }
 
+const OFFLINE_TIP = '连不上营业部系统：后端（8080）没在跑，或网络断了'
+let lastOfflineTip = 0
+
 const http = axios.create({
   baseURL: '/',
   timeout: 15000
@@ -72,9 +75,24 @@ http.interceptors.response.use(
       err.code = body.code || 400
       return Promise.reject(err)
     }
-    const msg = (body && body.msg) || error.message || '网络异常'
+    // 后端不可达有两种长相：直连时是 status 0（拿不到响应）；走 vite 代理时代理自己回一个
+    // 5xx，且响应体不是后端的 R{code,msg,data} 结构。两种都要提示，否则玩家只会觉得按钮坏了。
+    const isRShape = body && typeof body === 'object' && 'code' in body
+    const offline = status === 0 || (status >= 500 && !isRShape)
+    if (offline) {
+      // 统一提示一次，8 秒内不重复：重连风暴会连着失败几十次
+      const now = Date.now()
+      if (now - lastOfflineTip > 8000) {
+        lastOfflineTip = now
+        ElMessage.error({ message: OFFLINE_TIP, grouping: true })
+      }
+    }
+    // 离线时把 reject 的文案也换成同一句话：页面级 catch 里 ElMessage.error(e.message) 才不会露出
+    // axios 原文（Request failed with status code 500），并与上面的 grouping 提示合并成一条。
+    const msg = offline ? OFFLINE_TIP : (body && body.msg) || error.message || '网络异常'
     const err = new Error(msg)
-    err.code = status
+    err.code = offline ? 0 : status
+    err.offline = offline
     return Promise.reject(err)
   }
 )

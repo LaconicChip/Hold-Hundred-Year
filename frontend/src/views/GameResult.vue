@@ -355,7 +355,7 @@ async function onRestart() {
     ElMessage.success('新世界已播种')
     router.push('/market')
   } catch (e) {
-    ElMessage.error(e?.message || '重开失败')
+    ElMessage.error({ message: e?.message || '重开失败', grouping: true })
   } finally {
     restarting.value = false
   }

@@ -134,7 +134,8 @@ async function onSubmit() {
     // 后端 400 业务错误（如“用户名已存在”“用户名或密码错误”）透传 msg
     const msg = e && e.message ? e.message : '操作失败，请稍后再试'
     errText.value = msg
-    ElMessage.error(msg)
+    // grouping：与拦截器同文案的离线提示合并成一条，不叠两层
+    ElMessage.error({ message: msg, grouping: true })
   } finally {
     loading.value = false
   }

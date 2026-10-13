@@ -278,7 +278,7 @@ async function onMarkAll() {
     await messages.markAllRead()
     ElMessage.success('已全部标记为已读')
   } catch {
-    ElMessage.error('操作失败')
+    ElMessage.error({ message: '操作失败', grouping: true })
   }
 }
 
