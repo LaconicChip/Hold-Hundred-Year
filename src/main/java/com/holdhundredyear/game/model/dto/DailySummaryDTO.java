@@ -13,7 +13,7 @@ import java.util.List;
 @Data
 public class DailySummaryDTO {
 
-    /** 交易日（1..TOTAL_DAYS） */
+    /** 交易日（1..本局 totalDays，由 GameMode 决定） */
     private int gameDay;
 
     /** 当日收益率（%），无快照口径时 0 */

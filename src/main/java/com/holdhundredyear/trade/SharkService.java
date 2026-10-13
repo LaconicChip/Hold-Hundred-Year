@@ -277,7 +277,12 @@ public class SharkService {
         }
         // ① 计息（利滚利：利息进余额，明天按更大的基数再算）
         BigDecimal interest = ZERO;
+        boolean rateSteppedUp = false;
         for (UserSharkLoan loan : loans) {
+            // 涨档是玩家唯一该被打扰的时刻之一：今天这一档和昨天不一样
+            if (day > loan.getStartDay() && annualRateAt(loan, day) != annualRateAt(loan, day - 1)) {
+                rateSteppedUp = true;
+            }
             BigDecimal add = dailyInterestOf(loan.getBalance(), annualRateAt(loan, day), mode);
             if (add.signum() <= 0) {
                 continue;
@@ -316,7 +321,15 @@ public class SharkService {
         syncBalance(user, loans);
         sysUserMapper.updateById(user);
 
-        // ③ 播报：强卖 > 逾期 > 到期结清 > 每日催债，一天最多一条
+        // ③ 播报：只在"事情变了"的节点打扰玩家，一天最多一条。
+        //    优先级：到期强卖 > 逾期 > 到期结清 > 临近到期（剩 3 天 / 剩 1 天）> 利率涨档。
+        //    平时静默——利息照滚、流水照记，但不再每天推一条催债（实测一局能刷十几条）。
+        int daysToNearestDue = Integer.MAX_VALUE;
+        for (UserSharkLoan loan : loans) {
+            if (!STATUS_REPAID.equals(loan.getStatus()) && loan.getDueDay() > day) {
+                daysToNearestDue = Math.min(daysToNearestDue, loan.getDueDay() - day);
+            }
+        }
         Random rng = WorldRandom.of(worldSeed, "shark" + day);
         SharkLines.Scene scene = null;
         String title = null;
@@ -328,10 +341,13 @@ public class SharkService {
             title = "高利贷逾期";
         } else if (clearedDue) {
             scene = SharkLines.Scene.DUE_TODAY;
-            title = "高利贷到期";
-        } else if (sharkOf(user).signum() > 0) {
+            title = "高利贷到期结清";
+        } else if (daysToNearestDue == 3 || daysToNearestDue == 1) {
+            scene = SharkLines.Scene.DUE_SOON;
+            title = "高利贷临近到期";
+        } else if (rateSteppedUp) {
             scene = SharkLines.Scene.CHATTER;
-            title = "高利贷计息";
+            title = "高利贷涨息";
         }
         if (scene != null) {
             notifyPublisher.system(userId, day, title,

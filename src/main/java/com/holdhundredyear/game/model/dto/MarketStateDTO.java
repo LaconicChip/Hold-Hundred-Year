@@ -31,10 +31,10 @@ public class MarketStateDTO {
     /** 本局普通股涨跌停幅度（0.1 = ±10%） */
     private double limitPct;
 
-    /** 游戏年（(currentDay-1)/DAYS_PER_YEAR + 1） */
+    /** 游戏年（(currentDay-1)/本局年长 + 1） */
     private int year;
 
-    /** 年内交易日（(currentDay-1)%DAYS_PER_YEAR + 1） */
+    /** 年内交易日（(currentDay-1)%本局年长 + 1） */
     private int dayInYear;
 
     /** 当日所属纪元代码 */

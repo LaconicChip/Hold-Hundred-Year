@@ -17,7 +17,7 @@ public final class SharkLines {
     private static final String FILE = "shark-lines";
 
     /** 台词场景，与 txt 里的 {@code @分组名} 一一对应。 */
-    public enum Scene { BORROWED, CHATTER, DUE_TODAY, OVERDUE, LIQUIDATED, CLEARED, WARNING }
+    public enum Scene { BORROWED, CHATTER, DUE_SOON, DUE_TODAY, OVERDUE, LIQUIDATED, CLEARED, WARNING }
 
     private static final Map<Scene, List<String>> POOLS = pools();
 

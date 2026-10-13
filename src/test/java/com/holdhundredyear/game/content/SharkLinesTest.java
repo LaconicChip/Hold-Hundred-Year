@@ -66,7 +66,7 @@ class SharkLinesTest {
     void scenesCoverTheWholeLifecycle() {
         Set<String> names = Arrays.stream(SharkLines.Scene.values()).map(Enum::name)
                 .collect(java.util.stream.Collectors.toSet());
-        assertTrue(names.containsAll(Set.of("BORROWED", "CHATTER", "DUE_TODAY", "OVERDUE",
+        assertTrue(names.containsAll(Set.of("BORROWED", "CHATTER", "DUE_SOON", "DUE_TODAY", "OVERDUE",
                         "LIQUIDATED", "CLEARED", "WARNING")),
                 "the board needs a line for every stage of the loan, got " + names);
     }

@@ -218,6 +218,32 @@ class SharkServiceTest {
     }
 
     @Test
+    void chattersOnlyOnMilestonesAndStillAccruesEveryDay() {
+        long userId = seedInMarket();
+        sharkService.borrow(userId, money("100000.00"));
+        // 标准模式期限 24 个交易日：到期日第 25 天，所以第 2~12 天里只有两次"涨档"
+        //（账龄满 5 天、满 10 天），临近到期提醒（剩 3 天 / 剩 1 天）还没到点。
+        for (int day = 2; day <= 12; day++) {
+            settleDay(userId, day);
+        }
+
+        List<String> notices = messages(userId).stream().map(UserMessage::getTitle)
+                .filter((title) -> "高利贷涨息".equals(title) || "高利贷临近到期".equals(title)
+                        || "高利贷逾期".equals(title) || "高利贷到期清算".equals(title)
+                        || "高利贷结清".equals(title))
+                .collect(java.util.stream.Collectors.toList());
+        assertEquals(2, notices.size(),
+                "11 个结算日里只该被打扰 2 次（涨档），其余静默: " + notices);
+
+        long interestRows = loanRecords(userId).stream()
+                .filter((row) -> "SHARK_INTEREST".equals(row.getLoanType())).count();
+        assertEquals(11, interestRows,
+                "少发提醒不等于少算利息：每一天都得有结息流水");
+        assertTrue(sharkOf(userId).compareTo(money("100000.00")) > 0,
+                "the balance must have compounded upward");
+    }
+
+    @Test
     void zeroOrNegativeAmountsAreRejected() {
         long userId = seedInMarket();
         assertThrows(BizException.class, () -> sharkService.borrow(userId, money("0.00")));
@@ -348,9 +374,13 @@ class SharkServiceTest {
                 .eq(LoanRecord::getUserId, userId));
     }
 
-    private UserMessage message(long userId, String title) {
+    private List<UserMessage> messages(long userId) {
         return userMessageMapper.selectList(new LambdaQueryWrapper<UserMessage>()
-                        .eq(UserMessage::getUserId, userId)).stream()
+                .eq(UserMessage::getUserId, userId));
+    }
+
+    private UserMessage message(long userId, String title) {
+        return messages(userId).stream()
                 .filter(msg -> title.equals(msg.getTitle()))
                 .findFirst().orElse(null);
     }

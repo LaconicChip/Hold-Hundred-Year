@@ -358,7 +358,7 @@ public class MarketQueryService {
 
     /**
      * 个股日K序列（GET /api/stocks/{id}/kline）：stock_daily_bar 按 game_day 升序、
-     * limit 截取最近 N 根（1..TOTAL_DAYS 夹逼）。未知 stockId 抛 NOT_FOUND；
+     * limit 截取最近 N 根（1..本局 totalDays 夹逼）。未知 stockId 抛 NOT_FOUND；
      * 尚无结算日的股票返回空列表（前端展示空态）。
      */
     public List<KlinePointDTO> stockKline(long userId, long stockId, int limit) {

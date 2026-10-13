@@ -7,6 +7,7 @@ A 股模拟炒股游戏：一局 72 个交易日（3 年 × 24 天），约 1 �
 - 后端：Spring Boot 4.1.1 / Java 17 / MySQL / MyBatis-Plus / WebSocket(STOMP)，**不使用 Redis 与 MQ**
 - 前端：Vue 3 + Vite + Element Plus + ECharts + Pinia
 - 视觉：散户营业部·漫画贴纸风（米纸底 + 墨色描边 + 硬阴影）、红涨绿跌、**全站禁 emoji**
+- 版本：**v0.0.1**（`pom.xml`、`frontend/package.json` 与 git tag 三处同号）
 
 ## 目录结构
 
@@ -88,7 +89,18 @@ cd frontend; npm run build
    `& "$env:USERPROFILE\.m2\wrapper\dists\apache-maven-<ver>\*\apache-maven-<ver>\bin\mvn.cmd" test`（需先设 `$env:JAVA_HOME` 指向 JDK 17）。
 2. **测试没有 H2 兜底**：`hold_year_test` 不存在会直接大面积 `Unknown database` 报错，按上面第 1 步建库即可。
 3. **旧库必须手工执行迁移脚本**（`docs/db-migrations.md`），否则「收盘涨跌幅 / 日K / 指数昨收」相关功能报错。
-4. 前端页面依赖后端 8080，**先起后端再起前端**。
+4. 前端页面依赖后端 8080，**先起后端再起前端**。后端没跑时前端会统一弹「连不上营业部系统」（8 秒内只弹一次）——
+   但如果标签页是后端重启前就开着的，它里面的 WS 与 store 都是旧的，按钮点了没反应，**先 Ctrl+F5 硬刷新**。
+5. **在 IDEA 里改过 Java 包名（或 `git mv` 挪过源码目录）之后，必须先 Maven 面板 → Reload All Maven Projects，
+   再 Build → Rebuild Project**。IDEA 的 Rebuild 会先清空输出目录、再按它自己的增量缓存编译；缓存还认旧包路径时
+   就会留下一个空的 `target/classes`，此时 Run 报 `ClassNotFoundException: 主类`（不是代码问题，是 IDE 缓存）。
+   实在不清爽就 File → Invalidate Caches… 勾 Clear file system cache and Local History 重启。
+6. 判断服务在不在，**别用 `Get-NetTCPConnection -LocalPort 8080`**（沙箱/权限环境下会假报"无监听"），
+   直接发一次 HTTP：`Invoke-WebRequest http://localhost:8080/api/game/modes`（未登录返回 401 就说明活着）。
+7. **别让 IDEA 的自动构建和命令行 `mvnw` 同时写 `target/classes`**：两边都会清空/覆写输出目录，撞上就会出现
+   莫名其妙的 `NoSuchBeanDefinitionException`（某个 `@Service` 的 class 恰好被删掉）或"主类找不到"。
+   命令行跑测试前，要么关掉 IDEA 的 Build project automatically，要么只用一种方式构建。
+   遇到这种"上一秒还全绿"的失败，先 `mvnw clean test` 重跑一次再怀疑代码。
 
 ## 权威文档与优先级
 
