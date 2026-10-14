@@ -94,8 +94,13 @@ onBeforeUnmount(() => {
  * 玩家自己滚出来/拖出来的窗口，记成"看几根 + 距右端空几根"，而不是百分比：
  * 新 K 线长出来、容器宽度变化（滚动条出现/侧栏折叠）都会让 option 重算，
  * 用百分比就会把他的视野一把打回默认（这个坑踩过：滑块像被焊死，拖不动）。
+ *
+ * <p>必须是【普通变量，不能是 ref】：拖动滑块时 ECharts 每帧都发 datazoom，回写响应式
+ * 状态会立刻触发 option 重算 + setOption，等于在它手活半途把内部拖拽状态抢过来重设——
+ * 结果就是"拖滑块不平移，反而把窗口拉大缩小"。这里只记账，等下次真的需要重建 option
+ * （新 K 线落库 / 容器变宽）时再读它。
  */
-const userWindow = ref(null)
+let userWindow = null
 
 function onZoom(e) {
   const box = (e && e.batch && e.batch[0]) || e || {}
@@ -105,7 +110,7 @@ function onZoom(e) {
   const total = n + padOf(n)
   const startIdx = Math.round((box.start / 100) * (total - 1))
   const endIdx = Math.round((box.end / 100) * (total - 1))
-  userWindow.value = {
+  userWindow = {
     span: Math.max(2, endIdx - startIdx + 1),
     rightGap: Math.max(0, total - 1 - endIdx)
   }
@@ -175,10 +180,10 @@ const option = computed(() => {
   // 窗口：玩家动过就按"看几根 + 距右端多远"换算回来，否则默认贴右端看最近一窗
   let startIdx = Math.max(0, total - slots)
   let endIdx = total - 1
-  if (userWindow.value) {
-    endIdx = Math.max(0, Math.min(total - 1, total - 1 - userWindow.value.rightGap))
-    startIdx = Math.max(0, endIdx - userWindow.value.span + 1)
-    endIdx = Math.min(total - 1, startIdx + userWindow.value.span - 1)
+  if (userWindow) {
+    endIdx = Math.max(0, Math.min(total - 1, total - 1 - userWindow.rightGap))
+    startIdx = Math.max(0, endIdx - userWindow.span + 1)
+    endIdx = Math.min(total - 1, startIdx + userWindow.span - 1)
   }
   const zoomStart = total <= 1 ? 0 : (startIdx / (total - 1)) * 100
   const zoomEnd = total <= 1 ? 100 : (endIdx / (total - 1)) * 100
@@ -310,8 +315,8 @@ const option = computed(() => {
         bottom: 2,
         height: 22,
         borderColor: cInk,
-        handleSize: '110%',
-        moveHandleSize: 8,
+        handleSize: 12,
+        moveHandleSize: 6,
         emphasis: { handleStyle: { borderColor: cInk } }
       }
     ],
