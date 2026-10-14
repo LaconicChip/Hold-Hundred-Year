@@ -20,7 +20,7 @@
     </div>
 
     <div v-else ref="wrapEl" class="chart">
-      <VChart class="chart-canvas" :option="option" :autoresize="true" />
+      <VChart class="chart-canvas" :option="option" :autoresize="true" @datazoom="onZoom" />
     </div>
   </div>
 </template>
@@ -51,15 +51,16 @@ const props = defineProps({
   kline: { type: Array, default: () => [] }
 })
 
-// 蜡烛宽度口径（照证券软件来）：一屏只放"容器宽 ÷ 每根目标像素"这么多根，
-// 蜡烛挨着铺满整行——不限制死宽度（那会在蜡烛之间留一排空隙，像梳齿不像K线），
-// 而是让宽度 = 可见根数的结果。滚轮缩放改的就是这个可见根数，所以宽度跟着变。
-const BAR_PX = 9
-// 窗口上下限：宽屏别少到看不清趋势，窄容器别挤成一团糊
-const MIN_BARS = 20
+// 蜡烛宽度口径：默认一屏 40 根（证券软件"最近一段"的观感），宽度 = 绘图区宽 ÷ 根数，
+// 所以不限制死宽度也能等宽铺满——之前按"每根 9px"算槽位，1440 屏能放 88 根，而一整局
+// 最多 82 根，永远塞得下，滑块也就永远没有可拖的余量（"拖滑块看历史"根本不可能发生）。
+const DEFAULT_BARS = 40
+// 单根最窄也要认得出来：容器太窄时按这个下限减少根数（窄面板 ≈ 28 根）
+const MIN_BAR_PX = 8
+const MIN_BARS = 10
 const MAX_BARS = 120
 // 首帧还没量到容器宽度时的兜底（约等于 1440 屏去掉侧栏与留白）
-const FALLBACK_GRID_PX = 900
+const FALLBACK_GRID_PX = 800
 
 // 绘图区宽度：随窗口/侧栏折叠变化重算，保证"每根 ~9px"这个观感在任何宽度下成立
 const wrapEl = ref(null)
@@ -89,11 +90,40 @@ onBeforeUnmount(() => {
   if (resizeObserver) resizeObserver.disconnect()
 })
 
+/**
+ * 玩家自己滚出来/拖出来的窗口，记成"看几根 + 距右端空几根"，而不是百分比：
+ * 新 K 线长出来、容器宽度变化（滚动条出现/侧栏折叠）都会让 option 重算，
+ * 用百分比就会把他的视野一把打回默认（这个坑踩过：滑块像被焊死，拖不动）。
+ */
+const userWindow = ref(null)
+
+function onZoom(e) {
+  const box = (e && e.batch && e.batch[0]) || e || {}
+  if (typeof box.start !== 'number' || typeof box.end !== 'number') return
+  const n = props.kline.length
+  if (!n) return
+  const total = n + padOf(n)
+  const startIdx = Math.round((box.start / 100) * (total - 1))
+  const endIdx = Math.round((box.end / 100) * (total - 1))
+  userWindow.value = {
+    span: Math.max(2, endIdx - startIdx + 1),
+    rightGap: Math.max(0, total - 1 - endIdx)
+  }
+}
+
+/** 左侧空槽数（与 option 里的口径保持一致）。 */
+function padOf(nBars) {
+  return Math.max(0, viewSlots(nBars) - nBars)
+}
+
 // 一屏有多少个槽位（与"已经长出来几根"无关）：证券软件就是按槽位画轴的，
 // 所以根数不足一屏时是"左边留空"，而不是把仅有的几根拉成巨无霸。
-function viewSlots() {
-  const fit = Math.round((gridPx.value || FALLBACK_GRID_PX) / BAR_PX)
-  return Math.max(MIN_BARS, Math.min(MAX_BARS, fit))
+function viewSlots(total) {
+  const grid = gridPx.value || FALLBACK_GRID_PX
+  // 默认根数，但窄容器下按"每根不低于 MIN_BAR_PX"回收
+  const byWidth = Math.max(MIN_BARS, Math.floor(grid / MIN_BAR_PX))
+  const capped = Math.max(MIN_BARS, Math.min(MAX_BARS, Math.min(DEFAULT_BARS, byWidth)))
+  return total ? Math.min(capped, Math.max(MIN_BARS, total)) : capped
 }
 
 /**
@@ -132,7 +162,7 @@ const option = computed(() => {
 
   // 开局前播种的历史 K 线（game_day <= 0）标成 T-N，与局内"第 N 日"区分开
   const nBars = props.kline.length
-  const slots = viewSlots()
+  const slots = viewSlots(nBars)
   // 左侧空槽：根数不足一屏时把轴补足，蜡烛宽度就恒定是"一格一根"，
   // 不会出现"只有几根时摊满全屏"的巨无霸（那也是"线爆炸高"的另一半观感）
   const pad = Math.max(0, slots - nBars)
@@ -142,8 +172,16 @@ const option = computed(() => {
     ...blank(''),
     ...props.kline.map((b) => (b.gameDay > 0 ? '第' + b.gameDay + '日' : 'T' + b.gameDay))
   ]
-  // 窗口起点：超出槽位就只留最近一窗（底部滑块/图上拖动可回看历史）
-  const zoomStart = total <= slots ? 0 : ((total - slots) / (total - 1)) * 100
+  // 窗口：玩家动过就按"看几根 + 距右端多远"换算回来，否则默认贴右端看最近一窗
+  let startIdx = Math.max(0, total - slots)
+  let endIdx = total - 1
+  if (userWindow.value) {
+    endIdx = Math.max(0, Math.min(total - 1, total - 1 - userWindow.value.rightGap))
+    startIdx = Math.max(0, endIdx - userWindow.value.span + 1)
+    endIdx = Math.min(total - 1, startIdx + userWindow.value.span - 1)
+  }
+  const zoomStart = total <= 1 ? 0 : (startIdx / (total - 1)) * 100
+  const zoomEnd = total <= 1 ? 100 : (endIdx / (total - 1)) * 100
   // 空槽用 ECharts 官方的缺失值 '-'：candlestick 的数据项给 null 会直接抛
   // "Cannot read properties of null"，整张图就不画了（踩过一次）
   const candles = [...blank('-'), ...props.kline.map((b) => [b.open, b.close, b.low, b.high])]
@@ -255,7 +293,7 @@ const option = computed(() => {
         type: 'inside',
         xAxisIndex: [0, 1],
         start: zoomStart,
-        end: 100,
+        end: zoomEnd,
         // 滚轮改宽度（放大=可见根数变少=蜡烛变宽）；在图上按住拖动 = 平移看历史，
         // 与底部滑块同一个窗口，两条路都能走
         zoomOnMouseWheel: true,
@@ -268,7 +306,7 @@ const option = computed(() => {
         type: 'slider',
         xAxisIndex: [0, 1],
         start: zoomStart,
-        end: 100,
+        end: zoomEnd,
         bottom: 2,
         height: 22,
         borderColor: cInk,
