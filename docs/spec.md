@@ -563,7 +563,7 @@ BANKRUPT / FINISHED（终局：冻结一切操作，展示结局结算页）
 
 - `GET  /api/stocks/{id}/quotes`：当日分时点序列（固定 90 点时间轴，未到点为 null、午休断轴）
 
-- `GET  /api/stocks/{id}/kline?limit=60`：日K蜡烛数据（来自 stock\_daily\_bar，快进与正常推进同路径落库）
+- `GET  /api/stocks/{id}/kline?limit=90`：日K蜡烛数据（来自 stock\_daily\_bar，快进与正常推进同路径落库）；`limit` 上限是「本局交易日 + 10 根开局前历史」，前端一次要满，屏上显示多少根由图表的槽位口径决定（见 implementation-notes §3）
 
 - `GET  /api/market/index`：百年指数当日分时与收盘历史
 

@@ -19,12 +19,14 @@
       <span class="empty-desc">快进或度过几个交易日，这里会一根根长出蜡烛</span>
     </div>
 
-    <VChart v-else class="chart" :option="option" :autoresize="true" />
+    <div v-else ref="wrapEl" class="chart">
+      <VChart class="chart-canvas" :option="option" :autoresize="true" />
+    </div>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { use } from 'echarts/core'
 import { CandlestickChart, BarChart, LineChart } from 'echarts/charts'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -49,9 +51,59 @@ const props = defineProps({
   kline: { type: Array, default: () => [] }
 })
 
-// 默认只看最近这么多根：证券软件的口径。全部 K 线塞进一屏时，开局只有几根蜡烛
-// 会被拉到满屏宽，视觉上就是"一条爆炸高的线"——固定窗口 + 限制蜡烛宽度才对。
-const KLINE_WINDOW = 30
+// 蜡烛宽度口径（照证券软件来）：一屏只放"容器宽 ÷ 每根目标像素"这么多根，
+// 蜡烛挨着铺满整行——不限制死宽度（那会在蜡烛之间留一排空隙，像梳齿不像K线），
+// 而是让宽度 = 可见根数的结果。滚轮缩放改的就是这个可见根数，所以宽度跟着变。
+const BAR_PX = 9
+// 窗口上下限：宽屏别少到看不清趋势，窄容器别挤成一团糊
+const MIN_BARS = 20
+const MAX_BARS = 120
+// 首帧还没量到容器宽度时的兜底（约等于 1440 屏去掉侧栏与留白）
+const FALLBACK_GRID_PX = 900
+
+// 绘图区宽度：随窗口/侧栏折叠变化重算，保证"每根 ~9px"这个观感在任何宽度下成立
+const wrapEl = ref(null)
+const gridPx = ref(0)
+let resizeObserver = null
+
+// 容器是 v-else 出来的（有数据才存在），所以不能在 onMounted 里一次性挂观察者：
+// 那时量到的是 0，会一路用兜底宽度，把整段 K 线塞进一屏、滑块也就没有可拖的余量。
+function attachObserver(el) {
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
+  if (!el || typeof ResizeObserver === 'undefined') return
+  const measure = () => {
+    // 与下面 grid 的 left/right 对齐（y 轴标签 56 + 最新价标注留白 46）
+    const w = el.clientWidth - 102
+    if (w > 0) gridPx.value = Math.max(120, w)
+  }
+  measure()
+  resizeObserver = new ResizeObserver(measure)
+  resizeObserver.observe(el)
+}
+watch(wrapEl, (el) => attachObserver(el), { flush: 'post' })
+
+onBeforeUnmount(() => {
+  if (resizeObserver) resizeObserver.disconnect()
+})
+
+// 一屏有多少个槽位（与"已经长出来几根"无关）：证券软件就是按槽位画轴的，
+// 所以根数不足一屏时是"左边留空"，而不是把仅有的几根拉成巨无霸。
+function viewSlots() {
+  const fit = Math.round((gridPx.value || FALLBACK_GRID_PX) / BAR_PX)
+  return Math.max(MIN_BARS, Math.min(MAX_BARS, fit))
+}
+
+/**
+ * 纵向留白：可见区间的 8%、价格的 0.4%、2 分钱三者取大。
+ * 关键是那个"价格比例 + 固定最小值"的兜底：窗口里只有一根蜡烛、或全天横盘
+ * 导致 high==low 时，区间为 0，没有兜底就会把 0 价差铺满整个高度（"线爆炸高"）。
+ */
+function yPad(min, max) {
+  return Math.max((max - min) * 0.08, max * 0.004, 0.02)
+}
 
 // MA 均线定义（颜色收敛到既有令牌：黄/蓝/橙）
 const MA_DEFS = [
@@ -79,17 +131,31 @@ const option = computed(() => {
   const cDash = token('--dash')
 
   // 开局前播种的历史 K 线（game_day <= 0）标成 T-N，与局内"第 N 日"区分开
-  const days = props.kline.map((b) => (b.gameDay > 0 ? '第' + b.gameDay + '日' : 'T' + b.gameDay))
-  // 窗口起点：不足一窗就全显，超出则只留最近 KLINE_WINDOW 根（滑块可拖回历史）
   const nBars = props.kline.length
-  const zoomStart = nBars <= KLINE_WINDOW ? 0 : ((nBars - KLINE_WINDOW) / (nBars - 1)) * 100
-  const candles = props.kline.map((b) => [b.open, b.close, b.low, b.high])
+  const slots = viewSlots()
+  // 左侧空槽：根数不足一屏时把轴补足，蜡烛宽度就恒定是"一格一根"，
+  // 不会出现"只有几根时摊满全屏"的巨无霸（那也是"线爆炸高"的另一半观感）
+  const pad = Math.max(0, slots - nBars)
+  const total = nBars + pad
+  const blank = (v) => Array.from({ length: pad }, () => v)
+  const days = [
+    ...blank(''),
+    ...props.kline.map((b) => (b.gameDay > 0 ? '第' + b.gameDay + '日' : 'T' + b.gameDay))
+  ]
+  // 窗口起点：超出槽位就只留最近一窗（底部滑块/图上拖动可回看历史）
+  const zoomStart = total <= slots ? 0 : ((total - slots) / (total - 1)) * 100
+  // 空槽用 ECharts 官方的缺失值 '-'：candlestick 的数据项给 null 会直接抛
+  // "Cannot read properties of null"，整张图就不画了（踩过一次）
+  const candles = [...blank('-'), ...props.kline.map((b) => [b.open, b.close, b.low, b.high])]
   const closes = props.kline.map((b) => b.close)
   // 涨跌幅副图（%），红涨绿跌
-  const chgBars = props.kline.map((b) => ({
-    value: +(b.changePct * 100).toFixed(2),
-    itemStyle: { color: b.changePct >= 0 ? cUp : cDown }
-  }))
+  const chgBars = [
+    ...blank(null),
+    ...props.kline.map((b) => ({
+      value: +(b.changePct * 100).toFixed(2),
+      itemStyle: { color: b.changePct >= 0 ? cUp : cDown }
+    }))
+  ]
   // 最新价高亮：最后一根蜡烛的收盘价标注
   const lastBar = props.kline[props.kline.length - 1]
 
@@ -98,7 +164,7 @@ const option = computed(() => {
     type: 'line',
     xAxisIndex: 0,
     yAxisIndex: 0,
-    data: maSeries(closes, m.n),
+    data: [...blank(null), ...maSeries(closes, m.n)],
     connectNulls: false,
     showSymbol: false,
     lineStyle: { width: 1.2, color: m.color },
@@ -106,7 +172,8 @@ const option = computed(() => {
   }))
 
   const tooltipFormatter = (params) => {
-    const idx = params[0].dataIndex
+    // 轴上多了左侧空槽，回到真实数据要减掉这段偏移
+    const idx = params[0].dataIndex - pad
     const b = props.kline[idx]
     if (!b) return ''
     const pct = b.changePct * 100
@@ -140,7 +207,7 @@ const option = computed(() => {
     // 两个 grid 左右边距必须一致（x 轴联动 + 十字光标对齐）；右侧留白给最新价标注
     grid: [
       { left: 56, right: 46, top: 16, height: '58%' },
-      { left: 56, right: 46, top: '76%', height: '14%' }
+      { left: 56, right: 46, top: '74%', height: '13%' }
     ],
     xAxis: [
       {
@@ -164,9 +231,14 @@ const option = computed(() => {
     ],
     yAxis: [
       {
+        // 不用 scale:true：它会把"当前窗口的高低价差"直接拉满整个高度——只有一根
+        // 蜡烛或全天横盘时，价差 0.01 也能顶天立地，就是"那线爆炸高"的成因。
+        // 改成按可见区间留 8% 上下白并带最小跨度兜底（见 yPad），
+        // 窗口内数据变了（缩放/拖动）回调会重算，所以缩放时纵向比例也跟着走。
         type: 'value',
         gridIndex: 0,
-        scale: true,
+        min: ({ min, max }) => +(min - yPad(min, max)).toFixed(3),
+        max: ({ min, max }) => +(max + yPad(min, max)).toFixed(3),
         axisLabel: { color: cInk2, fontSize: 11, formatter: (v) => v.toFixed(2) },
         splitLine: { lineStyle: { color: cDash, type: 'dashed' } }
       },
@@ -184,9 +256,12 @@ const option = computed(() => {
         xAxisIndex: [0, 1],
         start: zoomStart,
         end: 100,
+        // 滚轮改宽度（放大=可见根数变少=蜡烛变宽）；在图上按住拖动 = 平移看历史，
+        // 与底部滑块同一个窗口，两条路都能走
         zoomOnMouseWheel: true,
-        moveOnMouseMove: false,
-        moveOnMouseWheel: false
+        moveOnMouseMove: true,
+        moveOnMouseWheel: false,
+        preventDefaultMouseMove: true
       },
       // 底部滑块：K 线攒多了以后拖回去看历史
       {
@@ -195,9 +270,11 @@ const option = computed(() => {
         start: zoomStart,
         end: 100,
         bottom: 2,
-        height: 18,
+        height: 22,
         borderColor: cInk,
-        moveHandleSize: 4
+        handleSize: '110%',
+        moveHandleSize: 8,
+        emphasis: { handleStyle: { borderColor: cInk } }
       }
     ],
     series: [
@@ -207,8 +284,9 @@ const option = computed(() => {
         xAxisIndex: 0,
         yAxisIndex: 0,
         data: candles,
-        // 统一蜡烛宽度：根数少的时候不让它撑满屏宽（"爆炸高"的成因）
-        barMaxWidth: 16,
+        // 不设 barMaxWidth：宽度由"容器宽 ÷ 可见根数"决定，天然等宽且铺满，
+        // 滚轮缩放（改可见根数）就是改宽度
+        barWidth: '70%',
         itemStyle: {
           color: cUp,          // 阳线（收>开）红
           color0: cDown,       // 阴线（收<开）绿
@@ -237,7 +315,7 @@ const option = computed(() => {
         xAxisIndex: 1,
         yAxisIndex: 1,
         data: chgBars,
-        barMaxWidth: 10
+        barWidth: '55%'
       }
     ]
   }
