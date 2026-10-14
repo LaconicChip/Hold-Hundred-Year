@@ -57,6 +57,9 @@ const props = defineProps({
 const DEFAULT_BARS = 40
 // 单根最窄也要认得出来：容器太窄时按这个下限减少根数（窄面板 ≈ 28 根）
 const MIN_BAR_PX = 8
+// 缩放下限：最少也要看见 8 根。没有这条，滚轮滚到底就只剩一根蜡烛，
+// 一根蜡烛铺满整屏宽就是一块"巨无霸"，比原来的"线爆炸高"还难看。
+const MIN_VISIBLE_BARS = 8
 const MIN_BARS = 10
 const MAX_BARS = 120
 // 首帧还没量到容器宽度时的兜底（约等于 1440 屏去掉侧栏与留白）
@@ -304,20 +307,25 @@ const option = computed(() => {
         zoomOnMouseWheel: true,
         moveOnMouseMove: true,
         moveOnMouseWheel: false,
-        preventDefaultMouseMove: true
+        preventDefaultMouseMove: true,
+        minSpan: MIN_VISIBLE_BARS
       },
-      // 底部滑块：K 线攒多了以后拖回去看历史
+      // 底部滑块 = 纯进度条：只能左右拖（平移），两端不许改窗口大小。
+      // handleSize 给 0 就没有可抓的把手（想缩放请用滚轮），也就不会出现
+      // "两端拉到底=全部K线挤成一条、缩到一点=一根巨无霸"这种观感。
       {
         type: 'slider',
         xAxisIndex: [0, 1],
         start: zoomStart,
         end: zoomEnd,
         bottom: 2,
-        height: 22,
+        height: 20,
         borderColor: cInk,
-        handleSize: 12,
+        handleSize: 0,
         moveHandleSize: 6,
-        emphasis: { handleStyle: { borderColor: cInk } }
+        showDetail: false,
+        brushSelect: false,
+        minSpan: MIN_VISIBLE_BARS
       }
     ],
     series: [
