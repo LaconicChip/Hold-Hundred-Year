@@ -129,4 +129,4 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - 文档只有两份，别找第三份：`docs/spec.md`（设计规格，最高权威）、`docs/implementation-notes.md`（实现备忘：冻结决策/机制速查/运维/验收）。仓库根 `README.md` 是入口。表结构只有 `src/main/resources/db/schema.sql` 一份权威：改表就重建库，不维护增量迁移脚本与迁移文档。
 - Shell 一律用 PowerShell 7（`pwsh`，需要显式起 shell 时用 `pwsh -NoProfile -Command ...`），**禁止 Windows PowerShell 5.1**（`powershell.exe`）。`.\mvnw.cmd` 与 Maven 的已知坑见 `docs/implementation-notes.md` §4。
 - 语言约定：交流与 Javadoc/注释/用户文案用中文；日志与测试断言消息用英文。
-- **便携包（`pack-portable.cmd` → `dist\\*.zip`）只在同时满足两个条件时才重新生成**：① 用户让你更新版本号，② 用户让你打包便携包。缺任何一个都不许动 `dist\`——一个包 80+ MB、每次重打都要重新分发，"代码改了"本身不构成重打包的理由。日常只提交源码与文档；`pom.xml` / `frontend/package.json` / git tag 三处版本号仍然必须同号。
+- **便携包（`pack-portable.cmd` → `dist\\*.zip`）只在用户明确点名打包时才重新生成**，并且要能从他这句话里读出**用哪个版本号**（"升到 0.0.2 并打包"或"当作 0.0.1 直接打包"都算）。没被点名就不许动 `dist\`："代码改了"本身不构成重打包的理由，冒烟与演练一律把输出写到临时目录再删。日常只提交源码与文档；`pom.xml` / `frontend/package.json` / git tag 三处版本号仍然必须同号。
