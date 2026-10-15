@@ -1,5 +1,7 @@
 # 构建产物
 target/
+# 绿色包产物（jpackage 的 app-image 与最终 zip，都是可再生的）
+dist/
 # 打包给别人玩时拷进来的前端产物（npm run build 的结果，不进仓库）
 src/main/resources/static/
 .mvn/wrapper/maven-wrapper.jar

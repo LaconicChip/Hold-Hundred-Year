@@ -117,6 +117,22 @@ MySQL 仍然用你本机那个 `MySQL80` 服务（存档就在里面）。
    netsh advfirewall firewall add rule name="Hold Hundred Year" dir=in action=allow protocol=TCP localport=8080
    ```
 
+### 想直接发个压缩包（对方电脑零依赖）
+
+上面那种方式要求**你的电脑开着**。如果只想把游戏丢给朋友自己玩，打一个绿色包：
+
+```powershell
+.\pack-portable.cmd        # 产物 dist\hold-hundred-year-portable-0.0.1.zip（约 83 MB）
+```
+
+把 zip 发给朋友：解压 → 双击 `hold-hundred-year.exe` → 浏览器自动打开 `http://localhost:8080` →
+点"注册"就能玩。**对方不需要装 Java、Node、MySQL**（JRE 已经捆在包里）。
+
+区别只有一处：绿色包用内嵌的 H2 文件库（存档是同一个目录下的 `data\hold_year.mv.db`，
+复制它=备份，删掉它=重开一局），你自己这台机器仍然跑真 MySQL。表结构还是只有
+`src/main/resources/db/schema.sql` 一份权威，H2 那边由 `MysqlSchemaForH2` 在启动时翻译，
+不存在第二份建表脚本。
+
 ### 朋友不在同一个网络
 
 没有服务器就借一条免费隧道（Cloudflare Quick Tunnel：装个 `cloudflared` 就行，不用注册、

@@ -24,7 +24,8 @@
 
 - **前端**：Vue 3 + Vite + Element Plus + Pinia + Vue Router + axios + ECharts（分时图）+ @stomp/stompjs（WebSocket 客户端）。
 
-- **形态**：前后端两个独立工程；后端仅提供 REST + WebSocket。密码使用 BCrypt 加密。
+- **形态**：前后端两个独立工程；后端仅提供 REST + WebSocket。
+- **存储与分发形态**：开发/局域网档用 MySQL 8（并发锁与事务是练习目标）；"解压即玩"绿色包用内嵌 H2 文件库（`portable` profile，`schema.sql` 仍是唯一权威，H2 侧运行时翻译方言），由 jpackage 捆一个 JRE 进去，玩家电脑零依赖。两种形态共用同一套 SQL、实体与引擎代码，只在数据源一处分支。密码使用 BCrypt 加密。
 
 - **线程模型**：Tomcat 线程处理 HTTP 请求；行情/剧本/事件/时钟推进运行在独立调度线程池，与 HTTP 线程隔离。
 
