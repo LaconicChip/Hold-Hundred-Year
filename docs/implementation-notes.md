@@ -106,7 +106,10 @@
   - 实测：系统 Edge 有"启动加速"，会把新窗口交给后台已有的 Edge 进程，**我们 spawn 的那个进程 0 秒就退出**，所以"关窗即退出"用系统浏览器不可靠（窗口照常，只是退出得靠 `停止游戏.bat`）。自带 Chromium 时进程归我们，`waitFor()` 才真的等得到关窗。
   - 因此守护线程必须带"存活不足 5 秒 = 误启动/被接管，不许带走服务器"的兜底；这条兜底同时兜住"玩家已经开着一个游戏窗口又点了一次图标"。
   - 别指望用 `ProcessHandle.allProcesses()` 轮询窗口是否还在：本机实测 444 个进程的 `info().commandLine()` 全为空，读不到别人进程的命令行。
+  - 配置目录**按浏览器分开**（`~/.hold-hundred-year/profile/<exe名>`）：实测 Edge 与 Chrome 共用一个 `user-data-dir` 时，后启动的会把窗口交给先启动的实例，我们的子进程 0 秒退出，"关窗即退出"当场失效——排查时那段"另一个游戏窗口可能已经开着"的日志就是这个假象。
+  - 正常退出时由 JVM shutdown hook 只 `destroy()` 我们 spawn 的那个进程。**绝不允许按映像名 taskkill chrome.exe**：自带浏览器也叫 chrome.exe，那样会把玩家自己的 Chrome 全杀掉（`停止游戏.bat` 就只杀 `hold-hundred-year.exe`）。
   - 找不到浏览器 → 退回默认浏览器 → 再不行只打印地址；三级降级都不许让游戏起不来。只在真起了 Web 服务器时才弹窗口（判据用环境里的 `local.server.port`，别用 `instanceof` 某个 Web 上下文类——Boot 4 把它挪走了）。
+  - 分发用浏览器只认 **Chrome for Testing**（`npx @puppeteer/browsers install chrome@stable`，国内加 `--base-url https://cdn.npmmirror.com/binaries/chrome-for-testing`）。Playwright 的 Chromium 是自编译构建，依赖目标机器装过 VC++ 运行库，实测未装时报 `CreateProcess error=14001`（并行配置不正确），发出去就是打不开。
 **便携包不随代码更新**：`dist\\*.zip` 只在"升版本号 + 明确要求打包"两个条件同时满足时重新生成（AGENTS.md 落地约定）。日常提交只动源码与文档。
 
 **两种存储、一份 schema（2026-10-15）**：默认档连本机 MySQL（学习目标就是它的行锁/事务，测试基线也跑在它上面）；`--spring.profiles.active=portable` 切到内嵌 H2 文件库（`config/PortableDataSourceConfig` 在 DataSource 工厂方法里建表，保证任何 Mapper 拿到连接时表已就绪；存档就是 `./data/hold_year.mv.db` 一个文件）。建表脚本仍然只有 `db/schema.sql` 一份：H2 侧由 `common/MysqlSchemaForH2` 翻译三处方言差异（`ENGINE=...` 尾巴、行内 `INDEX` 拆成 `CREATE INDEX IF NOT EXISTS`、索引/约束名从"表内唯一"改成加表名前缀的全库唯一）。翻译器有条测试兜着：**别把行首 `--` 注释当成整段丢弃**——`schema.sql` 第一行注释和 `CREATE TABLE sys_user` 同属一段，整段跳过的后果是第一张表不存在。全量 439 条测试在 portable 档（H2）下也是全绿的，包括 100 线程并发买入与快进等价。

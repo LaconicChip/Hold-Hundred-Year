@@ -28,10 +28,17 @@ import java.util.function.Predicate;
  * 甩给玩家已经开着的那个进程，我们既拿不到关闭事件，也会污染他的书签和登录态），也让
  * "关掉这个窗口 = 退出游戏"成立。
  *
- * <p>浏览器挑选顺序：<b>包内自带的 `browser\chrome.exe`</b> → 配置指定 → 系统 Edge/Chrome。
- * 自带那份是有意为之：系统 Edge 开着"启动加速"时会把新窗口交给后台已有的 Edge 进程，我们的子进程
- * 0 秒就退出，"关窗即退出"因此不可靠（窗口本身照常，只是退出得靠 `停止游戏.bat`）；自带浏览器的
- * 进程是我们自己的，窗口关掉 = 进程结束 = 游戏退出。不想带浏览器的话留空即可，代码会自动回落。
+ * <p>浏览器挑选顺序：<b>包内自带的 `browser\chrome.exe`</b> → 配置指定（`portable.browser-path`）
+ * → 系统 Edge/Chrome。自带那份是实测出来的必需品：
+ * <ul>
+ *   <li>自带 Chrome for Testing：浏览器进程由我们 spawn 并持有，关窗 → 进程结束 → 守护线程走
+ *       Spring 正常关闭 → 服务器退出，整条链实测成立；CfT 是 Google 给"随应用分发"做的构建，
+ *       静态链接 CRT，对方不用装 VC++ 运行库（Playwright 的自编译 Chromium 就要求装，实测在未装
+ *       运行库的机器上 CreateProcess 14001 起不来）。</li>
+ *   <li>系统 Edge：有"启动加速"，会把新窗口交给后台已有的 Edge 进程，我们 spawn 的进程 0 秒退出，
+ *       "关窗退出"不可靠（窗口照常，只能靠 `停止游戏.bat`）。</li>
+ * </ul>
+ * 所以绿色包默认自带浏览器；不带也能玩，只是退出方式退化。
  *
  * <p>三条降级路径都必须安静：找不到浏览器 → 退回默认浏览器；连默认浏览器也开不了 → 只把地址
  * 打在控制台；窗口"秒退"（多半是已经有一个游戏窗口开着）→ 服务器继续跑，绝不自杀。
@@ -93,7 +100,10 @@ class PortableAppWindow implements ApplicationListener<ApplicationReadyEvent> {
     }
 
     private void launchAppWindow(String browser, String url) throws IOException {
-        Path profile = Path.of(System.getProperty("user.home"), ".hold-hundred-year", "window");
+        // 每种浏览器一个独立配置目录：实测 Edge 与 Chrome 共用同一个 user-data-dir 时，后启动的
+        // 会把窗口交给先启动的实例，我们的子进程 0 秒退出，"关窗即退出"当场失效。
+        String browserName = Path.of(browser).getFileName().toString().toLowerCase();
+        Path profile = Path.of(System.getProperty("user.home"), ".hold-hundred-year", "profile", browserName);
         Files.createDirectories(profile);
         List<String> command = new ArrayList<>(List.of(
                 browser,
@@ -107,6 +117,14 @@ class PortableAppWindow implements ApplicationListener<ApplicationReadyEvent> {
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                 .start();
         log.info("game window opened ({}); closing it quits the game", Path.of(browser).getFileName());
+        // 正常退出（Ctrl+C、关窗自杀式退出之外的路径）时顺手收掉自己开的浏览器窗口，
+        // 免得留一个显示"连不上"的页面对玩家说"游戏没退"。注意：只处理我们 spawn 的那个进程，
+        // 绝不做按映像名 taskkill —— 自带浏览器也叫 chrome.exe，会误杀玩家自己的 Chrome。
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            if (process.isAlive()) {
+                process.destroy();
+            }
+        }, "portable-window-cleanup"));
         if (quitWithWindow) {
             watchWindowAndExit(process);
         }
