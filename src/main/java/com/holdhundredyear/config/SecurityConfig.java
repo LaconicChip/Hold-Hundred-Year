@@ -16,8 +16,16 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * 安全配置：无状态 JWT，放行 /api/auth/**、/ws/** 与 OPTIONS 预检，其余接口需认证，
- * 未认证统一返回 401 + R.fail(UNAUTHORIZED) JSON。
+ * 安全配置：无状态 JWT。鉴权面只有一句话——**除 /api/auth/** 外的 /api/**** 要登录**。
+ *
+ * <p>其余请求一律放行，因为它们是前端页面与静态资源：整局游戏打包成单个 jar 后，
+ * 浏览器直接访问 /market、/stock/3 这类 history 路由，或刷新页面，都会打到后端来
+ * 要 index.html（见 {@link WebStaticConfig}）。以前写的是 anyRequest().authenticated()，
+ * 结果首页和 js/css 全被挡成 401，jar 里嵌的前端根本打不开。
+ *
+ * <p>反过来，新增后端接口只要落在 /api/ 下就自动受保护，不需要回来改这张表；
+ * 真正的鉴权细节（token 解析、越权）在业务层与 {@link JwtAuthFilter}。
+ * WebSocket 握手放行是既有的：/ws 的鉴权在 STOMP CONNECT 帧上带 token（WebSocketConfig）。
  */
 @Configuration
 @EnableWebSecurity
@@ -40,7 +48,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .anyRequest().authenticated())
+                        .requestMatchers("/api/**").authenticated()
+                        .anyRequest().permitAll())
                 .exceptionHandling(ex -> ex.authenticationEntryPoint((request, response, authException) -> {
                     response.setStatus(HttpStatus.UNAUTHORIZED.value());
                     response.setCharacterEncoding("UTF-8");

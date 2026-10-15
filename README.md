@@ -82,6 +82,79 @@ cd frontend; npm run build
 
 账号无需预置，页面注册即用。
 
+## 给朋友玩（没有云服务器）
+
+**结论：这游戏就跑在你现在这台机器上，不需要服务器。** 打包成一个 jar，前端页面也塞在同一个
+jar 里，双击 `game.cmd` 就起来；朋友用浏览器访问你电脑的局域网地址即可，他们什么都不用装。
+MySQL 仍然用你本机那个 `MySQL80` 服务（存档就在里面）。
+
+### 一次性打包
+
+```powershell
+.\game.cmd build      # 前端构建 -> 拷进后端资源目录 -> 打成 target\Hold-Hundred-Year-0.0.1.jar
+```
+
+### 每次开一局之前
+
+```powershell
+.\game.cmd            # 启动；你自己开 http://localhost:8080
+.\game.cmd lan        # 打印要发给朋友的地址（另开一个窗口看）
+```
+
+朋友在**同一个 WiFi/局域网**里，浏览器打开 `http://192.168.x.x:8080`（`game.cmd lan` 给的就是
+它），页面里自己注册账号，各玩各的世界，互不干扰。
+
+**你电脑关机或关掉窗口，朋友就进不来了** —— 这是没有服务器的代价，也正是"账户隔离的单机存档
+游戏"的定位：每个账号一个独立世界，谁也不影响谁。
+
+### 朋友连不上，按顺序查这三条
+
+1. 你的游戏窗口还开着吗？你自己 `http://localhost:8080` 能打开吗。
+2. 你们在同一个网络吗？公司/校园网常做设备隔离（互相连不通），这种网络换手机热点最省事。
+3. Windows 防火墙拦了入站。用**管理员身份**的命令提示符放行一次：
+
+   ```powershell
+   netsh advfirewall firewall add rule name="Hold Hundred Year" dir=in action=allow protocol=TCP localport=8080
+   ```
+
+### 朋友不在同一个网络
+
+没有服务器就借一条免费隧道（Cloudflare Quick Tunnel：装个 `cloudflared` 就行，不用注册、
+不用公网 IP）：
+
+```powershell
+cloudflared tunnel --url http://localhost:8080
+```
+
+它会吐一个 `https://随便-几个-词.trycloudflare.com` 的地址，发给朋友就能玩，HTTPS/WSS 它顺手
+做掉了。三个代价要知道：**每次重启网址会变**；拿到网址的人都能进（没有邀请码）；隧道断了页面
+会卡住（本机数据不受影响）。想固定域名、长期在线，就得先有服务器——那时候再谈 Docker、证书、
+进程守护、自动备份这一整套（`docs/spec.md` §15 现在把它们列为明确不做）。
+
+### 存档与备份
+
+存档全在 MySQL 的 `hold_year` 库里。
+
+```powershell
+$env:HOLD_DB_PASSWORD = '你的MySQL密码'                  # 只在备份/还原时用
+.\game.cmd backup                                    # 导出到 backups\hold_year-日期时间.sql
+.\game.cmd restore backups\hold_year-xxx.sql         # 还原（先停游戏）
+```
+
+改了表结构不用写迁移脚本：按 `src/main/resources/db/schema.sql` 重建库即可（见下面"已知环境坑"
+第 3 条）。
+
+### 给别人玩之前，两件建议顺手做的事
+
+1. **换掉 JWT 密钥**（默认值就写在 `application.properties` 里，等于公开的）：
+
+   ```powershell
+   $env:HOLD_JWT_SECRET = '随便敲一大串，越长越好'    # 再启动游戏；换密钥会让已登录的人重新登录
+   ```
+
+2. **别把 MySQL 暴露出去**：`3306` 只监听本机就好，对外只开 8080。数据库地址/账号/密码/端口
+   都能用 `HOLD_DB_URL` / `HOLD_DB_USER` / `HOLD_DB_PASSWORD` / `HOLD_PORT` 覆盖，不用改代码。
+
 ## 已知环境坑
 
 1. **`mvnw.cmd` 在某些机器上会直接失败**（报 `Cannot index into a null array` / `Cannot start maven from wrapper`）：
@@ -101,6 +174,9 @@ cd frontend; npm run build
    莫名其妙的 `NoSuchBeanDefinitionException`（某个 `@Service` 的 class 恰好被删掉）或"主类找不到"。
    命令行跑测试前，要么关掉 IDEA 的 Build project automatically，要么只用一种方式构建。
    遇到这种"上一秒还全绿"的失败，先 `mvnw clean test` 重跑一次再怀疑代码。
+8. **`game.cmd` 必须存成 GBK（代码页 936），不能改成 UTF-8**：cmd 读带中文的 UTF-8 批处理会按字节错位，
+   表现是某行中文注释被当成命令执行（`"xxx 不是内部或外部命令"`）甚至跳行。IDEA 里改这个文件时
+   右下角编码要选 GBK；README/源码仍是 UTF-8，只有这一个 `.cmd` 例外。
 
 ## 权威文档与优先级
 

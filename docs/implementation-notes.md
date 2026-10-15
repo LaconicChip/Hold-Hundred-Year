@@ -95,6 +95,13 @@
 | 启动前端 | `cd frontend; npm run dev`（5173，`/api`、`/ws` 代理到 8080） |
 | 后端测试 | `.\mvnw.cmd test` |
 | 前端构建 / 本地预览生产包 | `cd frontend; npm run build` / `npm run preview` |
+| **打包成一个 jar（给朋友玩）** | `game.cmd build`：前端构建 → 拷进 `src/main/resources/static/`（已 gitignore）→ `mvnw package -DskipTests` |
+| **启动打包产物** | `game.cmd`（内部就是 `java -jar target\Hold-Hundred-Year-0.0.1.jar`）；此后**只要 8080 一个端口**，不再起 vite |
+| 局域网地址 / 防火墙提示 | `game.cmd lan` |
+| 备份 / 还原存档 | `game.cmd backup` / `game.cmd restore backups\xxx.sql`（先 `$env:HOLD_DB_PASSWORD`） |
+| 朋友不在同一网络 | `cloudflared tunnel --url http://localhost:8080`（免费免注册，自带 HTTPS/WSS；网址每次重启会变，拿到网址的人都能进） |
+
+**给别人玩的鉴权面（2026-10-15）**：`SecurityConfig` 改成只有 `/api/**`（除 `/api/auth/**`）需要登录，其余 `anyRequest().permitAll()`。原因：单个 jar 同时发前端页面和接口，浏览器直接访问或刷新 `/market`、`/stock/3` 这类 history 路由都得拿到 index.html（兜底在 `config/WebStaticConfig`，它必须让 `api/`、`ws/` 前缀原样落空，否则接口报错会被伪装成"首页能打开"）。以前写的是 `anyRequest().authenticated()`，jar 里嵌的前端会被整页挡成 401。别把这条改回去，也别放开 `/api/**`。配置全部支持环境变量覆盖（`HOLD_DB_URL` / `HOLD_DB_USER` / `HOLD_DB_PASSWORD` / `HOLD_PORT` / `HOLD_JWT_SECRET` / `HOLD_JWT_TTL_HOURS`），默认值就是本机开发那套；`game.cmd` 是配套的启动/打包/备份脚本。
 
 **坑**：① 测试无 H2 兜底，`hold_year_test` 不存在会大面积报 `Unknown database`；② 旧库不执行迁移会让 `user_game_state` 读写报 `Unknown column`；③ 前端依赖后端，先起后端；④ `mvnw.cmd` 内部调用 Windows PowerShell 5.1，某些机器会死在 `(Get-Item ~/.m2).Target[0]`（报 `Cannot index into a null array` / `Cannot start maven from wrapper`）——可直接用 wrapper 已下载的 Maven：设好 `JAVA_HOME` 后执行 `& "$env:USERPROFILE\.m2\wrapper\dists\apache-maven-*\*\apache-maven-*\bin\mvn.cmd" test`；⑤ 本机 `localhost` 解析到 IPv6，用 `127.0.0.1` 探端口/代理可能看起来"拒绝连接"，浏览器与脚本请用 `localhost`。
 

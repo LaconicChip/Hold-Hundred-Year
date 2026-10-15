@@ -1,5 +1,7 @@
 # 构建产物
 target/
+# 打包给别人玩时拷进来的前端产物（npm run build 的结果，不进仓库）
+src/main/resources/static/
 .mvn/wrapper/maven-wrapper.jar
 
 # IDE（IntelliJ IDEA 为本项目主力 IDE）

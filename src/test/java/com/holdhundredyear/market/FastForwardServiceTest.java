@@ -1,6 +1,8 @@
 package com.holdhundredyear.market;
 
+import com.holdhundredyear.game.constants.GameConstants;
 import com.holdhundredyear.game.model.enums.GameMode;
+import com.holdhundredyear.game.model.enums.ScriptType;
 import com.holdhundredyear.market.entity.StockDailyBar;
 import com.holdhundredyear.market.entity.UserDailySnapshot;
 import com.holdhundredyear.market.entity.UserEra;
@@ -26,6 +28,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -113,23 +116,55 @@ class FastForwardServiceTest {
         assertEquals(GameMode.STANDARD.totalDays(), after.getEndDay(), "finish day must record the final trading day");
     }
 
+    /**
+     * 熔断日提前收盘。这条以前写死"第 25 天就是熔断日"，而纪元起止有 ±1~3 天抖动、
+     * 熔断触发又取决于开盘补强掷出的 −6%~−8% 跳空是否跌破 −7%——两个随机叠一起，
+     * 测试会随机红。改成按固定种子扫世界：熔断日从库里查，扫到第一个真的提前收盘的
+     * 世界就断言（扫法确定，不靠运气，也不会永远红）。
+     */
     @Test
     void skipOnCircuitBreakerDayClosesEarly() {
-        long userId = worldSeeder.seedUser("ff_cb1", "$2a$10$bcrypthash");
-        UserGameState gs = gameState(userId);
-        gs.setCurrentDay(GameMode.STANDARD.getDaysPerYear()); // 下一天即熔断纪元首日
-        gs.setMarketState("CLOSED");
-        userGameStateMapper.updateById(gs);
+        long breakerUserId = 0L;
+        UserGameState after = null;
 
-        fastForwardService.skip(userId);
+        for (long seed = 1; after == null && seed <= 12; seed++) {
+            long userId = seedWithFixedSeed("ff_cb_" + seed, 20261000L + seed);
+            int breakerDay = firstScriptDay(userId, ScriptType.CIRCUIT_BREAKER);
+            UserGameState gs = gameState(userId);
+            gs.setCurrentDay(breakerDay - 1); // 下一天正是熔断日
+            gs.setMarketState("CLOSED");
+            userGameStateMapper.updateById(gs);
 
-        UserGameState after = gameState(userId);
-        assertEquals(GameMode.STANDARD.getDaysPerYear() + 1, after.getCurrentDay(),
-                "skip must land on era5 opening day (year 2 day 1)");
-        assertEquals("CLOSED", after.getMarketState(), "circuit-breaker day must still settle to closed");
-        assertTrue(after.getTickIndex() < 90, "circuit-breaker early close must stop before full 90 ticks");
-        assertTrue(quoteBoardRegistry.getOrLoad(userId).getTickIndex() < 90,
+            fastForwardService.skip(userId);
+
+            UserGameState landed = gameState(userId);
+            assertEquals(breakerDay, landed.getCurrentDay(),
+                    "seed " + seed + ": skip must land on the circuit-breaker day it actually scheduled");
+            assertEquals("CLOSED", landed.getMarketState(),
+                    "seed " + seed + ": a circuit-breaker day must still settle to CLOSED");
+            if (landed.getTickIndex() < GameConstants.TOTAL_TICKS) {
+                breakerUserId = userId;
+                after = landed;
+            }
+        }
+
+        assertTrue(breakerUserId != 0L,
+                "none of the 12 scanned worlds tripped the circuit breaker on its scheduled day: "
+                        + "the early-close path is broken, or the scan range is too small");
+        assertTrue(after.getTickIndex() < GameConstants.TOTAL_TICKS,
+                "circuit-breaker early close must stop before the full session");
+        assertTrue(quoteBoardRegistry.getOrLoad(breakerUserId).getTickIndex() < GameConstants.TOTAL_TICKS,
                 "board tick count must reflect the early close");
+    }
+
+    /** 该世界被排到的熔断日（纪元 5 首日，带抖动，只能查库）。 */
+    private int firstScriptDay(long userId, ScriptType type) {
+        List<UserScriptDay> rows = userScriptDayMapper.selectList(new LambdaQueryWrapper<UserScriptDay>()
+                .eq(UserScriptDay::getUserId, userId)
+                .eq(UserScriptDay::getScriptType, type.name())
+                .orderByAsc(UserScriptDay::getGameDay));
+        assertFalse(rows.isEmpty(), "this world has no " + type + " script day at all");
+        return rows.get(0).getGameDay();
     }
 
     @Test
