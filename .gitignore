@@ -15,6 +15,9 @@ src/main/resources/static/
 # Spring Initializr 生成的说明文件
 HELP.md
 
+# 绿色包运行时的存档与日志目录（portable 档在程序目录下生成，别提交）
+data/
+
 # 本地起服务/浏览器调试残留
 /backend_run.log
 /backend_run.err

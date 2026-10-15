@@ -35,17 +35,17 @@ if not exist "%JAVA_HOME%\bin\jpackage.exe" (
   exit /b 1
 )
 
-echo [1/5] 打 jar（含前端）...
+echo [1/7] 打 jar（含前端）...
 call game.cmd build || exit /b 1
 if not exist "target\%JAR%" (echo  没找到 target\%JAR% & exit /b 1)
 
-echo [2/5] 准备 jpackage 输入目录 ...
+echo [2/7] 准备 jpackage 输入目录 ...
 if exist "%OUT%" rmdir /s /q "%OUT%"
 if exist "%IN%" rmdir /s /q "%IN%"
 mkdir "%IN%"
 copy /y "target\%JAR%" "%IN%\" >nul
 
-echo [3/5] jpackage 免安装应用镜像（捆 JRE，profile=portable）...
+echo [3/7] jpackage 免安装应用镜像（捆 JRE，profile=portable）...
 "%JAVA_HOME%\bin\jpackage.exe" --type app-image --name %APP% ^
   --app-version %VER% --input "%IN%" --main-jar "%JAR%" ^
   --main-class org.springframework.boot.loader.launch.JarLauncher ^
@@ -53,7 +53,7 @@ echo [3/5] jpackage 免安装应用镜像（捆 JRE，profile=portable）...
   --dest "%OUT%"
 if errorlevel 1 (echo  jpackage 失败 & exit /b 1)
 
-echo [4/5] 自带浏览器 ...
+echo [4/7] 自带浏览器 ...
 if /i "%BUNDLE_BROWSER%"=="0" (
   echo      按要求不自带：关窗口不会退出游戏，退出请用 停止游戏.bat
   goto zip
@@ -79,8 +79,46 @@ rem 安装包用的 setup.exe 用不上，删掉省 7 MB
 del /q "%OUT%\%APP%\browser\setup.exe" 2>nul
 echo      已自带：%OUT%\%APP%\browser\chrome.exe（关窗口即退出游戏）
 
+rem ------------------------------------------------------------------
+rem 冒烟测试：真的把包里的 exe 启动一次。上一版就是靠这一步才抓到
+rem "Logback 滚动文件名缺日期 -> 进程秒退 -> 启动器只报 Failed to launch JVM"，
+rem 这种坑 jar 层面的测试完全挡不住，不启动一次根本发现不了。
+rem ------------------------------------------------------------------
+echo [5/7] 冒烟测试：真启动一次包里的 exe（会闪一下游戏窗口，正常）...
+set "SMOKE_PORT=8199"
+set "HOLD_PORT=8199"
+set "SMOKE_DIR=%OUT%\%APP%\smoke-data"
+for %%i in ("%SMOKE_DIR%") do set "SMOKE_ABS=%%~fi"
+set "HOLD_H2_PATH=%SMOKE_ABS:\=/%/hold_year"
+set "HOLD_LOG_FILE=%SMOKE_ABS:\=/%/hold-year.log"
+set "HOLD_QUIT_WITH_WINDOW=false"
+start "" "%OUT%\%APP%\hold-hundred-year.exe"
+set "TRIES=0"
+:smokeloop
+set /a TRIES+=1
+set "CODE=000"
+for /f "usebackq tokens=*" %%c in (`curl -s -o nul -w "%%{http_code}" http://localhost:%SMOKE_PORT%/api/game/modes`) do set "CODE=%%c"
+if "%CODE%"=="401" goto smokeok
+if "%CODE%"=="200" goto smokeok
+if %TRIES% GEQ 30 goto smokefail
+timeout /t 2 /nobreak >nul
+goto smokeloop
+:smokeok
+echo      冒烟通过（HTTP %CODE%），关掉测试实例
+taskkill /f /im %APP%.exe >nul 2>&1
+timeout /t 3 /nobreak >nul
+rmdir /s /q "%SMOKE_DIR%" 2>nul
+rmdir /s /q "%OUT%\%APP%\data" 2>nul
+goto zip
+:smokefail
+taskkill /f /im %APP%.exe >nul 2>&1
+echo      冒烟失败：包里的 exe 起不来（最后 HTTP 状态 %CODE%）。
+echo      看这里的日志再修，别把打不开的包发出去：
+echo        %OUT%\%APP%\smoke-data\hold_year.log
+exit /b 1
+
 :zip
-echo [5/5] 附说明、压成 zip ...
+echo [6/7] 附说明 ...
 > "%OUT%\%APP%\怎么玩.txt" (
   echo  《你持有一百年看看》 绿色版
   echo.
@@ -91,7 +129,8 @@ echo [5/5] 附说明、压成 zip ...
   echo.
   echo  存档：同目录 data\hold_year.mv.db 这一个文件。复制它=备份，删掉它=重开一局。
   echo  同一局域网里也可以只开一份：别人用 http://你的IP:8080 进来各自注册，互不影响。
-  echo  第一次运行 Windows 若提示"已保护你的电脑"：点 更多信息 -> 仍然要运行（未做代码签名）
+  echo  第一次运行 Windows 若提示"已保护你的电脑"：点 更多信息，再点 仍然要运行（我们没做代码签名）
+  echo  窗口没弹出来时：手动开浏览器访问 http://localhost:8080 一样能玩
 )
 rem 只杀我们自己的进程：自带浏览器也叫 chrome.exe，按映像名杀会把朋友自己的 Chrome 一起干掉
 > "%OUT%\%APP%\停止游戏.bat" (
@@ -100,6 +139,7 @@ rem 只杀我们自己的进程：自带浏览器也叫 chrome.exe，按映像名杀会把朋友自己的 Chro
   echo @pause
 )
 
+echo [7/7] 压成 zip ...
 if not exist dist mkdir dist
 set "ZIP=dist\%APP%-portable-%VER%.zip"
 if exist "%ZIP%" del /q "%ZIP%"

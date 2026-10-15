@@ -109,12 +109,15 @@
   - 配置目录**按浏览器分开**（`~/.hold-hundred-year/profile/<exe名>`）：实测 Edge 与 Chrome 共用一个 `user-data-dir` 时，后启动的会把窗口交给先启动的实例，我们的子进程 0 秒退出，"关窗即退出"当场失效——排查时那段"另一个游戏窗口可能已经开着"的日志就是这个假象。
   - 正常退出时由 JVM shutdown hook 只 `destroy()` 我们 spawn 的那个进程。**绝不允许按映像名 taskkill chrome.exe**：自带浏览器也叫 chrome.exe，那样会把玩家自己的 Chrome 全杀掉（`停止游戏.bat` 就只杀 `hold-hundred-year.exe`）。
   - 找不到浏览器 → 退回默认浏览器 → 再不行只打印地址；三级降级都不许让游戏起不来。只在真起了 Web 服务器时才弹窗口（判据用环境里的 `local.server.port`，别用 `instanceof` 某个 Web 上下文类——Boot 4 把它挪走了）。
+  - `pack-portable.cmd` 最后有**冒烟测试**：真的启动一次包里的 exe 并轮询 HTTP，起不来就整包失败退出。这一步是必需的——"配置写错导致进程秒退"这类问题在 jar 层测试里完全看不出来（实测过一次：Logback 滚动文件名缺日期 token → 启动器只报 `Failed to launch JVM`）。冒烟用的存档/日志写在 `smoke-data\`，压包前会删掉，不会带进发布物。成品实测 282 MB（不带浏览器 82.6 MB）。
   - 分发用浏览器只认 **Chrome for Testing**（`npx @puppeteer/browsers install chrome@stable`，国内加 `--base-url https://cdn.npmmirror.com/binaries/chrome-for-testing`）。Playwright 的 Chromium 是自编译构建，依赖目标机器装过 VC++ 运行库，实测未装时报 `CreateProcess error=14001`（并行配置不正确），发出去就是打不开。
 **便携包不随代码更新**：`dist\\*.zip` 只在"升版本号 + 明确要求打包"两个条件同时满足时重新生成（AGENTS.md 落地约定）。日常提交只动源码与文档。
 
 **两种存储、一份 schema（2026-10-15）**：默认档连本机 MySQL（学习目标就是它的行锁/事务，测试基线也跑在它上面）；`--spring.profiles.active=portable` 切到内嵌 H2 文件库（`config/PortableDataSourceConfig` 在 DataSource 工厂方法里建表，保证任何 Mapper 拿到连接时表已就绪；存档就是 `./data/hold_year.mv.db` 一个文件）。建表脚本仍然只有 `db/schema.sql` 一份：H2 侧由 `common/MysqlSchemaForH2` 翻译三处方言差异（`ENGINE=...` 尾巴、行内 `INDEX` 拆成 `CREATE INDEX IF NOT EXISTS`、索引/约束名从"表内唯一"改成加表名前缀的全库唯一）。翻译器有条测试兜着：**别把行首 `--` 注释当成整段丢弃**——`schema.sql` 第一行注释和 `CREATE TABLE sys_user` 同属一段，整段跳过的后果是第一张表不存在。全量 439 条测试在 portable 档（H2）下也是全绿的，包括 100 线程并发买入与快进等价。
 
 **给别人玩的鉴权面（2026-10-15）**：`SecurityConfig` 改成只有 `/api/**`（除 `/api/auth/**`）需要登录，其余 `anyRequest().permitAll()`。原因：单个 jar 同时发前端页面和接口，浏览器直接访问或刷新 `/market`、`/stock/3` 这类 history 路由都得拿到 index.html（兜底在 `config/WebStaticConfig`，它必须让 `api/`、`ws/` 前缀原样落空，否则接口报错会被伪装成"首页能打开"）。以前写的是 `anyRequest().authenticated()`，jar 里嵌的前端会被整页挡成 401。别把这条改回去，也别放开 `/api/**`。配置全部支持环境变量覆盖（`HOLD_DB_URL` / `HOLD_DB_USER` / `HOLD_DB_PASSWORD` / `HOLD_PORT` / `HOLD_JWT_SECRET` / `HOLD_JWT_TTL_HOURS`），默认值就是本机开发那套；`game.cmd` 是配套的启动/打包/备份脚本。
+
+**绿色包的日志是必需的，但 Logback 的滚动文件名必须带日期**：portable 档把日志写到 `data\\hold-year.log`（双击启动没有控制台，朋友那边出问题只能靠这个文件回传）。踩过的坑：给 `logging.logback.rollingpolicy.file-name-pattern` 写了个只有 `%i` 的模板，Logback 直接抛 `FileNamePattern [...] does not contain a valid DateToken` → 日志系统初始化失败 → 进程秒退 → **jpackage 启动器只弹一句 "Failed to launch JVM"**，完全看不出是配置问题。教训两条：① 只设 `max-file-size`/`max-history`，滚动模板交给 Spring Boot 默认（自带 `%d{yyyy-MM-dd}`）；② 绿色包改动必须真跑一次包里的 exe 验收，光测 jar 挡不住这一层。
 
 **坑**：① 测试无 H2 兜底，`hold_year_test` 不存在会大面积报 `Unknown database`；② 旧库不执行迁移会让 `user_game_state` 读写报 `Unknown column`；③ 前端依赖后端，先起后端；④ `mvnw.cmd` 内部调用 Windows PowerShell 5.1，某些机器会死在 `(Get-Item ~/.m2).Target[0]`（报 `Cannot index into a null array` / `Cannot start maven from wrapper`）——可直接用 wrapper 已下载的 Maven：设好 `JAVA_HOME` 后执行 `& "$env:USERPROFILE\.m2\wrapper\dists\apache-maven-*\*\apache-maven-*\bin\mvn.cmd" test`；⑤ 本机 `localhost` 解析到 IPv6，用 `127.0.0.1` 探端口/代理可能看起来"拒绝连接"，浏览器与脚本请用 `localhost`。
 
