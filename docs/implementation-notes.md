@@ -102,6 +102,13 @@
 | **打「解压即玩」绿色包** | `pack-portable.cmd` → `dist\hold-hundred-year-portable-<版本>.zip`（jpackage app-image，捆 JRE + 前端 + portable 档） |
 | 朋友不在同一网络 | `cloudflared tunnel --url http://localhost:8080`（免费免注册，自带 HTTPS/WSS；网址每次重启会变，拿到网址的人都能进） |
 
+**绿色包的窗口（2026-10-15，实测过）**：`config/PortableAppWindow` 挑浏览器的顺序是**包内自带 `browser\chrome.exe` → `portable.browser-path` → 系统 Edge/Chrome**，用 `--app=` 开无地址栏的独立窗口，并给一个专属 `--user-data-dir`（`~/.hold-hundred-year/window`）。
+  - 实测：系统 Edge 有"启动加速"，会把新窗口交给后台已有的 Edge 进程，**我们 spawn 的那个进程 0 秒就退出**，所以"关窗即退出"用系统浏览器不可靠（窗口照常，只是退出得靠 `停止游戏.bat`）。自带 Chromium 时进程归我们，`waitFor()` 才真的等得到关窗。
+  - 因此守护线程必须带"存活不足 5 秒 = 误启动/被接管，不许带走服务器"的兜底；这条兜底同时兜住"玩家已经开着一个游戏窗口又点了一次图标"。
+  - 别指望用 `ProcessHandle.allProcesses()` 轮询窗口是否还在：本机实测 444 个进程的 `info().commandLine()` 全为空，读不到别人进程的命令行。
+  - 找不到浏览器 → 退回默认浏览器 → 再不行只打印地址；三级降级都不许让游戏起不来。只在真起了 Web 服务器时才弹窗口（判据用环境里的 `local.server.port`，别用 `instanceof` 某个 Web 上下文类——Boot 4 把它挪走了）。
+**便携包不随代码更新**：`dist\\*.zip` 只在"升版本号 + 明确要求打包"两个条件同时满足时重新生成（AGENTS.md 落地约定）。日常提交只动源码与文档。
+
 **两种存储、一份 schema（2026-10-15）**：默认档连本机 MySQL（学习目标就是它的行锁/事务，测试基线也跑在它上面）；`--spring.profiles.active=portable` 切到内嵌 H2 文件库（`config/PortableDataSourceConfig` 在 DataSource 工厂方法里建表，保证任何 Mapper 拿到连接时表已就绪；存档就是 `./data/hold_year.mv.db` 一个文件）。建表脚本仍然只有 `db/schema.sql` 一份：H2 侧由 `common/MysqlSchemaForH2` 翻译三处方言差异（`ENGINE=...` 尾巴、行内 `INDEX` 拆成 `CREATE INDEX IF NOT EXISTS`、索引/约束名从"表内唯一"改成加表名前缀的全库唯一）。翻译器有条测试兜着：**别把行首 `--` 注释当成整段丢弃**——`schema.sql` 第一行注释和 `CREATE TABLE sys_user` 同属一段，整段跳过的后果是第一张表不存在。全量 439 条测试在 portable 档（H2）下也是全绿的，包括 100 线程并发买入与快进等价。
 
 **给别人玩的鉴权面（2026-10-15）**：`SecurityConfig` 改成只有 `/api/**`（除 `/api/auth/**`）需要登录，其余 `anyRequest().permitAll()`。原因：单个 jar 同时发前端页面和接口，浏览器直接访问或刷新 `/market`、`/stock/3` 这类 history 路由都得拿到 index.html（兜底在 `config/WebStaticConfig`，它必须让 `api/`、`ws/` 前缀原样落空，否则接口报错会被伪装成"首页能打开"）。以前写的是 `anyRequest().authenticated()`，jar 里嵌的前端会被整页挡成 401。别把这条改回去，也别放开 `/api/**`。配置全部支持环境变量覆盖（`HOLD_DB_URL` / `HOLD_DB_USER` / `HOLD_DB_PASSWORD` / `HOLD_PORT` / `HOLD_JWT_SECRET` / `HOLD_JWT_TTL_HOURS`），默认值就是本机开发那套；`game.cmd` 是配套的启动/打包/备份脚本。
