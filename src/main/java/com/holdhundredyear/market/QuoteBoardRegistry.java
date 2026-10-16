@@ -1,6 +1,8 @@
 package com.holdhundredyear.market;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.holdhundredyear.common.BizException;
+import com.holdhundredyear.common.ErrorCode;
 import com.holdhundredyear.game.model.enums.GameMode;
 import com.holdhundredyear.market.entity.UserGameState;
 import com.holdhundredyear.market.entity.UserStockState;
@@ -47,6 +49,12 @@ public class QuoteBoardRegistry {
                             .orderByAsc(UserStockState::getStockId));
             UserGameState gameState = userGameStateMapper.selectOne(
                     new LambdaQueryWrapper<UserGameState>().eq(UserGameState::getUserId, id));
+            // 没有 game_state 就没有这个世界：直接给业务错误，别在 gameState.getIndexValue() 上
+            // 抛 NPE 变成 500。便携版最容易撞上——玩家换了包 / 删了 data\ 存档 / 恢复了旧档，
+            // 浏览器里还留着上一个用户签发的令牌，于是每个轮询接口都会打进来。
+            if (gameState == null) {
+                throw new BizException(ErrorCode.NOT_FOUND);
+            }
             QuoteBoard board = QuoteBoard.restore(states, gameState.getIndexValue(),
                     gameState.getPrevIndex(), gameState.getTickIndex());
             // 本局档案（标准/快速）决定涨跌停幅度与跳速，恢复出来就要带上

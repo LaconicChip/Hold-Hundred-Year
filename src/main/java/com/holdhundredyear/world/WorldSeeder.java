@@ -143,7 +143,7 @@ public class WorldSeeder {
             userStockStateMapper.insert(stockState);
         }
 
-        // 开局前的 10 根日K（game_day 0..-9，纯展示）：第 1 天点开个股页就有历史可看，
+        // 开局前的 20 根日K（game_day 0..-19，纯展示）：第 1 天点开个股页就有历史可看，
         // 也让日K图交代清"这只票开局前被怎么对待"。走势档案见 PreHistoryDefs。
         GameMode preHistoryMode = modeOf(userId);
         for (StockDefs.StockDef def : StockDefs.ALL) {
@@ -190,7 +190,7 @@ public class WorldSeeder {
     }
 
     /**
-     * 一只票的开局前日K（{@link PreHistoryDefs#BARS} 根，game_day 0..-9）。
+     * 一只票的开局前日K（{@link PreHistoryDefs#BARS} 根，game_day 0..-19）。
      *
      * <p>先按板块档案掷出逐日收益铺一段价格路径，再整体缩放，让最新一根（day 0）的收盘价
      * 正好等于发行价——日K图上"开盘前"与"第 1 天"之间因此没有断点，第 1 天的涨跌幅照旧拿

@@ -230,8 +230,9 @@ const tab = ref('intraday')
 const kline = ref([])
 async function loadKline() {
   try {
-    // 一次要满整局 + 开局前历史（标准 72+10、快速 36+10），服务端按档案夹逼
-    kline.value = await fetchStockKline(stockId.value, 90)
+    // 一次要满整局 + 开局前历史（标准 72+20、快速 36+20），服务端按档案夹逼；
+    // 这里给足上限，别写死刚好够的数——前史根数一改就悄悄截断最老那几根
+    kline.value = await fetchStockKline(stockId.value, 200)
   } catch {
     kline.value = []
   }

@@ -8,6 +8,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
+import com.holdhundredyear.market.mapper.SysUserMapper;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -33,6 +34,9 @@ class AuthFlowTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private SysUserMapper sysUserMapper;
 
     @Test
     void registerWithUniqueUsernameSucceeds() throws Exception {
@@ -136,6 +140,31 @@ class AuthFlowTest {
                 .andExpect(status().isNotFound()));
 
         assertEquals(1018, body.path("code").asInt(), "NOT_FOUND, body=" + body);
+    }
+
+    /**
+     * 令牌签发的用户已经不在了（便携版换包、删掉 data\\ 存档、恢复旧档之后，浏览器里还留着
+     * 上一个用户的令牌）必须<b>当场判未登录</b>。以前它被当成合法身份放过，一路走到行情板
+     * 加载才炸成 500，玩家看到的是"页面空白 + 控制台两行资源不存在"；401 会让前端拦截器
+     * 清掉 token 并送回入口页，点一下"继续游戏/创建新游戏"就自愈。
+     */
+    @Test
+    void tokenOfDeletedUserIsRejectedAsUnauthorizedInsteadOfBlowingUp() throws Exception {
+        String username = unique("ghost");
+        long userId = json(register(username, "password123")
+                .andExpect(status().isOk()))
+                .path("data").path("userId").asLong();
+        String token = json(login(username, "password123")
+                .andExpect(status().isOk()))
+                .path("data").path("token").asString();
+        sysUserMapper.deleteById(userId);
+
+        JsonNode body = json(mockMvc.perform(get("/api/stocks")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnauthorized()));
+
+        assertEquals(1001, body.path("code").asInt(),
+                "a token whose user no longer exists must be UNAUTHORIZED, body=" + body);
     }
 
     private static String unique(String suffix) {

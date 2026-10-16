@@ -3,9 +3,9 @@ package com.holdhundredyear.game.constants;
 import java.util.Map;
 
 /**
- * 开局前 10 个交易日的板块走势档案（个股日K的"前世"）。
+ * 开局前 20 个交易日的板块走势档案（个股日K的"前世"）。
  *
- * <p>注册时给每只票铺 10 根历史日K（{@code stock_daily_bar}，game_day 0..-9），玩家第 1 天
+ * <p>注册时给每只票铺 20 根历史日K（{@code stock_daily_bar}，game_day 0..-19），玩家第 1 天
  * 点开个股页就能看到"这只票最近是被怎么对待的"，而不是一片空白。走势只按板块档案派生，
  * 不参与本局的昨收、指数基期与结算。
  *
@@ -16,8 +16,14 @@ import java.util.Map;
  */
 public final class PreHistoryDefs {
 
-    /** 前史根数：10 根日K，够看清趋势，又不至于让玩家以为开局前已经打了半年工。 */
-    public static final int BARS = 10;
+    /**
+     * 前史根数：20 根日K（2026-10-16 从 10 加到 20）。
+     *
+     * <p>10 根只够看个方向，"这只票最近是被怎么对待的"根本读不出来；20 根约等于一个月，
+     * 趋势、回调、破位都看得见了。走势档案（日均涨跌幅与波动）不变，所以拉长的是同一条
+     * 曲线的长度，不是斜率——老存档不受影响，新开局才有 20 根。
+     */
+    public static final int BARS = 20;
 
     /** 单个板块的前史走势：日均涨跌幅 + 日波动标准差（都是比率口径）。 */
     public record Profile(double dailyDrift, double dailyVol) {
