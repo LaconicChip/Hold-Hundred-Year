@@ -117,7 +117,7 @@
   - **验自带浏览器别在 `%LOCALAPPDATA%\*` 下跑**：本机实测把同一份 CfT 放 `%LOCALAPPDATA%\任意目录\chrome-win64` 一律 `CreateProcess error=14001`（并行配置不正确），放 `%TEMP%` 或桌面就正常起——**文件字节完全相同**（SHA-256 逐一对过），所以是这台机器的目录策略，不是包坏了。要复现玩家看到的窗口，请把包解压到桌面/文档这类普通目录再启动。
 **便携包不随代码更新**：`dist\\*.zip` 只在"升版本号 + 明确要求打包"两个条件同时满足时重新生成（AGENTS.md 落地约定）。日常提交只动源码与文档。
 
-**两种存储、一份 schema（2026-10-15）**：默认档连本机 MySQL（学习目标就是它的行锁/事务，测试基线也跑在它上面）；`--spring.profiles.active=portable` 切到内嵌 H2 文件库（`config/PortableDataSourceConfig` 在 DataSource 工厂方法里建表，保证任何 Mapper 拿到连接时表已就绪；存档就是 `./data/hold_year.mv.db` 一个文件）。建表脚本仍然只有 `db/schema.sql` 一份：H2 侧由 `common/MysqlSchemaForH2` 翻译三处方言差异（`ENGINE=...` 尾巴、行内 `INDEX` 拆成 `CREATE INDEX IF NOT EXISTS`、索引/约束名从"表内唯一"改成加表名前缀的全库唯一）。翻译器有条测试兜着：**别把行首 `--` 注释当成整段丢弃**——`schema.sql` 第一行注释和 `CREATE TABLE sys_user` 同属一段，整段跳过的后果是第一张表不存在。全量 447 条测试在 portable 档（H2）下也是全绿的，包括 100 线程并发买入与快进等价。
+**两种存储、一份 schema（2026-10-15）**：默认档连本机 MySQL（学习目标就是它的行锁/事务，测试基线也跑在它上面）；`--spring.profiles.active=portable` 切到内嵌 H2 文件库（`config/PortableDataSourceConfig` 在 DataSource 工厂方法里建表，保证任何 Mapper 拿到连接时表已就绪；存档就是 `./data/hold_year.mv.db` 一个文件）。建表脚本仍然只有 `db/schema.sql` 一份：H2 侧由 `common/MysqlSchemaForH2` 翻译三处方言差异（`ENGINE=...` 尾巴、行内 `INDEX` 拆成 `CREATE INDEX IF NOT EXISTS`、索引/约束名从"表内唯一"改成加表名前缀的全库唯一）。翻译器有条测试兜着：**别把行首 `--` 注释当成整段丢弃**——`schema.sql` 第一行注释和 `CREATE TABLE sys_user` 同属一段，整段跳过的后果是第一张表不存在。全量 452 条测试在 portable 档（H2）下也是全绿的，包括 100 线程并发买入与快进等价。
 
 **给别人玩的鉴权面（2026-10-15）**：`SecurityConfig` 改成只有 `/api/**`（除 `/api/auth/**`）需要登录，其余 `anyRequest().permitAll()`。原因：单个 jar 同时发前端页面和接口，浏览器直接访问或刷新 `/market`、`/stock/3` 这类 history 路由都得拿到 index.html（兜底在 `config/WebStaticConfig`，它必须让 `api/`、`ws/` 前缀原样落空，否则接口报错会被伪装成"首页能打开"）。以前写的是 `anyRequest().authenticated()`，jar 里嵌的前端会被整页挡成 401。别把这条改回去，也别放开 `/api/**`。配置全部支持环境变量覆盖（`HOLD_DB_URL` / `HOLD_DB_USER` / `HOLD_DB_PASSWORD` / `HOLD_PORT` / `HOLD_JWT_SECRET` / `HOLD_JWT_TTL_HOURS`），默认值就是本机开发那套；`game.cmd` 是配套的启动/打包/备份脚本。
 
@@ -135,9 +135,10 @@
 
 ## 5. 当前验收基线
 
-- **后端 `test` = 447 tests / 0 Failures / 0 Errors**（需本机 `hold_year_test`；portable 档 H2 下同样 447 全绿）。覆盖：同种子可复现、快进=逐跳、并发守恒、结算 12 步、追保/强平/爆仓、高利贷额度与递增计息与到期强卖、事件骨架 92 条与 `event-copy.txt` 一一对应、文案文件全部登记且跨池零重复、剧本日撒点不死循环、`prev_index` 基准、三类流水查询、模式档案、提醒消息惯例（含 `ALERT` 档）、心跳节流、暂停闸门（暂停中一跳不推进、恢复后续走）、开局前历史 K（10 根、day 0 收盘=发行价、同 seed 同形状、单日不越涨跌停）、妖股三幕（连板钉涨停 / 停牌潮先于千股跌停钉板且名单一致 / 断魂刀落在救市后）、`restart` 空 body 沿用本局模式、终局两结局。
+- **后端 `test` = 452 tests / 0 Failures / 0 Errors**（需本机 `hold_year_test`；portable 档 H2 下同样全绿）。覆盖：同种子可复现、快进=逐跳、并发守恒、结算 12 步、追保/强平/爆仓、高利贷额度与递增计息与到期强卖、事件骨架 92 条与 `event-copy.txt` 一一对应、文案文件全部登记且跨池零重复、剧本日撒点不死循环、`prev_index` 基准、三类流水查询、模式档案、提醒消息惯例（含 `ALERT` 档）、心跳节流、暂停闸门（暂停中一跳不推进、恢复后续走）、开局前历史 K（10 根、day 0 收盘=发行价、同 seed 同形状、单日不越涨跌停）、妖股三幕（连板钉涨停 / 停牌潮先于千股跌停钉板且名单一致 / 断魂刀落在救市后）、`restart` 空 body 沿用本局模式、终局两结局。
 - **前端 `npm run build` 通过**：入口主包 18.1 kB、`vendor-element` 86.65 kB（按需引入，勿回退）。
 - **除权除息与日K复权已实测**：`CorporateActionServiceTest` 断言 10转10/现金分红把昨收·开·高·低·现价·均价·分时缓冲**整体**折算并双写回 `user_stock_state`；`MarketQueryServiceTest` 用"第 1 日收 170 → 第 2 日除权收 84.15 → 第 3 日 +5%"的三日剧本断言日K连续（第 1 根复权到 85 口径、图内跳幅 == tooltip 涨跌幅、最新一根仍是真实成交价）。
+- **便携版入口已实机走查（2026-10-16，portable 档真跑 jar + 浏览器）**：新机器 status 报无存档 → 「继续游戏」置灰 → 「创建新游戏」直接进第 1 日（右上角显示`单机玩家`，模式仍在状态栏选）→ 退出后入口页显示「第 1 / 72 个交易日、净资产 ¥100,000.00、标准模式」→ 再点「创建新游戏」弹“存档将被清空”，点「取消」留在入口页不清档，点「继续游戏」回到 /market。
 - **实机走查基线**：注册 → 开盘 → 行情/弹幕/消息 → 买卖（T+1、涨跌停、佣金）→ 融资 → 高利贷 → 打新 → 排行 → 日报 → 双结局 → 再来一局，全程 console error 0、非预期接口错误 0。
 - **2026-10-13 游戏性批次已实机复核**（新号走查）：日K 开局即有 10 根前史（`T-9…T0`，蜡烛等宽 + 底部滑块）；跨日后行情牌的今开/最高/最低/封板都是当日值（第 2 日涨停票挂"封板"、跌 6% 的票无残留涨停红底）；侧栏默认展开；票名已是新化名。
 - 截图只保留**当前版本**（`docs/design/shots/`）：界面改版后重截替换，不叠加历史截图。
