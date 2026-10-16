@@ -80,6 +80,7 @@
 - **两个 ECharts 坑**：candlestick 的空位必须给 `'-'`（给 `null` 直接抛 `Cannot read properties of null`，整张图不画）；别再把 `start:0/end:100` 写回去。
 - **测滚轮缩放别信自动化工具**：`agent-browser mouse wheel` 合成的事件根本进不了 DOM（在 canvas 上挂 capture 监听数出来是 0），所以"工具里滚轮没反应"不能当成 bug，也不能当成 fix 生效的证据；`mouse down/move/up` 是能送达的，滑块拖拽就是这么验通的（默认 40 根窗口下拖左：x 轴从 `第3日…第39日` 变成 `T-9…第30日`）。
 - **妖股三幕（剧本日）**：`HOT_STREAK`（崩盘前 3 天钉涨停）→ `HALT_SWARM`（崩盘当天集体停牌，**在千股跌停钉板之前**由 `MarketStateService` 前置阶段落地，所以它们不在跌停板上）→ `HUN_DAO`（救市后一字断魂刀）。掷骰走独立 salt `"hotstreak"`，不消费 `"script"` 那条流，所以既有名场面的日期一字不变；复牌补跌复用 `resumeHaltedStocks`，不另写一套停牌。
+- **便携版没有账号**（`world/LocalPlayerService` + `web/LocalGameController`，都带 `@Profile("portable")`）：入口页先 `GET /api/auth/local/status`，拿到 200 就渲染"继续游戏 / 创建新游戏"，404 才渲染登录注册。本地玩家是 `sys_user` 里用户名 `单机玩家` 的一行，密码是随机 BCrypt（谁都登不进去），进入只发免密 JWT。"创建新游戏"走 `GameEndService.restart(userId, null, true)`——第三个参数 `allowInProgress` 是便携版专用：玩家已经在警告框里确认过清空，这时"本局还没结束"不能成为拒绝理由。**默认档仍走两参重载**，进行中重开照旧报 `GAME_NOT_FINISHED`；`LocalEntryIsPortableOnlyTest` 用反射钉住这几个 Bean 必须带 `@Profile("portable")`，免得免密入口漏到线上。
 - **心跳与冷用户节流**：`MarketScheduler` 每 `SCHEDULER_HEARTBEAT_MS`(100ms) 扫一遍在线用户，但**先做内存预判**（`dueForBeat`）：有行情板的按本局 `tickMs` 判到点；没有板的（未开过局 / 刚重启 / 刚登出）按 1 秒节流放行一次。别去掉这个节流——每个停在"还没开盘"页面的在线账号都会变成每秒 10 次 `selectOne`。
 - **前端菜单/路由**：`GameLayout.vue` 竖排菜单；`/market /stock/:id /assets /messages /leaderboard /summary /result`；涨跌与金额格式化统一在 `frontend/src/utils/format.js`。
 - **Element Plus 只用四个组件，且必须走深层路径**：全站只用 `el-dialog` + `el-input-number` + `ElMessage`/`ElMessageBox`，按「用到哪个 import 哪个」引 `element-plus/es/components/<x>/index.mjs`——从桶口 `element-plus` 取会把全量组件拖进来（实测只降到 808 kB）。样式在组件内引 `.../style/css`，两个命令式的在 `main.js` 统一引。新增 `el-*` 时记得同处补 `style/css`，否则功能正常但没样式。
@@ -121,6 +122,12 @@
 **给别人玩的鉴权面（2026-10-15）**：`SecurityConfig` 改成只有 `/api/**`（除 `/api/auth/**`）需要登录，其余 `anyRequest().permitAll()`。原因：单个 jar 同时发前端页面和接口，浏览器直接访问或刷新 `/market`、`/stock/3` 这类 history 路由都得拿到 index.html（兜底在 `config/WebStaticConfig`，它必须让 `api/`、`ws/` 前缀原样落空，否则接口报错会被伪装成"首页能打开"）。以前写的是 `anyRequest().authenticated()`，jar 里嵌的前端会被整页挡成 401。别把这条改回去，也别放开 `/api/**`。配置全部支持环境变量覆盖（`HOLD_DB_URL` / `HOLD_DB_USER` / `HOLD_DB_PASSWORD` / `HOLD_PORT` / `HOLD_JWT_SECRET` / `HOLD_JWT_TTL_HOURS`），默认值就是本机开发那套；`game.cmd` 是配套的启动/打包/备份脚本。
 
 **绿色包的日志是必需的，但 Logback 的滚动文件名必须带日期**：portable 档把日志写到 `data\\hold-year.log`（双击启动没有控制台，朋友那边出问题只能靠这个文件回传）。踩过的坑：给 `logging.logback.rollingpolicy.file-name-pattern` 写了个只有 `%i` 的模板，Logback 直接抛 `FileNamePattern [...] does not contain a valid DateToken` → 日志系统初始化失败 → 进程秒退 → **jpackage 启动器只弹一句 "Failed to launch JVM"**，完全看不出是配置问题。教训两条：① 只设 `max-file-size`/`max-history`，滚动模板交给 Spring Boot 默认（自带 `%d{yyyy-MM-dd}`）；② 绿色包改动必须真跑一次包里的 exe 验收，光测 jar 挡不住这一层。
+
+**坑⑥：只跑 `mvn package` 打出来的 jar 里嵌的是旧前端**。前端的落点是 `src/main/resources/static/`（已 gitignore），
+只有 `game.cmd build` 会做「npm build → 删 static → 拷 dist」这三步；直接 `mvn package` 会把上一次拷进去的旧包再打一遍，
+界面改了却看不出来（实测踩过一次：新加的便携版入口页在浏览器里仍是旧登录页，而接口 `/api/auth/local/status` 明明是 200）。
+手工等价命令：`Remove-Item src/main/resources/static -Recurse -Force; Copy-Item frontend/dist src/main/resources/static -Recurse`，
+之后再 package。
 
 **坑**：① 测试无 H2 兜底，`hold_year_test` 不存在会大面积报 `Unknown database`；② 旧库不执行迁移会让 `user_game_state` 读写报 `Unknown column`；③ 前端依赖后端，先起后端；④ `mvnw.cmd` 内部调用 Windows PowerShell 5.1，某些机器会死在 `(Get-Item ~/.m2).Target[0]`（报 `Cannot index into a null array` / `Cannot start maven from wrapper`）——可直接用 wrapper 已下载的 Maven：设好 `JAVA_HOME` 后执行 `& "$env:USERPROFILE\.m2\wrapper\dists\apache-maven-*\*\apache-maven-*\bin\mvn.cmd" test`；⑤ 本机 `localhost` 解析到 IPv6，用 `127.0.0.1` 探端口/代理可能看起来"拒绝连接"，浏览器与脚本请用 `localhost`。
 

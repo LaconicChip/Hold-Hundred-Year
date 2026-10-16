@@ -12,6 +12,50 @@
       <h1 class="title">百年证券营业部</h1>
       <p class="slogan">“你持有一百年看看，涨跌都算我的。”—— 门口大爷</p>
 
+      <!-- 便携版（解压即玩）：这台机器只有一份存档，不问用户名密码，只问"要不要接着玩" -->
+      <div v-if="local" class="local-scene">
+        <p class="local-kicker muted-2">这台机器上的存档</p>
+        <div class="save-card">
+          <template v-if="local.hasSave">
+            <div class="save-row">
+              <span class="save-k">进度</span>
+              <span class="save-v num">第 {{ local.day }} / {{ local.totalDays }} 个交易日</span>
+            </div>
+            <div class="save-row">
+              <span class="save-k">净资产</span>
+              <span class="save-v num">¥{{ fmtMoney(local.netAsset) }}</span>
+            </div>
+            <div class="save-row">
+              <span class="save-k">模式</span>
+              <span class="save-v">{{ local.modeLabel }}</span>
+            </div>
+            <p v-if="local.finished" class="save-flag">本局已收官，点「继续」会先进结算页</p>
+          </template>
+          <p v-else class="save-none">这台机器上还没有存档</p>
+        </div>
+
+        <div class="local-actions">
+          <button
+            type="button"
+            class="btn btn-primary btn-lg act-btn"
+            :disabled="!local.hasSave || loading"
+            @click="onResume"
+          >
+            <SvgIcon name="play" class="submit-ic" />
+            {{ busy('resume') ? '开门中…' : '继续游戏' }}
+          </button>
+          <button type="button" class="btn btn-lg act-btn" :disabled="loading" @click="onNew">
+            <SvgIcon name="plus" class="submit-ic" />
+            {{ busy('new') ? '播种中…' : '创建新游戏' }}
+          </button>
+        </div>
+        <p v-if="errText" class="err-text">
+          <SvgIcon name="alert" class="err-ic" />{{ errText }}
+        </p>
+      </div>
+
+      <!-- 默认档（线上 / 局域网多人）：注册即开局，各自一个账号 -->
+      <template v-else>
       <!-- 登录 / 注册 贴纸风分段切换 -->
       <div class="tab-switch">
         <button
@@ -65,6 +109,7 @@
           {{ loading ? '推门中…' : mode === 'login' ? '推门进场' : '开户进场' }}
         </button>
       </form>
+      </template>
     </div>
   </div>
 </template>
@@ -73,7 +118,10 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus/es/components/message/index.mjs'
+import { ElMessageBox } from 'element-plus/es/components/message-box/index.mjs'
 import { useUserStore } from '@/stores/user'
+import { fetchLocalStatus } from '@/api/local'
+import { fmtMoney } from '@/utils/format'
 import SvgIcon from '@/components/SvgIcon.vue'
 import bankDoor from '@/assets/img/bank-door.png'
 import bullImg from '@/assets/img/bull.png'
@@ -88,6 +136,12 @@ const password = ref('')
 const confirmPwd = ref('')
 const loading = ref(false)
 const errText = ref('')
+// 便携版探测结果：null = 线上档（或还没探完），对象 = 这台机器有本地存档这回事
+const local = ref(null)
+const action = ref('')
+function busy(which) {
+  return loading.value && action.value === which
+}
 
 // 左右吉祥物仅宽屏展示
 const showMascots = ref(false)
@@ -101,8 +155,21 @@ onMounted(() => {
   window.addEventListener('resize', syncMascots)
   if (user.isLoggedIn) {
     router.replace('/market')
+    return
   }
+  probeLocal()
 })
+
+// 先当单机、再当多人：这组接口只在便携档注册，线上档拿到 404 就照常显示登录/注册。
+// 静默失败——探测失败不是玩家的错，不许弹任何东西吓他。
+async function probeLocal() {
+  try {
+    const status = await fetchLocalStatus()
+    if (status && status.local) local.value = status
+  } catch {
+    local.value = null
+  }
+}
 onUnmounted(() => window.removeEventListener('resize', syncMascots))
 
 async function onSubmit() {
@@ -131,13 +198,66 @@ async function onSubmit() {
     }
     router.push('/market')
   } catch (e) {
-    // 后端 400 业务错误（如“用户名已存在”“用户名或密码错误”）透传 msg
-    const msg = e && e.message ? e.message : '操作失败，请稍后再试'
-    errText.value = msg
-    // grouping：与拦截器同文案的离线提示合并成一条，不叠两层
-    ElMessage.error({ message: msg, grouping: true })
+    reportError(e)
   } finally {
     loading.value = false
+  }
+}
+
+// 后端 400 业务错误（如“用户名已存在”“用户名或密码错误”）透传 msg
+function reportError(e) {
+  const msg = e && e.message ? e.message : '操作失败，请稍后再试'
+  errText.value = msg
+  // grouping：与拦截器同文案的离线提示合并成一条，不叠两层
+  ElMessage.error({ message: msg, grouping: true })
+}
+
+// 继续游戏：免密拿本地存档的令牌
+async function onResume() {
+  errText.value = ''
+  action.value = 'resume'
+  loading.value = true
+  try {
+    await user.resumeLocal()
+    router.push(local.value && local.value.finished ? '/result' : '/market')
+  } catch (e) {
+    reportError(e)
+  } finally {
+    loading.value = false
+    action.value = ''
+  }
+}
+
+// 创建新游戏：已有存档必须先过一道写清楚后果的警告框
+async function onNew() {
+  errText.value = ''
+  const save = local.value
+  if (save && save.hasSave) {
+    const asset = '¥' + fmtMoney(save.netAsset)
+    const tip = save.finished
+      ? '本局已在第 ' + save.day + ' 日收官，净资产 ' + asset + '。创建新游戏会把这段历史清空重播，无法恢复。'
+      : '当前进度：第 ' + save.day + ' / ' + save.totalDays + ' 个交易日，净资产 ' + asset
+        + '。创建新游戏会清空这段历史，无法恢复。'
+    try {
+      await ElMessageBox.confirm(tip, '存档将被清空', {
+        type: 'warning',
+        confirmButtonText: '清空并重开',
+        cancelButtonText: '取消'
+      })
+    } catch {
+      return // 玩家点了取消，什么都不做
+    }
+  }
+  action.value = 'new'
+  loading.value = true
+  try {
+    await user.startLocalNewGame()
+    router.push('/market')
+  } catch (e) {
+    reportError(e)
+  } finally {
+    loading.value = false
+    action.value = ''
   }
 }
 </script>
@@ -195,6 +315,59 @@ async function onSubmit() {
   color: var(--ink-2);
   font-size: var(--fs-sm);
   margin-bottom: var(--sp-5);
+}
+
+/* 便携版入口：存档概况 + 两个动作 */
+.local-scene {
+  display: grid;
+  gap: var(--sp-4);
+  max-width: 300px;
+  margin: 0 auto;
+}
+.local-kicker {
+  font-size: var(--fs-sm);
+  letter-spacing: 1px;
+}
+.save-card {
+  border: var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  padding: var(--sp-3) var(--sp-4);
+  display: grid;
+  gap: 6px;
+  text-align: left;
+}
+.save-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--sp-3);
+  font-size: var(--fs-sm);
+}
+.save-k {
+  color: var(--ink-2);
+}
+.save-v {
+  font-weight: 700;
+}
+.save-flag,
+.save-none {
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  text-align: center;
+  margin: 2px 0 0;
+}
+.local-actions {
+  display: grid;
+  gap: var(--sp-3);
+}
+.act-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
 /* 登录 / 注册 分段切换：贴纸风胶囊 */

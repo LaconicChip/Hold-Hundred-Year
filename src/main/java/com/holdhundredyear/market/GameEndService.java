@@ -196,9 +196,20 @@ public class GameEndService {
      * 模式是"一局一选"：终局后"再来一局"要能换，注册后还没开局也要能换。
      */
     public void restart(long userId, GameMode mode) {
+        restart(userId, mode, false);
+    }
+
+    /**
+     * 同上，但允许调用方指定"进行中也照开"。
+     *
+     * <p>只有便携版的"创建新游戏"用得上：单机没有账号，存档就一份，玩家点新建时前端已经
+     * 弹过红色警告并让他二次确认，此时"本局还没结束"不该成为拒绝理由——拒绝只会让他以为
+     * 按钮坏了。多人在线版仍走两参重载，进行中重开照旧报 GAME_NOT_FINISHED。
+     */
+    public void restart(long userId, GameMode mode, boolean allowInProgress) {
         quoteBoardRegistry.worldLock(userId).lock();
         try {
-            transactionTemplate.executeWithoutResult(status -> doRestart(userId, mode));
+            transactionTemplate.executeWithoutResult(status -> doRestart(userId, mode, allowInProgress));
             quoteBoardRegistry.evict(userId);
         } finally {
             quoteBoardRegistry.worldLock(userId).unlock();
@@ -206,12 +217,12 @@ public class GameEndService {
     }
 
     /** restart 事务体（世界锁内开启，提交先于锁释放与 evict）。 */
-    private void doRestart(long userId, GameMode mode) {
+    private void doRestart(long userId, GameMode mode, boolean allowInProgress) {
         UserGameState gs = gameState(userId);
         MarketState state = MarketState.valueOf(gs.getMarketState());
         boolean finished = state == MarketState.FINISHED || state == MarketState.BANKRUPT;
         // 终局后可重开；注册后从未开过局（第 1 天、零成交零持仓）也可以——那是"开局前选模式"
-        if (!finished && !untouchedNewRun(userId, gs)) {
+        if (!allowInProgress && !finished && !untouchedNewRun(userId, gs)) {
             throw new BizException(ErrorCode.GAME_NOT_FINISHED);
         }
         GameMode next = mode == null ? GameMode.of(gs.getGameMode()) : mode;

@@ -1,6 +1,7 @@
 // 用户 store（登录态 / 资产 / WS 接线）
 import { defineStore } from 'pinia'
 import { login as apiLogin, register as apiRegister, fetchMe } from '@/api/auth'
+import { localResume, localNewGame } from '@/api/local'
 import { fetchAssets, fetchPositions } from '@/api/me'
 import { setToken, getToken } from '@/api/http'
 import { ws } from '@/api/ws'
@@ -55,6 +56,22 @@ export const useUserStore = defineStore('user', {
     async register(username, password) {
       await apiRegister(username, password)
       return this.login(username, password)
+    },
+
+    // 便携版「继续游戏」：拿本地存档的令牌，等价于一次免密登录
+    async resumeLocal() {
+      const data = await localResume()
+      this._applyAuth(data)
+      await this._afterLogin()
+      return data
+    },
+
+    // 便携版「创建新游戏」：清空重播后直接进新局（调用方负责先拿到玩家的二次确认）
+    async startLocalNewGame() {
+      const data = await localNewGame()
+      this._applyAuth(data)
+      await this._afterLogin()
+      return data
     },
 
     // 写入鉴权信息（token 持久化）
