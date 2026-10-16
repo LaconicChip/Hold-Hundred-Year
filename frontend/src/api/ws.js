@@ -75,12 +75,9 @@ class WsClient {
   _dispatch(channel, raw) {
     const handler = this.handlers[channel]
     if (!handler) return
-    if (channel === 'danmu') {
-      // 弹幕为纯文本，直接透传（由 store 负责容错解析股吧格式）
-      handler(raw)
-      return
-    }
-    // 其余通道尝试 JSON 解析，失败则回退为原始字符串
+    // 弹幕现在也是 JSON（{category, stockId, text}），与其余通道走同一条解析路；
+    // 老客户端/异常载荷回退成原始字符串，store 里两种都吃。
+    // 通道尝试 JSON 解析，失败则回退为原始字符串
     try {
       handler(JSON.parse(raw))
     } catch {

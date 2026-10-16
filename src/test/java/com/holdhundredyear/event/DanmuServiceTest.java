@@ -26,6 +26,7 @@ import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -161,6 +162,41 @@ class DanmuServiceTest {
         return StockPersonas.byId(stockId).danmu().contains(danmu)
                 || DanmuTexts.sectorPool(StockDefs.byId(stockId).sector()).contains(danmu)
                 || globalPool.contains(danmu);
+    }
+
+    // ---- 节流：冷却与去重 ----
+
+    /**
+     * 节流三件事各验一条：任意两条至少隔 3 跳、同一类别至少隔 10 跳、
+     * 与最近 8 条重复的文案直接不推。旧版每跳最多一条且同一句能连着来八遍，
+     * 那就是"人机味"和"刷屏"的来源。
+     */
+    @Test
+    void throttleBlocksTooCloseAndRepeatedLines() {
+        long userId = 991001L;
+        var flat = new DanmuService.DanmuLine("清淡", "全员装死", 0L);
+        assertTrue(danmuService.allow(userId, 0, flat), "第一条必须放行");
+        assertFalse(danmuService.allow(userId, 1, new DanmuService.DanmuLine("涨停", "封死了", 3L)),
+                "只隔 1 跳：任意两条的最小间隔没到");
+        assertFalse(danmuService.allow(userId, 4, flat),
+                "同一句文案在记忆里：重复的不推");
+        assertTrue(danmuService.allow(userId, 4, new DanmuService.DanmuLine("涨停", "另一句", 3L)),
+                "过了最小间隔且不是重复句，应当放行");
+        assertFalse(danmuService.allow(userId, 8, new DanmuService.DanmuLine("涨停", "又一句", 3L)),
+                "涨停类别只隔 4 跳，仍在同类冷却里");
+        assertTrue(danmuService.allow(userId, 15, new DanmuService.DanmuLine("涨停", "再一句", 3L)),
+                "同类冷却（10 跳）已过，可以再说一次");
+        assertTrue(danmuService.allow(userId, 3, new DanmuService.DanmuLine("大盘", "跨日也来一句", 0L)),
+                "跳序回零视为新的一天：冷却表作废，第二天开盘第一跳就该能说话");
+    }
+
+    /** 载荷必须是带 stockId 的 JSON：个股页的股吧要分得清"在说谁"。 */
+    @Test
+    void pushedPayloadCarriesCategoryAndFocusStock() throws Exception {
+        String json = DanmuService.payload(new DanmuService.DanmuLine("涨停", "封死了", 7L));
+        assertTrue(json.contains("\"category\""), "payload must carry the category: " + json);
+        assertTrue(json.contains("\"stockId\":7"), "payload must carry the focus stock id: " + json);
+        assertTrue(json.contains("封死了"), "payload must carry the text: " + json);
     }
 
     // ---- 软依赖投递与不落库 ----

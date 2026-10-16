@@ -34,7 +34,7 @@
     <StatusBar @skipped="onSkipped" />
     <TickerTape />
     <QuoteTable />
-    <DanmuBar />
+
 
     <!-- 新手引导气泡 -->
     <OnboardingTip />
@@ -56,7 +56,7 @@ import SvgIcon from '@/components/SvgIcon.vue'
 import StatusBar from '@/components/StatusBar.vue'
 import TickerTape from '@/components/TickerTape.vue'
 import QuoteTable from '@/components/QuoteTable.vue'
-import DanmuBar from '@/components/DanmuBar.vue'
+
 import OnboardingTip from '@/components/OnboardingTip.vue'
 import IpoDialog from '@/components/IpoDialog.vue'
 

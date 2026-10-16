@@ -82,6 +82,9 @@
       @traded="onTraded"
     />
 
+    <!-- 股吧：从大盘页底部搬进来——盯这只票的时候才想知道别人在聊它，而不是在页脚看别人刷屏 -->
+    <StockForum :stock-id="stock.id" :stock-name="stock.name" />
+
     <!-- 我的持仓卡片 -->
     <div class="pos-card card">
       <div class="pos-head">
@@ -130,8 +133,6 @@
     <!-- 该股消息流卡片 -->
     <StockMsgList :stock-id="stock.id" />
 
-    <!-- 个股弹幕（复用大盘同款 DanmuBar） -->
-    <DanmuBar />
   </div>
 </template>
 
@@ -145,12 +146,12 @@ import { useMessagesStore } from '@/stores/messages'
 import { fetchStockList, fetchStockQuotes, fetchStockKline } from '@/api/stocks'
 import StockChart from '@/components/StockChart.vue'
 import KlineChart from '@/components/KlineChart.vue'
+import StockForum from '@/components/StockForum.vue'
 import StockTradePanel from '@/components/StockTradePanel.vue'
 import StockMsgList from '@/components/StockMsgList.vue'
 import StickerTag from '@/components/StickerTag.vue'
 import SealStamp from '@/components/SealStamp.vue'
 import SvgIcon from '@/components/SvgIcon.vue'
-import DanmuBar from '@/components/DanmuBar.vue'
 import { priceCls, fmtPct, fmtPrice, fmtMoney } from '@/utils/format'
 
 const route = useRoute()

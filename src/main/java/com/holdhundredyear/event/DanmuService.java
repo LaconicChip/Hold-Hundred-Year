@@ -11,8 +11,16 @@ import com.holdhundredyear.ws.PushService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
+import tools.jackson.databind.json.JsonMapper;
+
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 弹幕服务（Phase 8.3，spec §7.3）：按行情板当前快照判定触发类别并随机抽一条文案。
@@ -34,23 +42,44 @@ import java.util.Random;
 @Service
 public class DanmuService {
 
+    private static final JsonMapper MAPPER = JsonMapper.builder().build();
+
+    /** 同一类别两条之间的最少跳数：涨停封板能连钉 30 跳，不设冷却就是一屏"封死涨停"。 */
+    static final int SAME_CATEGORY_COOLDOWN_TICKS = 10;
+    /** 任意两条之间的最少跳数：弹幕是背景氛围，不是机关枪。 */
+    static final int MIN_GAP_TICKS = 3;
+    /** 记住最近几条文案，重复的直接不推（同一句看两次，人机味就出来了）。 */
+    static final int RECENT_TEXT_MEMORY = 8;
+
     private final ObjectProvider<PushService> pushProvider;
+    /** per-user 发送节流（内存态，跨日靠跳序回零自动复位；重启后从头计也没坏处）。 */
+    private final Map<Long, Throttle> throttles = new ConcurrentHashMap<>();
 
     public DanmuService(ObjectProvider<PushService> pushProvider) {
         this.pushProvider = pushProvider;
     }
 
+    /** 一条弹幕：类别（冷却与前端分组）、文案、焦点股（0 = 大盘级，不点名某只票）。 */
+    record DanmuLine(String category, String text, long stockId) {
+    }
+
     /** 纯判定函数：按 board 快照返回命中类别的一条文案，未命中返回 null。
      *  userId 为签名兼容保留（触发判定只读 board）。 */
     static String pickDanmu(long userId, QuoteBoard board, Random rng) {
+        DanmuLine line = pickLine(userId, board, rng);
+        return line == null ? null : line.text();
+    }
+
+    /** 纯判定函数：同上，但带上类别与焦点股。 */
+    static DanmuLine pickLine(long userId, QuoteBoard board, Random rng) {
         // ①② 大盘级：只抽全局池
         if (board.getPrevIndex() > 0) {
             double indexPct = board.getIndexValue() / board.getPrevIndex() - 1;
             if (indexPct <= -0.02) {
-                return pick(DanmuTexts.INDEX_DROP, rng);
+                return new DanmuLine("大盘", pick(DanmuTexts.INDEX_DROP, rng), 0L);
             }
             if (indexPct >= 0.02) {
-                return pick(DanmuTexts.INDEX_RISE, rng);
+                return new DanmuLine("大盘", pick(DanmuTexts.INDEX_RISE, rng), 0L);
             }
         }
         // ③ 封板：焦点股就是封板那只
@@ -59,10 +88,10 @@ public class DanmuService {
                 continue;
             }
             if (q.getSealed() == SealState.UP) {
-                return pickStockFlavor(q, DanmuTexts.LIMIT_UP, rng);
+                return new DanmuLine("涨停", pickStockFlavor(q, DanmuTexts.LIMIT_UP, rng), q.getStockId());
             }
             if (q.getSealed() == SealState.DOWN) {
-                return pickStockFlavor(q, DanmuTexts.LIMIT_DOWN, rng);
+                return new DanmuLine("跌停", pickStockFlavor(q, DanmuTexts.LIMIT_DOWN, rng), q.getStockId());
             }
         }
         boolean allCalm = true;
@@ -94,36 +123,92 @@ public class DanmuService {
         }
         // ④ 暴涨暴跌、⑤ 小级别急动：焦点股取第一个越线的股
         if (bigUp != null) {
-            return pickStockFlavor(bigUp, DanmuTexts.RALLY, rng);
+            return new DanmuLine("急拉", pickStockFlavor(bigUp, DanmuTexts.RALLY, rng), bigUp.getStockId());
         }
         if (bigDown != null) {
-            return pickStockFlavor(bigDown, DanmuTexts.DIVE, rng);
+            return new DanmuLine("跳水", pickStockFlavor(bigDown, DanmuTexts.DIVE, rng), bigDown.getStockId());
         }
         if (minorUp != null) {
-            return pickStockFlavor(minorUp, DanmuTexts.RALLY_MINOR, rng);
+            return new DanmuLine("急拉", pickStockFlavor(minorUp, DanmuTexts.RALLY_MINOR, rng), minorUp.getStockId());
         }
         if (minorDown != null) {
-            return pickStockFlavor(minorDown, DanmuTexts.DIVE_MINOR, rng);
+            return new DanmuLine("跳水", pickStockFlavor(minorDown, DanmuTexts.DIVE_MINOR, rng), minorDown.getStockId());
         }
         // ⑤ 横盘冷门
         if (allCalm) {
-            return pick(DanmuTexts.FLAT, rng);
+            return new DanmuLine("清淡", pick(DanmuTexts.FLAT, rng), 0L);
         }
         return null;
     }
 
-    /** 轻量封装：命中则经软依赖 PushService 投递；未命中或推送不可用均静默。 */
+    /**
+     * 命中且通过节流才投递；未命中、被冷却挡下、或推送不可用一律静默。
+     *
+     * <p>节流是"人机味"的主要解药：旧版每跳最多一条、且同一天同一句能连着来八遍。
+     * 弹幕不写库、不影响行情，所以挡掉几条不改变任何可复现结果（掷骰仍按跳派生）。
+     */
     public void maybePush(long userId, QuoteBoard board) {
-        Random rng = WorldRandom.of(userId, "danmu" + board.getTickIndex());
-        String danmu = pickDanmu(userId, board, rng);
-        if (danmu == null) {
-            return;
-        }
         PushService push = pushProvider.getIfAvailable();
         if (push == null) {
             return;
         }
-        push.pushDanmu(userId, danmu);
+        int tick = board.getTickIndex();
+        DanmuLine line = pickLine(userId, board, WorldRandom.of(userId, "danmu" + tick));
+        if (line == null || !allow(userId, tick, line)) {
+            return;
+        }
+        push.pushDanmu(userId, payload(line));
+    }
+
+    /**
+     * 冷却判定与记账（同一用户对象上同步，跨用户无竞争）。
+     * 包内可见是为了让节流规则能被直接单测——它关系到"刷屏"这个玩家投诉点，
+     * 不能只靠"看起来少了一点"来验收。
+     */
+    boolean allow(long userId, int tick, DanmuLine line) {
+        Throttle t = throttles.computeIfAbsent(userId, key -> new Throttle());
+        synchronized (t) {
+            if (tick < t.lastTick) {
+                // 跨日：跳序回零，冷却表整体作废，并把"上一条"推到本跳之前刚好满足最小间隔。
+                // 别用 Integer.MIN_VALUE 当"很久以前"：tick - MIN_VALUE 会溢出成负数，
+                // 结果第二天开盘第一跳反而永远被挡（这条是单测抓出来的）。
+                t.byCategory.clear();
+                t.lastTick = tick - MIN_GAP_TICKS;
+            }
+            Integer lastOfCategory = t.byCategory.get(line.category());
+            if (lastOfCategory != null && tick - lastOfCategory < SAME_CATEGORY_COOLDOWN_TICKS) {
+                return false;
+            }
+            if (tick - t.lastTick < MIN_GAP_TICKS) {
+                return false;
+            }
+            if (t.recent.contains(line.text())) {
+                return false;
+            }
+            t.byCategory.put(line.category(), tick);
+            t.lastTick = tick;
+            t.recent.addLast(line.text());
+            while (t.recent.size() > RECENT_TEXT_MEMORY) {
+                t.recent.removeFirst();
+            }
+            return true;
+        }
+    }
+
+    /** 下发载荷：带上类别与焦点股，个股页的股吧才分得出"在说谁"。 */
+    static String payload(DanmuLine line) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("category", line.category());
+        body.put("stockId", line.stockId());
+        body.put("text", line.text());
+        return MAPPER.writeValueAsString(body);
+    }
+
+    /** 单个用户的弹幕节流状态。 */
+    private static final class Throttle {
+        private final Map<String, Integer> byCategory = new HashMap<>();
+        private final Deque<String> recent = new ArrayDeque<>();
+        private int lastTick = -MIN_GAP_TICKS;
     }
 
     /**

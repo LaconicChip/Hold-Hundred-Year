@@ -158,19 +158,34 @@ export const useMessagesStore = defineStore('messages', {
       this.modals.shift()
     },
 
-    // 弹幕入列：容错解析“股吧ID：内容”格式
-    pushDanmu(text) {
-      if (text == null) return
-      const str = String(text)
+    /**
+     * 弹幕入列。载荷两种长相：
+     * ① 后端新版 {category, stockId, text}（个股页股吧靠 stockId 分得清"在说谁"）；
+     * ② 老版纯文本，容错解析"股吧ID：内容"。
+     */
+    pushDanmu(raw) {
+      if (raw == null) return
+      let content
       let user
-      let content = str
-      const idx = str.indexOf('：')
-      if (idx > 0 && idx < 12) {
-        user = str.slice(0, idx)
-        content = str.slice(idx + 1)
+      let category = ''
+      let stockId = 0
+      if (typeof raw === 'object') {
+        content = String(raw.text || '')
+        category = raw.category || ''
+        stockId = Number(raw.stockId) || 0
+      } else {
+        const str = String(raw)
+        const idx = str.indexOf('：')
+        if (idx > 0 && idx < 12) {
+          user = str.slice(0, idx)
+          content = str.slice(idx + 1)
+        } else {
+          content = str
+        }
       }
+      if (!content) return
       this.danmuSeq += 1
-      this.danmu.push({ id: this.danmuSeq, seq: this.danmuSeq, text: content, user })
+      this.danmu.push({ id: this.danmuSeq, seq: this.danmuSeq, text: content, user, category, stockId })
       // 维持环形缓冲上限
       if (this.danmu.length > DANMU_MAX) {
         this.danmu.splice(0, this.danmu.length - DANMU_MAX)
