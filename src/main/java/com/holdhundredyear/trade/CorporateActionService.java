@@ -85,15 +85,12 @@ public class CorporateActionService {
 
     /**
      * 10转10 高送转除权：该 userId 对 stockId 的持仓股数/可卖股数 ×2、平均成本 ÷2；行情
-     * prevClose 与 current ÷2 并同步落库 prev_close/current_price——市值不变、净资产不变；
-     * 涨跌停基准按除权后 prevClose 自动重算（Quote.limitUpPrice 即用 prevClose）。写消息。
+     * 按 ÷2 整体折算当日口径（见 {@link Quote#rebaseToday}）并同步落库——市值不变、净资产
+     * 不变；涨跌停基准按除权后 prevClose 自动重算（Quote.limitUpPrice 即用 prevClose）。写消息。
      */
     public void split10to10(long userId, QuoteBoard board, long stockId, int gameDay) {
         Quote quote = board.quote(stockId);
-        double newPrev = Quote.round2(quote.getPrevClose() / 2.0);
-        double newCurrent = Quote.round2(quote.getCurrent() / 2.0);
-        quote.setPrevClose(newPrev);
-        quote.setCurrent(newCurrent);
+        quote.rebaseToday(price -> price / 2.0);
 
         UserPosition position = position(userId, stockId);
         if (position != null) {
@@ -102,14 +99,14 @@ public class CorporateActionService {
             position.setAvgCost(position.getAvgCost().divide(TWO, 2, RoundingMode.HALF_UP));
             userPositionMapper.updateById(position);
         }
-        persistPrices(userId, stockId, newPrev, newCurrent);
+        persistToday(userId, stockId, quote);
         notify(userId, stockId, gameDay, "10转10 除权",
                 StockDefs.byId(stockId).name() + "实施10转10高送转，今日除权，持仓数量翻倍，股价按除权后口径调整。");
     }
 
     /**
-     * 现金分红除息：持仓股数 × 每股分红入账（落 sys_user.balance）；行情 prevClose 与
-     * current 减分红额并同步落库——现金↑、市值↓、净资产守恒。写消息。
+     * 现金分红除息：持仓股数 × 每股分红入账（落 sys_user.balance）；行情按减分红额整体折算
+     * 当日口径（见 {@link Quote#rebaseToday}）并同步落库——现金↑、市值↓、净资产守恒。写消息。
      *
      * @param divPerShare 每股分红（元，调用方保证 &gt; 0，如 0.5~2）
      */
@@ -124,11 +121,8 @@ public class CorporateActionService {
             user.setBalance(user.getBalance().add(dividend));
             sysUserMapper.updateById(user);
         }
-        double newPrev = Quote.round2(quote.getPrevClose() - divPerShare);
-        double newCurrent = Quote.round2(quote.getCurrent() - divPerShare);
-        quote.setPrevClose(newPrev);
-        quote.setCurrent(newCurrent);
-        persistPrices(userId, stockId, newPrev, newCurrent);
+        quote.rebaseToday(price -> price - divPerShare);
+        persistToday(userId, stockId, quote);
         notify(userId, stockId, gameDay, "现金分红到账",
                 StockDefs.byId(stockId).name() + "派发现金红利，持股每股到账 "
                         + div.setScale(2, RoundingMode.HALF_UP).toPlainString() + " 元，股价对应除息。");
@@ -141,12 +135,20 @@ public class CorporateActionService {
 
     private static final BigDecimal TWO = BigDecimal.valueOf(2);
 
-    /** 行情与落库同步：只双写 prev_close 与 current_price，open/high/low 保持日内实际值。 */
-    private void persistPrices(long userId, long stockId, double prevClose, double current) {
+    /**
+     * 把行情板里折算后的当日五个价（昨收/开盘/最高/最低/现价）双写进 user_stock_state——
+     * 与 {@link com.holdhundredyear.market.WorldTickService} 每跳同步 current/high/low 的口径
+     * 一致（结算落日K读的就是这几列），所以必须以行情板为唯一来源，不能只折库里的列。
+     * 行缺失则跳过。
+     */
+    private void persistToday(long userId, long stockId, Quote quote) {
         UserStockState state = stockState(userId, stockId);
         if (state != null) {
-            state.setPrevClose(BigDecimal.valueOf(prevClose));
-            state.setCurrentPrice(BigDecimal.valueOf(current));
+            state.setPrevClose(BigDecimal.valueOf(quote.getPrevClose()));
+            state.setOpenPrice(BigDecimal.valueOf(quote.getOpen()));
+            state.setHighPrice(BigDecimal.valueOf(quote.getHigh()));
+            state.setLowPrice(BigDecimal.valueOf(quote.getLow()));
+            state.setCurrentPrice(BigDecimal.valueOf(quote.getCurrent()));
             userStockStateMapper.updateById(state);
         }
     }

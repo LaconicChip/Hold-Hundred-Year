@@ -150,6 +150,50 @@ class CorporateActionServiceTest {
                 "market value must be conserved across a 10-to-10 split");
     }
 
+    /**
+     * 除权必须折算**整个当日口径**（回归玩家报的"股灾后除权，日K上多出一根跌 50% 的巨长阴线，
+     * 鼠标却只写 −10%"）：只折 prevClose/current 的话，当日那根 bar 会留着除权前的 open/high
+     * 去配除权后的 close，分时线与均价线同理。所以把四价铺开到互不相同的值逐个断言，
+     * 并确认折算后 high/low 仍然包住实体（图上不会自己画出一根不存在的针）。
+     */
+    @Test
+    void splitFoldsWholeDayOhlcIntradayAndPersistedState() {
+        long userId = seedInMarket();
+        QuoteBoard board = quoteBoardRegistry.getOrLoad(userId);
+        Quote quote = board.quote(STOCK);
+        quote.setOpen(169.00);
+        quote.setHigh(172.00);
+        quote.setLow(166.00);
+        quote.setCurrent(170.00);
+        quote.appendTick(170.00);
+
+        corporateActionService.split10to10(userId, board, STOCK, 1);
+
+        assertEquals(84.50, quote.getOpen(), 0.0, "open must fold to the ex-rights scale");
+        assertEquals(86.00, quote.getHigh(), 0.0,
+                "high must fold too, otherwise the daily bar keeps a pre-split upper wick");
+        assertEquals(83.00, quote.getLow(), 0.0, "low must fold to the ex-rights scale");
+        assertEquals(85.00, quote.getCurrent(), 0.0, "current must fold to the ex-rights scale");
+        assertTrue(quote.getHigh() >= Math.max(quote.getOpen(), quote.getCurrent()),
+                "the folded bar must stay self-consistent: high >= max(open, close)");
+        assertTrue(quote.getLow() <= Math.min(quote.getOpen(), quote.getCurrent()),
+                "the folded bar must stay self-consistent: low <= min(open, close)");
+        assertEquals(85.00, quote.getIntraday().getLast(), 0.0, "the intraday line must fold too");
+        assertEquals(85.00, quote.getDayAvg(), 0.0, "the day-average line must fold too");
+
+        UserStockState state = stockState(userId, STOCK);
+        assertEquals(quote.getPrevClose(), state.getPrevClose().doubleValue(), 0.0,
+                "state.prev_close must follow the folded quote");
+        assertEquals(quote.getOpen(), state.getOpenPrice().doubleValue(), 0.0,
+                "state.open_price must follow the quote - settlement reads these very columns for the daily bar");
+        assertEquals(quote.getHigh(), state.getHighPrice().doubleValue(), 0.0,
+                "state.high_price must follow the quote");
+        assertEquals(quote.getLow(), state.getLowPrice().doubleValue(), 0.0,
+                "state.low_price must follow the quote");
+        assertEquals(quote.getCurrent(), state.getCurrentPrice().doubleValue(), 0.0,
+                "state.current_price must follow the quote");
+    }
+
     // ---- 现金分红 ----
 
     @Test
@@ -172,6 +216,31 @@ class CorporateActionServiceTest {
         double netAssetAfter = balance(userId).doubleValue() + 300 * quote.getCurrent();
         assertEquals(netAssetBefore, netAssetAfter, 0.01,
                 "net asset must be conserved across the dividend (cash up, market value down)");
+    }
+
+    /** 除息同属"当日整体折算"：开盘/最高/最低也要跟着减派息额，不能只动昨收与现价。 */
+    @Test
+    void cashDividendFoldsIntradayRangeAndPersistsState() {
+        long userId = seedInMarket();
+        QuoteBoard board = quoteBoardRegistry.getOrLoad(userId);
+        Quote quote = board.quote(STOCK);
+        quote.setOpen(169.00);
+        quote.setHigh(172.00);
+        quote.setLow(166.00);
+        quote.setCurrent(170.00);
+
+        corporateActionService.cashDividend(userId, board, STOCK, 1.0, 1);
+
+        assertEquals(167.00, quote.getPrevClose(), 0.0, "prev_close must be ex-dividend");
+        assertEquals(168.00, quote.getOpen(), 0.0, "open must be ex-dividend too");
+        assertEquals(171.00, quote.getHigh(), 0.0, "high must be ex-dividend too");
+        assertEquals(165.00, quote.getLow(), 0.0, "low must be ex-dividend too");
+        assertEquals(169.00, quote.getCurrent(), 0.0, "current must be ex-dividend too");
+
+        UserStockState state = stockState(userId, STOCK);
+        assertEquals(168.00, state.getOpenPrice().doubleValue(), 0.0, "state.open_price must be ex-dividend");
+        assertEquals(171.00, state.getHighPrice().doubleValue(), 0.0, "state.high_price must be ex-dividend");
+        assertEquals(165.00, state.getLowPrice().doubleValue(), 0.0, "state.low_price must be ex-dividend");
     }
 
     // ---- 时序：除权后首跳仍钳制在按新基准计算的涨跌停内 ----

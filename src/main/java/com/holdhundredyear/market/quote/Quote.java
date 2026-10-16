@@ -8,6 +8,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.function.DoubleUnaryOperator;
 
 /**
  * 单只股票的内存行情（P9 内存权威）。可变 POJO：引擎每跳就地更新，读侧直接读字段。
@@ -110,6 +111,33 @@ public class Quote {
     /** 未钉死在跌停价（可卖；封板交易判定 Phase 6 用）。 */
     public boolean canSell() {
         return current > limitDownPrice();
+    }
+
+    /**
+     * 把"今日口径"的价整体折算到新基准（除权/除息专用，由 CorporateActionService 调用）：
+     * 昨收、当日开盘/最高/最低/现价、当日均价、分时缓冲**一次全部**过 mapper。
+     *
+     * <p>为什么必须一次做齐：除权只折 prevClose/current 的话，当日那根日K会留着除权前的
+     * open/high 去配除权后的 close，图上凭空多出一根"腰斩大阴线"（超长上影），而 tooltip
+     * 显示的是按除权后基准算出的真实日内涨跌幅（最多一个跌停），图和数字各说各话；分时线与
+     * 均价线同理。漏一项就是错的，所以折算算法收在本类里，调用方只给映射。
+     *
+     * <p>mapper 是单调的（÷2 或 −派息额），所以折完 high 仍 >= max(open, current)、
+     * low 仍 <= min(open, current)，不需要重排；均价对两种映射同样满足"平均值同映射"。
+     */
+    public void rebaseToday(DoubleUnaryOperator mapper) {
+        prevClose = round2(mapper.applyAsDouble(prevClose));
+        open = round2(mapper.applyAsDouble(open));
+        high = round2(mapper.applyAsDouble(high));
+        low = round2(mapper.applyAsDouble(low));
+        current = round2(mapper.applyAsDouble(current));
+        dayAvg = round2(mapper.applyAsDouble(dayAvg));
+        // Deque 没有 replaceAll（那是 List 的方法），只能按原顺序重铺一份
+        Deque<Double> rebased = new ArrayDeque<>(Math.max(4, intraday.size() * 2));
+        for (Double price : intraday) {
+            rebased.addLast(round2(mapper.applyAsDouble(price)));
+        }
+        intraday = rebased;
     }
 
     /** HALF_UP 保留 2 位：涨跌停价与展示共用，语义明确化用 BigDecimal。 */

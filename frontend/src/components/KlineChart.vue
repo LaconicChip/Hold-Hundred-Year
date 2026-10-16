@@ -2,7 +2,7 @@
   <div class="chart-card card">
     <div class="chart-head">
       <span class="chart-title">
-        <SvgIcon name="chart" class="chart-ic" />日K线
+        <SvgIcon name="chart" class="chart-ic" />日K线<span class="chart-adj">前复权</span>
       </span>
       <span class="chart-legend">
         <span class="lg lg-ma" v-for="m in MA_DEFS" :key="m.name">
@@ -390,6 +390,17 @@ const option = computed(() => {
   font-size: var(--fs-xl);
 }
 .chart-ic { width: 1em; height: 1em; color: var(--brand); }
+/* 复权口径徽标：除权除息后图上画的是复权价（不是当日真实成交价），必须标出来，
+   否则玩家会以为价格错了。Tooltip 里的涨跌幅仍是当日真实涨跌幅。 */
+.chart-adj {
+  align-self: center;
+  padding: 1px 7px;
+  border: var(--border-hair);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  opacity: 0.8;
+}
 .chart-legend {
   display: inline-flex;
   gap: var(--sp-3);

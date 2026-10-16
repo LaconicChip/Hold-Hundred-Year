@@ -390,6 +390,42 @@ class MarketQueryServiceTest {
         assertEquals(0.0, window.get(0).getChangePct(), 1e-9);
     }
 
+    /**
+     * 除权日的日K必须连续（回归玩家报的"图上腰斩、鼠标却只写 −10%"）：三日剧本 ——
+     * 第 1 日正常收 170（昨收 168）；第 2 日盘中 10转10，prev_close 已折算到 85 口径、收 84.15；
+     * 第 3 日 +5% 收 88.36。库里第 1 日存的是**当日真实成交价** 170（历史价不该被后来的公司
+     * 行动改写），下发给图的序列要把它压到 85 口径，于是相邻两根的高度差恰好等于 tooltip
+     * 里那根的真实涨跌幅，不再出现 50% 的假断崖。
+     */
+    @Test
+    void klineIsForwardAdjustedAcrossExRightsSoChartMatchesTooltip() {
+        long userId = worldSeeder.seedUser("mq_adj1", BCRYPT_HASH);
+        settleDayWithOhlc(userId, 1, 168.00, 170.00, 169.00, 172.00, 167.50);
+        settleDayWithOhlc(userId, 2, 85.00, 84.15, 84.50, 86.00, 84.00);
+        settleDayWithOhlc(userId, 3, 84.15, 88.36, 84.20, 89.00, 84.00);
+
+        List<KlinePointDTO> bars = marketQueryService.stockKline(userId, 1L, 60);
+        int n = bars.size();
+        KlinePointDTO day1 = bars.get(n - 3);
+        KlinePointDTO day2 = bars.get(n - 2);
+        KlinePointDTO day3 = bars.get(n - 1);
+
+        assertEquals(88.36, day3.getClose(), 0.005,
+                "最新一根锚定真实成交价——右下角的当前价不能被复权改掉");
+        assertEquals(85.00, day1.getClose(), 0.005,
+                "除权前的收盘要按前复权压到当前口径（170 → 85），不能留 50% 假断崖");
+        assertEquals(84.50, day1.getOpen(), 0.005, "open/high/low 与 close 同因子折算");
+        assertEquals(86.00, day1.getHigh(), 0.005);
+        assertEquals(83.75, day1.getLow(), 0.005);
+        assertEquals(-0.01, day2.getChangePct(), 1e-6, "涨跌幅不受复权影响，仍是当日真实 −1%");
+
+        for (int i = n - 2; i < n; i++) {
+            double jump = bars.get(i).getClose() / bars.get(i - 1).getClose() - 1;
+            assertEquals(bars.get(i).getChangePct(), jump, 0.005,
+                    "第 " + bars.get(i).getGameDay() + " 根的图内跳幅必须与 tooltip 涨跌幅一致");
+        }
+    }
+
     @Test
     void klineOfUnknownStockThrowsNotFound() {
         long userId = worldSeeder.seedUser("mq_kline2", BCRYPT_HASH);
@@ -409,6 +445,27 @@ class MarketQueryServiceTest {
         MarketStateDTO closed = marketQueryService.state(userId);
         assertEquals(1005.0, closed.getIndexValue(), 1e-9);
         assertEquals(0.5, closed.getIndexDayPct(), 1e-9);
+    }
+
+    /** 结算整日并指定 1 号股的当日口径（昨收/收盘/开高低），用于精确构造日K剧本。 */
+    private void settleDayWithOhlc(long userId, int day, double prevClose, double close,
+                                   double open, double high, double low) {
+        UserGameState state = gameState(userId);
+        state.setCurrentDay(day);
+        state.setMarketState("SETTLING");
+        state.setIndexValue(1000.0);
+        userGameStateMapper.updateById(state);
+        UserStockState stock = userStockStateMapper.selectOne(
+                new LambdaQueryWrapper<UserStockState>()
+                        .eq(UserStockState::getUserId, userId)
+                        .eq(UserStockState::getStockId, 1L));
+        stock.setPrevClose(BigDecimal.valueOf(prevClose));
+        stock.setCurrentPrice(BigDecimal.valueOf(close));
+        stock.setOpenPrice(BigDecimal.valueOf(open));
+        stock.setHighPrice(BigDecimal.valueOf(high));
+        stock.setLowPrice(BigDecimal.valueOf(low));
+        userStockStateMapper.updateById(stock);
+        settlementService.settle(userId);
     }
 
     /** 置为待结算上下文并结算该日（fixture 同 SettlementServiceTest）。 */

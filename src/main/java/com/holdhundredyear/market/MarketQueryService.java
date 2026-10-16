@@ -360,7 +360,8 @@ public class MarketQueryService {
     }
 
     /**
-     * 个股日K序列（GET /api/stocks/{id}/kline）：stock_daily_bar 按 game_day 升序、
+     * 个股日K序列（GET /api/stocks/{id}/kline，**前复权**口径见 {@link #forwardAdjusted}）：
+     * stock_daily_bar 按 game_day 升序、
      * limit 截取最近 N 根（1..本局 totalDays + 开局前历史根数夹逼，历史在 game_day <= 0，
      * 见 WorldSeeder#buildPreHistoryBars）。未知 stockId 抛 NOT_FOUND。
      */
@@ -380,12 +381,58 @@ public class MarketQueryService {
                         .orderByDesc(StockDailyBar::getGameDay)
                         .last("LIMIT " + capped));
         Collections.reverse(bars);
-        return bars.stream()
-                .map(bar -> new KlinePointDTO(bar.getGameDay(),
-                        bar.getOpen().doubleValue(), bar.getHigh().doubleValue(),
-                        bar.getLow().doubleValue(), bar.getClose().doubleValue(),
-                        bar.getChangePct() != null ? bar.getChangePct() : 0.0))
-                .toList();
+        return forwardAdjusted(bars);
+    }
+
+    /**
+     * 日K复权（券商软件的"前复权"口径）：以最新一根收盘价为锚，沿 change_pct 往回链式还原
+     * 连续价格序列，再用「还原价 ÷ 原始收盘」作因子同乘该根的 open/high/low/close。
+     *
+     * <p>为什么不直接画库里的原始价：10转10 与现金分红只改写**除权日之后**的基准，之前那几根
+     * 存的是当日真实成交价（历史价不该被后来的公司行动改写，这也是 stock_daily_bar 里没有
+     * 复权列的原因）。直接画原始价会在除权日凭空跌掉一半，看上去是"腰斩"，而 tooltip 显示的
+     * 涨跌幅是按除权后基准算的真实日内涨跌（最多一个跌停）——同一个问题两个答案。
+     * change_pct 是收益率、天然对拆股免疫，所以它能当唯一的还原依据，不用改表、不用新数据。
+     *
+     * <p>边界：最新一根锚定原值（因子恒为 1，图右下角仍是玩家认得的当前价）；收盘价为 0 或
+     * 涨跌幅异常（1 + pct &lt;= 0）时该根因子退回 1，绝不拿异常值往前外推。价格 HALF_UP
+     * 保留 2 位，与落库口径一致；change_pct 原样透传（复权不改收益率）。
+     */
+    private static List<KlinePointDTO> forwardAdjusted(List<StockDailyBar> bars) {
+        int n = bars.size();
+        double[] factor = new double[n];
+        if (n > 0) {
+            factor[n - 1] = 1.0;
+            double adjusted = rawClose(bars.get(n - 1));
+            for (int i = n - 2; i >= 0; i--) {
+                double rawClose = rawClose(bars.get(i));
+                double base = 1.0 + rawChangePct(bars.get(i + 1));
+                adjusted = base > 0 ? adjusted / base : rawClose;
+                factor[i] = rawClose > 0 ? adjusted / rawClose : 1.0;
+            }
+        }
+        List<KlinePointDTO> points = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            StockDailyBar bar = bars.get(i);
+            double f = factor[i];
+            points.add(new KlinePointDTO(bar.getGameDay(),
+                    Quote.round2(bar.getOpen().doubleValue() * f),
+                    Quote.round2(bar.getHigh().doubleValue() * f),
+                    Quote.round2(bar.getLow().doubleValue() * f),
+                    Quote.round2(rawClose(bar) * f),
+                    rawChangePct(bar)));
+        }
+        return points;
+    }
+
+    /** 原始收盘（schema 非空，判空只是防御历史脏行）。 */
+    private static double rawClose(StockDailyBar bar) {
+        return bar.getClose() == null ? 0.0 : bar.getClose().doubleValue();
+    }
+
+    /** 当日涨跌幅（比率），缺失按 0 处理。 */
+    private static double rawChangePct(StockDailyBar bar) {
+        return bar.getChangePct() == null ? 0.0 : bar.getChangePct();
     }
 
     /**
