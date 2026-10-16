@@ -227,7 +227,63 @@ public final class EventSkeletons {
             sk("rumor-insider-investigation", Scope.STOCK, Source.INSIDER,
                     1, TargetSelector.HOLDING_BIASED, ImpactPattern.NEWS_FLIP, 0.08, 0.12),
             sk("rumor-insider-halt", Scope.STOCK, Source.INSIDER,
-                    1, TargetSelector.HOLDING_BIASED, ImpactPattern.BUY_RUMOR, 0.06, 0.12)
+                    1, TargetSelector.HOLDING_BIASED, ImpactPattern.BUY_RUMOR, 0.06, 0.12),
+
+            // ================= 增补池（2026-10-16）：把"翻来覆去就那几条"补厚 =================
+            // 玩家反馈事件太少、人机感太重。这里补的是**盘面真会发生**的事：举牌、重组、
+            // 中标、降价战、审计非标、实控人被留置、供给侧、国产替代、做空报告……
+            // 板块专属措辞走 sector: 变体（只有 SECTOR 骨架能用），纪元限定的用 eras 圈住。
+            // ---- 个股公告（AUTHORITY，无追报）----
+            sk("fund-buyout-stake", Scope.STOCK, Source.AUTHORITY,
+                    2, TargetSelector.ANY_STOCK, ImpactPattern.INSTANT, 0.05, 0.11),
+            sk("fund-restructure-plan", Scope.STOCK, Source.AUTHORITY,
+                    1, TargetSelector.ANY_STOCK, ImpactPattern.SPIKE_FADE, 0.04, 0.09),
+            sk("fund-order-bigwin", Scope.STOCK, Source.AUTHORITY,
+                    2, TargetSelector.ANY_STOCK, ImpactPattern.INSTANT, 0.03, 0.07),
+            sk("fund-product-pricecut", Scope.STOCK, Source.AUTHORITY,
+                    2, TargetSelector.ANY_STOCK, ImpactPattern.INSTANT, -0.08, -0.03),
+            sk("fund-audit-qualified", Scope.STOCK, Source.AUTHORITY,
+                    1, TargetSelector.ANY_STOCK, ImpactPattern.CHAIN, -0.09, -0.05),
+            sk("fund-controller-detained", Scope.STOCK, Source.AUTHORITY,
+                    1, TargetSelector.ANY_STOCK, ImpactPattern.CHAIN, -0.10, -0.06),
+            sk("fund-capex-gigaproject", Scope.STOCK, Source.AUTHORITY,
+                    2, TargetSelector.ANY_STOCK, ImpactPattern.SLOW_DRIFT, 0.04, 0.09),
+            sk("fund-buyback-fade", Scope.STOCK, Source.AUTHORITY,
+                    2, TargetSelector.ANY_STOCK, ImpactPattern.OVERSHOOT_REVERT, -0.07, -0.03),
+            // ---- 宏观与板块政策 ----
+            sk("policy-subsidy-industry", Scope.SECTOR, Source.AUTHORITY,
+                    2, TargetSelector.ANY_STOCK, ImpactPattern.SLOW_DRIFT, 0.04, 0.10),
+            sk("policy-export-curb", Scope.SECTOR, Source.AUTHORITY,
+                    2, TargetSelector.ANY_STOCK, ImpactPattern.INSTANT, -0.09, -0.04),
+            sk("policy-standard-new", Scope.SECTOR, Source.AUTHORITY,
+                    2, TargetSelector.ANY_STOCK, ImpactPattern.SPIKE_FADE, 0.03, 0.07),
+            sk("policy-env-stopprod", Scope.SECTOR, Source.AUTHORITY,
+                    2, TargetSelector.ANY_STOCK, ImpactPattern.INSTANT, -0.08, -0.03),
+            sk("policy-rate-cut", Scope.MARKET, Source.AUTHORITY,
+                    2, TargetSelector.ANY_STOCK, ImpactPattern.INSTANT, 0.03, 0.06),
+            sk("policy-stimulus-package", Scope.MARKET, Source.AUTHORITY,
+                    1, TargetSelector.ANY_STOCK, ImpactPattern.SLOW_DRIFT, 0.04, 0.08),
+            sk("policy-supply-reform", Scope.SECTOR, Source.MEDIA,
+                    2, TargetSelector.ANY_STOCK, ImpactPattern.SLOW_DRIFT, 0.04, 0.10),
+            sk("policy-local-replace-chip", Scope.SECTOR, Source.AUTHORITY, Set.of(EraCode.TRADE_WAR),
+                    1, TargetSelector.ANY_STOCK, ImpactPattern.SLOW_DRIFT, 0.05, 0.12),
+            // ---- 传闻 / 内幕 / 报道 ----
+            sk("rumor-state-stake", Scope.STOCK, Source.INSIDER,
+                    1, TargetSelector.HOLDING_BIASED, ImpactPattern.BUY_RUMOR, 0.06, 0.12),
+            sk("rumor-index-add", Scope.STOCK, Source.MEDIA,
+                    2, TargetSelector.HOLDING_BIASED, ImpactPattern.BUY_RUMOR, 0.04, 0.08),
+            sk("rumor-hot-product", Scope.STOCK, Source.RUMOR,
+                    2, TargetSelector.HOLDING_BIASED, ImpactPattern.SPIKE_FADE, 0.05, 0.11),
+            sk("rumor-sector-pricehike", Scope.SECTOR, Source.RUMOR,
+                    2, TargetSelector.HOLDING_BIASED, ImpactPattern.SLOW_DRIFT, 0.04, 0.09),
+            sk("rumor-tender-offer", Scope.STOCK, Source.INSIDER,
+                    1, TargetSelector.HOLDING_BIASED, ImpactPattern.NEWS_FLIP, 0.07, 0.12),
+            sk("rumor-short-report", Scope.STOCK, Source.RUMOR,
+                    2, TargetSelector.HOLDING_BIASED, ImpactPattern.INSTANT, -0.09, -0.04),
+            sk("fund-north-stake", Scope.STOCK, Source.MEDIA,
+                    2, TargetSelector.ANY_STOCK, ImpactPattern.BUY_RUMOR, 0.04, 0.09),
+            sk("fund-staff-holding", Scope.STOCK, Source.RUMOR,
+                    2, TargetSelector.ANY_STOCK, ImpactPattern.BUY_RUMOR, 0.05, 0.10)
     );
 
     private EventSkeletons() {

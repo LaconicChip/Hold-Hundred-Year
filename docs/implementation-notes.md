@@ -62,7 +62,7 @@
 - **倒计时口径**：`MarketStateDTO.countdownTicks` 是**本会话剩余跳数**（早盘 `45 - tick_index`、午盘 `90 - tick_index`、非交易态 0、越界夹到 0），不是全天剩余跳数——早盘拿 90 做基准会让早盘倒计时正好是午盘的两倍。前端 `StatusBar` 用"截止时间戳"而不是本地每秒 -1：快速模式每跳 0.5 秒，倒计时是小数，`-1` 会跨过 0 变成 `-01:-0.5` 那种负数。
 - **重开一局清表**：`GameEndService.doRestart` 必须连 `stock_daily_bar` 一起清——它是日K数据源，漏清会让新的一局开局就带着上一局的蜡烛图。以后加"按用户"维度的新表，记得同步进这份清单。
 - **个股历史消息**：`MessageService.list` 的第 6/7 个参数是 `stockId` + `includeSector`。个股页用 `stockId&includeSector=true`，一次拿回"本票专属（stock_id 命中）+ 本票所属板块（sector 命中且 stock_id 为空）"；板块名由后端按 `StockDefs` 反查，前端不需要知道。板块级消息的 `sector` 由 `EventFactory` 在 SECTOR 级事件落库时写入。
-- **文案库七份文件**（`src/main/resources/content/`，见 §7）：`stock-personas.txt`（24 股 × 8 弹幕 + 6 事件）、`sector-flavor.txt`（21 板块 + 大盘 × 权威/媒体/传闻含追报/玩梗各 2）、`npc-lines.txt`（4 场景 × 5 + 8 NPC × 5 闲聊）、`danmu.txt`（9 全局池 + 21 板块池）、`event-copy.txt`（92 条事件骨架的标题/正文变体与追报）、`era-narratives.txt`（11 个纪元叙事，每组恰好一行）、`shark-lines.txt`（高利贷 7 个场景台词）。除 `event-copy.txt`（由 `EventSkeletonsTest` 一一对应把关）外的六份被 `StockPersonasTest` 的"全局零重复"总校验覆盖（≥700 条唯一），任何一处抄重直接红。
+- **文案库七份文件**（`src/main/resources/content/`，见 §7）：`stock-personas.txt`（24 股 × 8 弹幕 + 6 事件）、`sector-flavor.txt`（21 板块 + 大盘 × 权威/媒体/传闻含追报/玩梗各 2）、`npc-lines.txt`（4 场景 × 5 + 8 NPC × 5 闲聊）、`danmu.txt`（9 全局池 + 21 板块池）、`event-copy.txt`（116 条事件骨架的标题/正文变体与追报）、`era-narratives.txt`（11 个纪元叙事，每组恰好一行）、`shark-lines.txt`（高利贷 7 个场景台词）。除 `event-copy.txt`（由 `EventSkeletonsTest` 一一对应把关）外的六份被 `StockPersonasTest` 的"全局零重复"总校验覆盖（≥700 条唯一），任何一处抄重直接红。
 - **高利贷的两本债（2026-10-10）**：`sys_user.debt` 是融资债、`sys_user.shark_debt` 是高利贷未清余额，后者恒等于台账 `user_shark_loan` 各笔之和（`SharkService.syncBalance` 每次重算，不做手工加减）。**担保比例只读前者，净资产与资不抵债读两者之和**——所以 `MarginService.marginCheck` 的入口短路条件是"两种债都没有"，只看融资债为 0 就短路会让欠高利贷的人永远死不了（测试 `insolventThroughSharkAloneStillEndsOnTheRooftop` 钉住这一点）。融资可借额度公式收在 `MarginService.marginBorrowableOf` 一处：`现金 + 市值 −（融资债 + 高利贷）× (1 + BORROW_LIMIT_RATIO)`，借款校验与 `/api/me/assets.borrowable` 共用；高利贷可借额在 `SharkService.borrowableOf`。到期强卖不复用 `MarginService.liquidate`（还款对象与目标线不同），但跳过规则完全一致：停牌 / 跌停封死 / 可卖 0 跳过。
   **催债只在节点提醒，不每天刷屏**（2026-10-13）：结算播报优先级是 到期强卖 > 逾期 > 到期结清 > 临近到期（剩 3 天 / 剩 1 天）> 利率涨档，其余日子静默；
   少发提醒不等于少算利息——每天的 `SHARK_INTEREST` 流水照记（`SharkServiceTest.chattersOnlyOnMilestonesAndStillAccruesEveryDay` 钉住这两件事）。
@@ -120,7 +120,7 @@
   - **验自带浏览器别在 `%LOCALAPPDATA%\*` 下跑**：本机实测把同一份 CfT 放 `%LOCALAPPDATA%\任意目录\chrome-win64` 一律 `CreateProcess error=14001`（并行配置不正确），放 `%TEMP%` 或桌面就正常起——**文件字节完全相同**（SHA-256 逐一对过），所以是这台机器的目录策略，不是包坏了。要复现玩家看到的窗口，请把包解压到桌面/文档这类普通目录再启动。
 **便携包不随代码更新**：`dist\\*.zip` 只在"升版本号 + 明确要求打包"两个条件同时满足时重新生成（AGENTS.md 落地约定）。日常提交只动源码与文档。
 
-**两种存储、一份 schema（2026-10-15）**：默认档连本机 MySQL（学习目标就是它的行锁/事务，测试基线也跑在它上面）；`--spring.profiles.active=portable` 切到内嵌 H2 文件库（`config/PortableDataSourceConfig` 在 DataSource 工厂方法里建表，保证任何 Mapper 拿到连接时表已就绪；存档就是 `./data/hold_year.mv.db` 一个文件）。建表脚本仍然只有 `db/schema.sql` 一份：H2 侧由 `common/MysqlSchemaForH2` 翻译三处方言差异（`ENGINE=...` 尾巴、行内 `INDEX` 拆成 `CREATE INDEX IF NOT EXISTS`、索引/约束名从"表内唯一"改成加表名前缀的全库唯一）。翻译器有条测试兜着：**别把行首 `--` 注释当成整段丢弃**——`schema.sql` 第一行注释和 `CREATE TABLE sys_user` 同属一段，整段跳过的后果是第一张表不存在。全量 453 条测试在 portable 档（H2）下也是全绿的，包括 100 线程并发买入与快进等价。
+**两种存储、一份 schema（2026-10-15）**：默认档连本机 MySQL（学习目标就是它的行锁/事务，测试基线也跑在它上面）；`--spring.profiles.active=portable` 切到内嵌 H2 文件库（`config/PortableDataSourceConfig` 在 DataSource 工厂方法里建表，保证任何 Mapper 拿到连接时表已就绪；存档就是 `./data/hold_year.mv.db` 一个文件）。建表脚本仍然只有 `db/schema.sql` 一份：H2 侧由 `common/MysqlSchemaForH2` 翻译三处方言差异（`ENGINE=...` 尾巴、行内 `INDEX` 拆成 `CREATE INDEX IF NOT EXISTS`、索引/约束名从"表内唯一"改成加表名前缀的全库唯一）。翻译器有条测试兜着：**别把行首 `--` 注释当成整段丢弃**——`schema.sql` 第一行注释和 `CREATE TABLE sys_user` 同属一段，整段跳过的后果是第一张表不存在。全量 455 条测试在 portable 档（H2）下也是全绿的，包括 100 线程并发买入与快进等价。
 
 **给别人玩的鉴权面（2026-10-15）**：`SecurityConfig` 改成只有 `/api/**`（除 `/api/auth/**`）需要登录，其余 `anyRequest().permitAll()`。原因：单个 jar 同时发前端页面和接口，浏览器直接访问或刷新 `/market`、`/stock/3` 这类 history 路由都得拿到 index.html（兜底在 `config/WebStaticConfig`，它必须让 `api/`、`ws/` 前缀原样落空，否则接口报错会被伪装成"首页能打开"）。以前写的是 `anyRequest().authenticated()`，jar 里嵌的前端会被整页挡成 401。别把这条改回去，也别放开 `/api/**`。配置全部支持环境变量覆盖（`HOLD_DB_URL` / `HOLD_DB_USER` / `HOLD_DB_PASSWORD` / `HOLD_PORT` / `HOLD_JWT_SECRET` / `HOLD_JWT_TTL_HOURS`），默认值就是本机开发那套；`game.cmd` 是配套的启动/打包/备份脚本。
 
@@ -138,7 +138,7 @@
 
 ## 5. 当前验收基线
 
-- **后端 `test` = 453 tests / 0 Failures / 0 Errors**（需本机 `hold_year_test`；portable 档 H2 下同样全绿）。覆盖：同种子可复现、快进=逐跳、并发守恒、结算 12 步、追保/强平/爆仓、高利贷额度与递增计息与到期强卖、事件骨架 92 条与 `event-copy.txt` 一一对应、文案文件全部登记且跨池零重复、剧本日撒点不死循环、`prev_index` 基准、三类流水查询、模式档案、提醒消息惯例（含 `ALERT` 档）、心跳节流、暂停闸门（暂停中一跳不推进、恢复后续走）、开局前历史 K（10 根、day 0 收盘=发行价、同 seed 同形状、单日不越涨跌停）、妖股三幕（连板钉涨停 / 停牌潮先于千股跌停钉板且名单一致 / 断魂刀落在救市后）、`restart` 空 body 沿用本局模式、终局两结局。
+- **后端 `test` = 455 tests / 0 Failures / 0 Errors**（需本机 `hold_year_test`；portable 档 H2 下同样全绿）。覆盖：同种子可复现、快进=逐跳、并发守恒、结算 12 步、追保/强平/爆仓、高利贷额度与递增计息与到期强卖、事件骨架 116 条与 `event-copy.txt` 一一对应、文案文件全部登记且跨池零重复、剧本日撒点不死循环、`prev_index` 基准、三类流水查询、模式档案、提醒消息惯例（含 `ALERT` 档）、心跳节流、暂停闸门（暂停中一跳不推进、恢复后续走）、开局前历史 K（10 根、day 0 收盘=发行价、同 seed 同形状、单日不越涨跌停）、妖股三幕（连板钉涨停 / 停牌潮先于千股跌停钉板且名单一致 / 断魂刀落在救市后）、`restart` 空 body 沿用本局模式、终局两结局。
 - **前端 `npm run build` 通过**：入口主包 18.1 kB、`vendor-element` 86.65 kB（按需引入，勿回退）。
 - **除权除息与日K复权已实测**：`CorporateActionServiceTest` 断言 10转10/现金分红把昨收·开·高·低·现价·均价·分时缓冲**整体**折算并双写回 `user_stock_state`；`MarketQueryServiceTest` 用"第 1 日收 170 → 第 2 日除权收 84.15 → 第 3 日 +5%"的三日剧本断言日K连续（第 1 根复权到 85 口径、图内跳幅 == tooltip 涨跌幅、最新一根仍是真实成交价）。
 - **便携版入口已实机走查（2026-10-16，portable 档真跑 jar + 浏览器）**：新机器 status 报无存档 → 「继续游戏」置灰 → 「创建新游戏」直接进第 1 日（右上角显示`单机玩家`，模式仍在状态栏选）→ 退出后入口页显示「第 1 / 72 个交易日、净资产 ¥100,000.00、标准模式」→ 再点「创建新游戏」弹“存档将被清空”，点「取消」留在入口页不清档，点「继续游戏」回到 /market。
@@ -162,7 +162,7 @@
 | `stock-personas.txt` | 24 只票的绰号、股性、专属弹幕（8 条）、专属事件文案（6 条） | `@5:DANMU`（数字 = 股票 id） |
 | `sector-flavor.txt` | 21 板块 + 大盘的权威公告/媒体报道/股吧传闻/玩梗 | `@白酒:RUMOR`，条目 `标题\|正文[\|追报]` |
 | `npc-lines.txt` | 4 个角色线场景台词 + 8 位 NPC 的性格闲聊 | `@SCENE:DAMA_RECOMMEND`、`@CHATTER:DAMA` |
-| `event-copy.txt` | 92 条事件骨架的标题/正文变体与证实·辟谣追报 | `@fund-big-order`，条目 `标题\|正文` / `sector:白酒\|标题\|正文` / `>追报` |
+| `event-copy.txt` | 116 条事件骨架的标题/正文变体与证实·辟谣追报 | `@fund-big-order`，条目 `标题\|正文` / `sector:白酒\|标题\|正文` / `>追报` |
 | `era-narratives.txt` | 11 个纪元的叙事（纪元切换通知的正文） | `@BULL_START`（枚举名，每组恰好一行） |
 | `shark-lines.txt` | 高利贷的 7 个场景台词（借到手 / 每日催债 / 到期 / 逾期 / 强卖 / 结清 / 板块告示） | `@CHATTER`、`@WARNING` |
 
