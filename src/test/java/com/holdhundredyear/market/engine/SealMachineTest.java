@@ -18,7 +18,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 确定性断言用桩随机源精确到值）。
  *
  * <p>统计效应量（prevClose=100，20 跳 apply，每种子 400 试验）：
- * +7% 处单跳封板概率 = 0.06 + 2.0×0.005 = 0.07，20 跳累计约 77%，远高于 50% 阈值；
+ * 触发线之上 2.5%（chg=+10.5% 时按新阈值 8% 计）单跳封板概率 = 0.06 + 2.0×0.025 = 0.11，
+ * 20 跳累计约 90%，远高于 50% 阈值；
  * streak=2 单跳 0.11、20 跳约 90%，对 streak=0 的差距约 13pp，逐种子稳定。
  * 5%（&lt;6.5%）不进入掷骰分支，封板率恒为 0。跌停方向全对称。
  */
@@ -119,28 +120,29 @@ class SealMachineTest {
     // ---------- 1. 磁吸触发封板（统计） + 7. 跌停方向对称 ----------
 
     @Test
-    void sevenPercentUpSealsMoreThanHalfWithinTwentyTicks() {
+    void beyondMagnetLineUpSealsMoreThanHalfWithinTwentyTicks() {
         for (long seed : SEEDS) {
-            int sealed = countSealedWithinTicks(107.0, 0, seed, TRIALS);
+            // 108.5 = 昨收 100 涨 8.5%，在新触发线 8% 之上（旧用例用的 7% 现在不该吸，见 GameConstants）
+            int sealed = countSealedWithinTicks(108.5, 0, seed, TRIALS);
             assertTrue(sealed > TRIALS / 2,
-                    "seed " + seed + ": +7% 处 20 跳封板率 " + (sealed / (double) TRIALS) + " 必须 > 50%");
+                    "seed " + seed + ": 磁吸线上方 20 跳封板率 " + (sealed / (double) TRIALS) + " 必须 > 50%");
         }
     }
 
     @Test
-    void sevenPercentDownSealsMoreThanHalfWithinTwentyTicks() {
+    void beyondMagnetLineDownSealsMoreThanHalfWithinTwentyTicks() {
         for (long seed : SEEDS) {
-            int sealed = countSealedWithinTicks(93.0, 0, seed, TRIALS);
+            int sealed = countSealedWithinTicks(91.5, 0, seed, TRIALS);
             assertTrue(sealed > TRIALS / 2,
-                    "seed " + seed + ": -7% 处 20 跳封板率 " + (sealed / (double) TRIALS)
+                    "seed " + seed + ": 磁吸线下方 20 跳封板率 " + (sealed / (double) TRIALS)
                             + " 必须 > 50%（跌停方向对称）");
         }
     }
 
     @Test
     void fivePercentNeverRollsSealDiceInEitherDirection() {
-        assertEquals(0, countSealedWithNoDice(105.0), "+5% < 6.5% 磁吸阈值：封板率必须恰为 0 且不掷骰");
-        assertEquals(0, countSealedWithNoDice(95.0), "-5% < 6.5% 磁吸阈值：封板率必须恰为 0 且不掷骰（对称）");
+        assertEquals(0, countSealedWithNoDice(105.0), "+5% 未过磁吸阈值：封板率必须恰为 0 且不掷骰");
+        assertEquals(0, countSealedWithNoDice(95.0), "-5% 未过磁吸阈值：封板率必须恰为 0 且不掷骰（对称）");
     }
 
     private int countSealedWithNoDice(double current) {
@@ -244,8 +246,9 @@ class SealMachineTest {
     @Test
     void streakTwoSealsMoreThanStreakZeroWithinTwentyTicks() {
         for (long seed : SEEDS) {
-            int plain = countSealedWithinTicks(107.0, 0, seed, TRIALS);
-            int hot = countSealedWithinTicks(107.0, 2, seed, TRIALS);
+            // 109 = 涨 9%，在新磁吸线（MAGNET_TRIGGER=8%）之上、涨停价 110 之下
+            int plain = countSealedWithinTicks(109.0, 0, seed, TRIALS);
+            int hot = countSealedWithinTicks(109.0, 2, seed, TRIALS);
             assertTrue(hot > plain,
                     "seed " + seed + ": streak=2 封板率 " + (hot / (double) TRIALS)
                             + " 必须高于 streak=0 的 " + (plain / (double) TRIALS));
@@ -254,15 +257,17 @@ class SealMachineTest {
 
     @Test
     void magnetDriftScalesWithCappedStreakBonusUpOnly() {
-        assertEquals(0.0015, machine.magnetDrift(quote(107.0, 0)), 1e-12,
+        assertEquals(0.0015, machine.magnetDrift(quote(109.0, 0)), 1e-12,
                 "streak=0 → 基础磁吸 MAGNET_DRIFT");
-        assertEquals(0.0030, machine.magnetDrift(quote(107.0, 2)), 1e-12,
+        assertEquals(0.0030, machine.magnetDrift(quote(109.0, 2)), 1e-12,
                 "streak=2 → MAGNET_DRIFT×(1+0.5×2) = 0.0015×2");
-        assertEquals(0.0045, machine.magnetDrift(quote(107.0, 4)), 1e-12,
+        assertEquals(0.0045, machine.magnetDrift(quote(109.0, 4)), 1e-12,
                 "streak=4 → MAGNET_DRIFT×(1+0.5×4) = 0.0015×3");
-        assertEquals(0.0045, machine.magnetDrift(quote(107.0, 6)), 1e-12,
+        assertEquals(0.0045, machine.magnetDrift(quote(109.0, 6)), 1e-12,
                 "streak=6 连板数封顶于 STREAK_MAGNET_CAP=4，与 streak=4 同值");
-        assertEquals(-0.0015, machine.magnetDrift(quote(93.0, 4)), 1e-12,
+        // 91 = 跌 9%，在新磁吸线（8%）之下；旧用例的 -7% 现在不该吸
+        assertEquals(-GameConstants.MAGNET_DRIFT,
+                machine.magnetDrift(quote(91.0, 4)), 1e-12,
                 "跌停方向不享连板加成，恒为 -MAGNET_DRIFT");
     }
 
@@ -313,11 +318,19 @@ class SealMachineTest {
 
     @Test
     void magnetDriftSignAndTriggerBoundary() {
-        assertEquals(0.0015, machine.magnetDrift(quote(107.0, 0)), 1e-12, "chg=+7% → +0.0015");
-        assertEquals(-0.0015, machine.magnetDrift(quote(93.0, 0)), 1e-12, "chg=-7% → -0.0015");
+        // 触发线读常量，别再把数字抄进断言里：2026-09 那版把 6.5% 写死，抬到 8% 时全靠改测试才发现
+        double trigger = GameConstants.MAGNET_TRIGGER;
+        double drift = GameConstants.MAGNET_DRIFT;
+        assertEquals(drift, machine.magnetDrift(quote(100 * (1 + trigger + 0.02), 0)), 1e-12,
+                "触发线上方 → 正向磁吸");
+        assertEquals(-drift, machine.magnetDrift(quote(100 * (1 - trigger - 0.02), 0)), 1e-12,
+                "触发线下方 → 负向磁吸");
         assertEquals(0.0, machine.magnetDrift(quote(105.0, 0)), 1e-12, "|chg|=5% 未触发 → 0");
-        assertEquals(0.0, machine.magnetDrift(quote(95.0, 0)), 1e-12, "|chg|=-5% 未触发 → 0");
-        assertEquals(0.0015, machine.magnetDrift(quote(106.5, 0)), 1e-12, "chg 恰为 +6.5% → 触发（>= 含等号）");
-        assertEquals(-0.0015, machine.magnetDrift(quote(93.5, 0)), 1e-12, "chg 恰为 -6.5% → 触发（>= 含等号）");
+        assertEquals(0.0, machine.magnetDrift(quote(95.0, 0)), 1e-12, "|chg|=5% 未触发 → 0");
+        // 恰好压线：>= 含等号（旧用例在 6.5% 上验这条，逻辑没变，跟着阈值走）
+        assertEquals(drift, machine.magnetDrift(quote(100 * (1 + trigger), 0)), 1e-12,
+                "chg 恰为触发线 → 触发（>= 含等号）");
+        assertEquals(-drift, machine.magnetDrift(quote(100 * (1 - trigger))), 1e-12,
+                "chg 恰为负触发线 → 触发（>= 含等号）");
     }
 }

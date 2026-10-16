@@ -1,6 +1,7 @@
 package com.holdhundredyear.world;
 
 import com.holdhundredyear.game.constants.EraDefs;
+import com.holdhundredyear.game.constants.GameConstants;
 import com.holdhundredyear.game.constants.StockDefs;
 import com.holdhundredyear.game.model.enums.EraCode;
 import com.holdhundredyear.game.model.enums.GameMode;
@@ -151,10 +152,13 @@ class EraSchedulerTest {
                 assertTrue(params.has("muMkt"), "seed " + seed + " era " + (i + 1) + " paramsJson misses muMkt");
                 assertTrue(params.has("sectorCoefs"), "seed " + seed + " era " + (i + 1) + " paramsJson misses sectorCoefs");
 
+                // 档案里的 mu/sector 是相对强度，落地统一乘 ERA_DRIFT_SCALE 标定（见 GameConstants），
+                // 所以这里断言的是"缩放后的区间"，别改回原值：那等于把标定偷偷取消。
+                double scale = GameConstants.ERA_DRIFT_SCALE;
                 double muMkt = params.get("muMkt").asDouble();
-                assertTrue(muMkt >= def.muMin() && muMkt <= def.muMax(),
+                assertTrue(muMkt >= def.muMin() * scale && muMkt <= def.muMax() * scale,
                         "seed " + seed + " era " + (i + 1) + " muMkt " + muMkt
-                                + " outside [" + def.muMin() + "," + def.muMax() + "]");
+                                + " outside [" + def.muMin() * scale + "," + def.muMax() * scale + "]");
 
                 JsonNode sectorCoefs = params.get("sectorCoefs");
                 Set<String> actualKeys = new HashSet<>();
@@ -165,10 +169,10 @@ class EraSchedulerTest {
                         "seed " + seed + " era " + (i + 1) + " sectorCoefs keys mismatch");
                 for (Map.Entry<String, EraDefs.SectorRange> e : def.sectorRanges().entrySet()) {
                     double coef = sectorCoefs.get(e.getKey()).asDouble();
-                    assertTrue(coef >= e.getValue().min() && coef <= e.getValue().max(),
+                    assertTrue(coef >= e.getValue().min() * scale && coef <= e.getValue().max() * scale,
                             "seed " + seed + " era " + (i + 1) + " sector " + e.getKey()
-                                    + " coef " + coef + " outside [" + e.getValue().min()
-                                    + "," + e.getValue().max() + "]");
+                                    + " coef " + coef + " outside [" + e.getValue().min() * scale
+                                    + "," + e.getValue().max() * scale + "]");
                 }
             }
         }

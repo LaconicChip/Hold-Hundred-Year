@@ -355,7 +355,11 @@ class MarketStateServiceTest {
         List<Quote> sealed = board.getQuotes().values().stream()
                 .filter(q -> q.getSealed() == SealState.UP)
                 .collect(Collectors.toList());
-        assertEquals(expectedSealed, sealed.size(), "sealRatio=" + sealRatio);
+        // 至少钉满剧本配额。可能更多：妖股出关自带 +10% 一字板（applyOpenGap 直接封死），
+        // 那只票不是 LIMIT_UP_ALL 挑中的但也确实在板上——多钉一只才是对的，少钉才是漏。
+        assertTrue(sealed.size() >= expectedSealed,
+                "sealed " + sealed.size() + " must cover the quota " + expectedSealed
+                        + " (sealRatio=" + sealRatio + ")");
         for (Quote q : sealed) {
             assertEquals(q.limitUpPrice(), q.getCurrent(), 1e-9, "stock " + q.getStockId());
             assertEquals(GameConstants.TOTAL_TICKS, q.getSealTicksLeft(), "stock " + q.getStockId());

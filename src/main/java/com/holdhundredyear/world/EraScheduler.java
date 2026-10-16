@@ -1,6 +1,7 @@
 package com.holdhundredyear.world;
 
 import com.holdhundredyear.game.constants.EraDefs;
+import com.holdhundredyear.game.constants.GameConstants;
 import com.holdhundredyear.game.model.enums.GameMode;
 import com.holdhundredyear.game.model.enums.EraCode;
 import tools.jackson.databind.json.JsonMapper;
@@ -99,10 +100,14 @@ public class EraScheduler {
         List<EraInstance> eras = new ArrayList<>(11);
         for (int i = 0; i < spans.length; i++) {
             EraDefs.EraDef def = EraDefs.ALL.get(i);
-            double muMkt = uniform(r, def.muMin(), def.muMax());
+            // EraDefs 的 mu/板块区间是"相对强度"档案，落到每跳漂移前统一乘标定系数
+            //（GameConstants.ERA_DRIFT_SCALE）：档案原值会让最热板块单日漂移 +27%，
+            // 涨跌停板拦不住，只能天天贴板。掷骰顺序不变，所以同种子仍是同一批纪元。
+            double muMkt = uniform(r, def.muMin(), def.muMax()) * GameConstants.ERA_DRIFT_SCALE;
             Map<String, Double> sectorCoefs = new LinkedHashMap<>();
             for (Map.Entry<String, EraDefs.SectorRange> e : def.sectorRanges().entrySet()) {
-                sectorCoefs.put(e.getKey(), uniform(r, e.getValue().min(), e.getValue().max()));
+                sectorCoefs.put(e.getKey(),
+                        uniform(r, e.getValue().min(), e.getValue().max()) * GameConstants.ERA_DRIFT_SCALE);
             }
             eras.add(new EraInstance(def.eraIndex(), def.code(), spans[i][0], spans[i][1], muMkt, sectorCoefs));
         }

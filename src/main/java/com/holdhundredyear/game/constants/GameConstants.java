@@ -27,12 +27,18 @@ public final class GameConstants {
     public static final int SCHEDULER_HEARTBEAT_MS = 100;
 
     // ---- 三层因子基准波动（spec §5.2，每跳 σ）----
-    /** 个股特质波动。 */
-    public static final double SIGMA_STOCK = 0.0035;
-    /** 市场因子波动。 */
-    public static final double SIGMA_MKT = 0.0018;
-    /** 板块因子波动。 */
-    public static final double SIGMA_SEC = 0.0012;
+    /**
+     * 个股特质波动（每跳）。2026-10-16 重标定：0.0035 → 0.0017。
+     *
+     * <p>旧值下整局实测<b>日收益标准差 8.0%、55% 的股票天收在涨跌停板上</b>（真实 A 股约
+     * 2% 与 1%~2%），等于"每天一半时间在板上"，玩家形容为"不是涨停就是跌停"。标定验收见
+     * {@code VolatilityDistributionTest}（跑完整局量分布，不是纸面推算）。
+     */
+    public static final double SIGMA_STOCK = 0.0017;
+    /** 市场因子波动（每跳）：与个股同比例收敛，保住"齐涨齐跌"的相对强度。 */
+    public static final double SIGMA_MKT = 0.0009;
+    /** 板块因子波动（每跳）。 */
+    public static final double SIGMA_SEC = 0.0006;
 
     /** 波动状态乘子（不可变，按 CALM/NORMAL/WILD 保序）。 */
     public static final Map<VolRegime, Double> VOL_REGIME;
@@ -45,20 +51,32 @@ public final class GameConstants {
     }
 
     // ---- 稀疏跳跃 ----
-    /** 每跳跳跃概率。 */
-    public static final double JUMP_PROB = 0.04;
-    /** 跳跃强度下限（× SIGMA_STOCK）。 */
-    public static final int JUMP_K_MIN = 3;
+    /**
+     * 每跳跳跃概率。2026-10-16 重标定：0.04 → 0.005。
+     *
+     * <p>旧值等于<b>每股每天期望 3.6 次跳跃</b>（真实盘面一天有一次像样脉冲就算多了），
+     * 跳跃由此从"事件"退化成"背景噪声"，日收益被它推着走。现在每股每天约 0.45 次，
+     * 单次幅度也放大（见 JUMP_K_*），让"跳"重新变成看得出来的事，而不是天天有。
+     */
+    public static final double JUMP_PROB = 0.005;
+    /** 跳跃强度下限（× SIGMA_STOCK）：SIGMA_STOCK 降了，倍数补回来，单次跳跃仍是 0.9%~1.5% 量级。 */
+    public static final int JUMP_K_MIN = 5;
     /** 跳跃强度上限（× SIGMA_STOCK）。 */
-    public static final int JUMP_K_MAX = 5;
+    public static final int JUMP_K_MAX = 9;
 
     // ---- GARCH 波动聚集 ----
     /** 衰减系数。 */
     public static final double GARCH_DECAY = 0.85;
     /** 新信息权重。 */
     public static final double GARCH_WEIGHT = 0.15;
-    /** |r|/σ 截断上限。 */
-    public static final double GARCH_CAP = 4.0;
+    /**
+     * |r|/σ 截断上限。2026-10-16 重标定：4.0 → 1.8。
+     *
+     * <p>旧上限让"一次大跳 → 之后十几跳 σ 放大 4 倍"成为必然：一根 1.5% 的单跳就把系数顶满，
+     * 于是每次脉冲后面都跟着一条直奔涨跌停的斜线（玩家说的"平稳一会儿然后拉涨停"）。
+     * 1.8 保留"波动聚集"这个真实特征，但不再让一次跳跃决定全天的命运。
+     */
+    public static final double GARCH_CAP = 1.8;
 
     // ---- 日内 U 型 ----
     /** 开盘波动（tick 0）。 */
@@ -71,8 +89,36 @@ public final class GameConstants {
     public static final double U_CLOSE = 1.4;
 
     // ---- 磁吸效应（Phase 6 封板机用，先立常量）----
-    /** 触发磁吸的涨跌幅阈值（距涨停/跌停 6.5% 以内）。 */
-    public static final double MAGNET_TRIGGER = 0.065;
+    /**
+     * 日内均值回归强度（每跳，向当日均价回拉的系数）。2026-10-16 新增，见
+     * {@link com.holdhundredyear.market.engine.VolatilityEngine#rawReturn}。
+     *
+     * <p>纯随机游走只有"越走越远"，没有"涨多了回一下"，所以分时图像一条斜线而不是一团抖动。
+     * 往当日均价回拉才有真实分时那种围绕均价来回震荡的手感；0.06 是实测出来的：再大就把
+     * 日内趋势抹平（板块行情演不出来），再小就没有抖动。
+     */
+    public static final double OU_KAPPA = 0.06;
+
+    /**
+     * 纪元漂移统一标定系数：{@link com.holdhundredyear.game.constants.EraDefs} 里的
+     * muMkt 与板块系数写的是<b>相对强度</b>（哪个纪元热、哪个板块被捧），落到每跳漂移前
+     * 统一乘这个系数。
+     *
+     * <p>为什么要有这一层：旧档案的绝对值是"最热板块每跳 +0.30%"，90 跳一天就是<b>单日
+     * +27% 的板块漂移</b>，全市场在牛市纪元每天 +7%~11%——涨跌停板根本拦不住，只能天天贴板。
+     * 保留相对强度、只缩绝对值，纪元之间的性格差异一点没丢。
+     */
+    public static final double ERA_DRIFT_SCALE = 0.055;
+
+    /**
+     * 触发磁吸的涨跌幅阈值。2026-10-16 重标定：0.065 → 0.08。
+     *
+     * <p>这条是"满屏涨停"真正的推手：旧阈值下只要当天涨过 6.5%，就开始每跳 +0.15% 的单向
+     * 漂移——上午 10 点半涨到 6.5% 的话，剩下 40 跳能再推 6%，等于<b>一旦摸到 6.5% 就必然
+     * 收在涨停板上</b>。磁吸效应本该是"越靠近板越难出去"，不该是"过线就自动上板"，所以把
+     * 触发线抬到 8%：离板 2% 以内才吸，快收盘才涨过线的票也就吸几跳，不至于凭空多出一批板。
+     */
+    public static final double MAGNET_TRIGGER = 0.08;
     /** 磁吸漂移（每跳向涨跌停方向 0.15%）。 */
     public static final double MAGNET_DRIFT = 0.0015;
     /** 连板磁吸强度加成系数（仅涨停方向）。 */

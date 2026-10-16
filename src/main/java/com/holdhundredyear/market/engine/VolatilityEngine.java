@@ -13,7 +13,7 @@ import java.util.Random;
 
 /**
  * 三层因子波动引擎（spec §5.2）：市场因子每跳全市场共享一次，板块因子每跳每板块一次，
- * 个股残差每股每跳一次；叠加 GARCH 波动放大、稀疏跳跃与日内 U 型。
+ * 个股残差每股每跳一次；叠加 GARCH 波动放大、稀疏跳跃、日内 U 型与均值回归。
  *
  * <p>纯计算、无状态、不依赖 Spring/DB：所有随机源由调用方传入（P6 确定性，
  * Phase 5 由 WorldRandom.of(seed, salt) 派生）。rawReturn 只产原始收益，
@@ -38,6 +38,7 @@ public class VolatilityEngine {
     /**
      * 每股每跳一次：返回不含封板/磁吸/冲击的原始收益。
      * 随机消费顺序固定：zI → jump 判定(double) → [jumpK(int) → jumpZ(gaussian)]。
+     * 均值回归项是确定性的（只读行情板的当前价与当日均价），不消费随机数，同种子仍同结果。
      */
     public double rawReturn(Quote q, StockDef def, double muMkt, Map<String, Double> sectorCoefs,
                             VolRegime regime, int tick, TickContext ctx, Random rng) {
@@ -48,6 +49,12 @@ public class VolatilityEngine {
         double rSec = coef + GameConstants.SIGMA_SEC * k * u * ctx.zSector().getOrDefault(def.sector(), 0.0);
         double zI = rng.nextGaussian();
         double r = def.beta() * rMkt + rSec + GameConstants.SIGMA_STOCK * k * u * q.getGarchK() * zI;
+        // 日内均值回归：往当日均价回拉。缺这一项时价格只会一路随机游走，分时图像一条斜线而不是
+        // 一团抖动；有了它，涨多了要回、跌多了要抽，日收益方差也顺带被压住（"抖而不跑"）。
+        // 开盘首跳还没有均价（tickCount == 0）不回归；均价 <= 0 只可能是脏数据，同样跳过。
+        if (q.getTickCount() > 0 && q.getDayAvg() > 0) {
+            r -= GameConstants.OU_KAPPA * (q.getCurrent() - q.getDayAvg()) / q.getDayAvg();
+        }
         if (rng.nextDouble() < GameConstants.JUMP_PROB) {
             int jumpK = GameConstants.JUMP_K_MIN
                     + rng.nextInt(GameConstants.JUMP_K_MAX - GameConstants.JUMP_K_MIN + 1);

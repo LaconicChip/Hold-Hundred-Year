@@ -105,10 +105,14 @@ class VolatilityEngineTest {
     }
 
     /**
-     * GARCH 聚集：每组全新 Quote 先跑 5 跳记录 |r|，注入一次 5σ 大跳
-     * （updateGarch(q, 5·SIGMA_STOCK)），再跑 5 跳记录 |r|；聚合断言 avgAfter > avgBefore × 1.15。
-     * 计划原文为 ≥40 组；用 1200 组使比值收敛到真实效应（实测 ratio ∈ [1.18, 1.22]，
-     * 200 组时种子间波动 1.15–1.27，个别种子贴近阈值）。
+     * GARCH 聚集：每组全新 Quote 先跑 40 跳让系数收敛，注入一次 5σ 大跳
+     * （updateGarch(q, 5·SIGMA_STOCK)），再跑 10 跳记录 |r|；聚合断言 avgAfter > avgBefore × 1.05。
+     *
+     * <p>2026-10-16 重标定改了这里两点，都不是为了让测试变绿：
+     * ① 前后窗口从 5/5 跳改成 40/10 跳——原来的"前窗"里 k 还在从初值 1 往下收敛（实测收敛值
+     *   约 0.78），拿没收敛的均值当基线，会把"注入后确实放大"这件事盖掉；
+     * ② 阈值从 1.15 降到 1.05——GARCH 上限从 4.0 收到 1.8（旧上限等于"一次大跳之后十几跳
+     *   σ 翻四倍"，正是"平稳一会儿然后一路拉涨停"的元凶）。放大效应仍然存在，只是不再夸张。
      */
     @Test
     void garchClustersVolatilityAfterFiveSigmaJump() {
@@ -118,29 +122,34 @@ class VolatilityEngineTest {
             Random ctxRng = new Random(seed);
             Random rng = new Random(seed * 1_000 + 1);
             int trials = 1200;
+            int warmup = 40;
+            int after = 10;
             double sumBefore = 0.0;
             double sumAfter = 0.0;
             for (int t = 0; t < trials; t++) {
                 Quote q = new Quote();
-                for (int tick = 40; tick < 45; tick++) {
+                for (int tick = 0; tick < warmup; tick++) {
                     VolatilityEngine.TickContext ctx = engine.beginTick(ctxRng);
-                    double r = engine.rawReturn(q, def, 0.0, Map.of(), VolRegime.NORMAL, tick, ctx, rng);
-                    sumBefore += Math.abs(r);
+                    double r = engine.rawReturn(q, def, 0.0, Map.of(), VolRegime.NORMAL, 40, ctx, rng);
+                    if (tick >= warmup - 5) {
+                        // 基线只取收敛后的最后 5 跳，前 35 跳是"从初值降下来"的过程，不算基线
+                        sumBefore += Math.abs(r);
+                    }
                     engine.updateGarch(q, r);
                 }
                 engine.updateGarch(q, 5.0 * GameConstants.SIGMA_STOCK); // 注入一次 5σ 大跳
-                for (int tick = 45; tick < 50; tick++) {
+                for (int tick = 0; tick < after; tick++) {
                     VolatilityEngine.TickContext ctx = engine.beginTick(ctxRng);
-                    double r = engine.rawReturn(q, def, 0.0, Map.of(), VolRegime.NORMAL, tick, ctx, rng);
+                    double r = engine.rawReturn(q, def, 0.0, Map.of(), VolRegime.NORMAL, 45 + tick, ctx, rng);
                     sumAfter += Math.abs(r);
                     engine.updateGarch(q, r);
                 }
             }
             double avgBefore = sumBefore / (trials * 5);
-            double avgAfter = sumAfter / (trials * 5);
-            assertTrue(avgAfter > avgBefore * 1.15,
-                    "seed " + seed + ": avgAfter=" + avgAfter + " 必须大于 avgBefore=" + avgBefore
-                            + " × 1.15（实测比 " + (avgAfter / avgBefore) + "）");
+            double avgAfter = sumAfter / (trials * after);
+            assertTrue(avgAfter > avgBefore * 1.05,
+                    "seed " + seed + ": avgAfter=" + avgAfter + " 必须大于收敛基线 avgBefore=" + avgBefore
+                            + " × 1.05（实测比 " + (avgAfter / avgBefore) + "）");
         }
     }
 
