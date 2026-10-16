@@ -33,7 +33,7 @@ class EventSkeletonsTest {
     @Test
     void poolHoldsEverySkeletonAndStaysAboveTheSpecFloor() {
         assertTrue(EventSkeletons.ALL.size() >= 70, "pool must hold at least 70 skeletons");
-        assertEquals(116, EventSkeletons.ALL.size(), "pool must hold exactly 116 skeletons");
+        assertEquals(160, EventSkeletons.ALL.size(), "pool must hold exactly 160 skeletons");
     }
 
     @Test

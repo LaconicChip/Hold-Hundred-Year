@@ -290,19 +290,23 @@ class CorporateActionServiceTest {
         assertTrue(Boolean.TRUE.equals(stockState(hatUser, hatMessage.getStockId()).getIsSt()),
                 "the hatted stock must persist is_st=true");
 
-        // 种子 31415926 在前 2000 跳内确定性掷出 fund-high-transfer（已验证 split=2）；
-        // 预埋全股票 100 股基线，验证除权后持仓翻倍。
-        long splitUser = seedInMarket(31415926L);
-        insertPositionsForAllStocks(splitUser);
-        advance(splitUser, 2000);
+        // 高送转同样不能钉死某个"幸运种子"：池子从 92 涨到 160 之后，加权抽签序列整体换位，
+        // 老种子在前 2000 跳里不再掷出 fund-high-transfer（实测就是这条挂掉的）。改成按固定顺序
+        // 扫种子、取第一个真掷出除权的世界——扫法确定，不依赖"历史上某个号一定出"。
+        long splitUser = 0L;
         boolean sawSplit = false;
-        for (UserMessage m : corporateActionMessages(splitUser)) {
-            if ("10转10 除权".equals(m.getTitle())) {
-                UserPosition p = position(splitUser, m.getStockId());
-                assertNotNull(p, "split must act on a real position row");
-                assertTrue(p.getShares() >= 200,
-                        "split must double the 100-share baseline holding, got " + p.getShares());
-                sawSplit = true;
+        for (long seed = 101; !sawSplit && seed <= 140; seed++) {
+            splitUser = seedInMarket(seed);
+            insertPositionsForAllStocks(splitUser);
+            advance(splitUser, 2000);
+            for (UserMessage m : corporateActionMessages(splitUser)) {
+                if ("10转10 除权".equals(m.getTitle())) {
+                    UserPosition p = position(splitUser, m.getStockId());
+                    assertNotNull(p, "split must act on a real position row");
+                    assertTrue(p.getShares() >= 200,
+                            "split must double the 100-share baseline holding, got " + p.getShares());
+                    sawSplit = true;
+                }
             }
         }
         assertTrue(sawSplit, "fund-high-transfer must dispatch a 10转10 除权 corporate action");

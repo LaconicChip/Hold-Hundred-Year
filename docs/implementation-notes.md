@@ -62,7 +62,7 @@
 - **倒计时口径**：`MarketStateDTO.countdownTicks` 是**本会话剩余跳数**（早盘 `45 - tick_index`、午盘 `90 - tick_index`、非交易态 0、越界夹到 0），不是全天剩余跳数——早盘拿 90 做基准会让早盘倒计时正好是午盘的两倍。前端 `StatusBar` 用"截止时间戳"而不是本地每秒 -1：快速模式每跳 0.5 秒，倒计时是小数，`-1` 会跨过 0 变成 `-01:-0.5` 那种负数。
 - **重开一局清表**：`GameEndService.doRestart` 必须连 `stock_daily_bar` 一起清——它是日K数据源，漏清会让新的一局开局就带着上一局的蜡烛图。以后加"按用户"维度的新表，记得同步进这份清单。
 - **个股历史消息**：`MessageService.list` 的第 6/7 个参数是 `stockId` + `includeSector`。个股页用 `stockId&includeSector=true`，一次拿回"本票专属（stock_id 命中）+ 本票所属板块（sector 命中且 stock_id 为空）"；板块名由后端按 `StockDefs` 反查，前端不需要知道。板块级消息的 `sector` 由 `EventFactory` 在 SECTOR 级事件落库时写入。
-- **文案库七份文件**（`src/main/resources/content/`，见 §7）：`stock-personas.txt`（24 股 × 8 弹幕 + 6 事件）、`sector-flavor.txt`（21 板块 + 大盘 × 权威/媒体/传闻含追报/玩梗各 2）、`npc-lines.txt`（4 场景 × 5 + 8 NPC × 5 闲聊）、`danmu.txt`（9 全局池 + 21 板块池）、`event-copy.txt`（116 条事件骨架的标题/正文变体与追报）、`era-narratives.txt`（11 个纪元叙事，每组恰好一行）、`shark-lines.txt`（高利贷 7 个场景台词）。除 `event-copy.txt`（由 `EventSkeletonsTest` 一一对应把关）外的六份被 `StockPersonasTest` 的"全局零重复"总校验覆盖（≥700 条唯一），任何一处抄重直接红。
+- **文案库七份文件**（`src/main/resources/content/`，见 §7）：`stock-personas.txt`（24 股 × 8 弹幕 + 6 事件）、`sector-flavor.txt`（21 板块 + 大盘 × 权威/媒体/传闻含追报/玩梗各 2）、`npc-lines.txt`（4 场景 × 5 + 8 NPC × 5 闲聊）、`danmu.txt`（9 全局池 + 21 板块池，2026-10-16 每个板块池从 6 条扩到 12 条——6 条正是"股吧翻来覆去那几句"的根源）、`event-copy.txt`（160 条事件骨架的标题/正文变体与追报）、`era-narratives.txt`（11 个纪元叙事，每组恰好一行）、`shark-lines.txt`（高利贷 7 个场景台词）。除 `event-copy.txt`（由 `EventSkeletonsTest` 一一对应把关）外的六份被 `StockPersonasTest` 的"全局零重复"总校验覆盖（≥700 条唯一），任何一处抄重直接红。
 - **高利贷的两本债（2026-10-10）**：`sys_user.debt` 是融资债、`sys_user.shark_debt` 是高利贷未清余额，后者恒等于台账 `user_shark_loan` 各笔之和（`SharkService.syncBalance` 每次重算，不做手工加减）。**担保比例只读前者，净资产与资不抵债读两者之和**——所以 `MarginService.marginCheck` 的入口短路条件是"两种债都没有"，只看融资债为 0 就短路会让欠高利贷的人永远死不了（测试 `insolventThroughSharkAloneStillEndsOnTheRooftop` 钉住这一点）。融资可借额度公式收在 `MarginService.marginBorrowableOf` 一处：`现金 + 市值 −（融资债 + 高利贷）× (1 + BORROW_LIMIT_RATIO)`，借款校验与 `/api/me/assets.borrowable` 共用；高利贷可借额在 `SharkService.borrowableOf`。到期强卖不复用 `MarginService.liquidate`（还款对象与目标线不同），但跳过规则完全一致：停牌 / 跌停封死 / 可卖 0 跳过。
   **催债只在节点提醒，不每天刷屏**（2026-10-13）：结算播报优先级是 到期强卖 > 逾期 > 到期结清 > 临近到期（剩 3 天 / 剩 1 天）> 利率涨档，其余日子静默；
   少发提醒不等于少算利息——每天的 `SHARK_INTEREST` 流水照记（`SharkServiceTest.chattersOnlyOnMilestonesAndStillAccruesEveryDay` 钉住这两件事）。
@@ -82,6 +82,9 @@
 - **波动量级只看"有机行情"**（`VolatilityDistributionTest`，2026-10-16 重标定）：跑完整局 72 天，按 `user_script_day` 把剧本日摘出去，只对剩下的股票天统计 σ / 贴板率 / ±6% 率。**混在一起量必然得到假结论**——千股涨停那几天 24 只票全钉板上，混进平均就是"贴板 11%"，看着像 bug，其实是有名场面。当前基线：有机 σ 3.1%、有机贴板 4.3%、有机 ±6% 6.5%（含剧本的整体贴板 10.8%）。要调波动就调 `GameConstants` 里那组常量（SIGMA_STOCK/MKT/SEC、JUMP_PROB、GARCH_CAP、OU_KAPPA、ERA_DRIFT_SCALE、MAGNET_TRIGGER），**改完必须重跑这个测试看数字**，别只看单测绿。
 - **纪元档案的 μ 与板块系数是"相对强度"**：`EraDefs` 里的绝对值不是最终落地值，`EraScheduler` 掷完统一乘 `GameConstants.ERA_DRIFT_SCALE`（现值 0.055）才写进 `user_era.params_json`。所以 `EraSchedulerTest` 的区间断言也要乘这个系数——把它改回原值等于偷偷取消标定。
 - **磁吸触发线只认常量**：`SealMachineTest` 里的用例价格必须落在 `MAGNET_TRIGGER` 之上（现值 8%，用例用 +9%/-9%）。上一版把 6.5% 和 ±7% 抄进测试，抬阈值时全靠改测试才发现漏了哪几处。
+- **开局前历史 K 是 20 根**（`PreHistoryDefs.BARS`，2026-10-16 从 10 加到 20）：日期 `game_day 0..-19`，走势档案（日均涨跌幅/波动）没改，拉长的是同一条曲线的长度而不是斜率。根数只有一个真源，`MarketQueryService.stockKline` 的上限、`WorldSeeder` 播种、各处断言全部读它——**前端 `fetchStockKline` 的 limit 要给足（现 200）而不是写死刚好够的数**，否则前史一改就悄悄截断最老那几根。
+- **令牌对应的用户没了要当没登录，不是 500**：`JwtAuthFilter` 对 `/api/**` 多查一次主键，用户不存在就当未认证（401 → 前端清 token 回入口页）；`QuoteBoardRegistry.getOrLoad` 拿不到 `user_game_state` 抛 `BizException(NOT_FOUND)` 而不是 NPE。便携版这是常规路径：换包 / 删 `data\\\\` / 恢复旧档之后，浏览器里还留着上一个用户的 JWT。静态资源不查库（否则每个 js/css 多一次主键查询）。
+- **事件量与波动标定是耦合的**（2026-10-16 实测）：骨架从 92 涨到 160 时，有机行情日σ 从 3.09% 被顶到 3.78%——因为新增里多跳漂移型（SLOW_DRIFT / BUY_RUMOR）占比高，每条的累计冲击叠在同一个随机板上。**加事件必须同时看 `VolatilityDistributionTest` 的 σ**，超了就压新事件的幅度（本次把 29 条漂移型骨架幅度统一乘 0.6，σ 回到 3.10%）。另外：`AUTHORITY` 骨架不允许有 `>` 追报（只有传闻/内幕/报道有），写错会让 `EventSkeletons` 静态初始化直接抛异常，炸掉几十个测试。
 - **妖股三幕（剧本日）**：`HOT_STREAK`（崩盘前 3 天钉涨停）→ `HALT_SWARM`（崩盘当天集体停牌，**在千股跌停钉板之前**由 `MarketStateService` 前置阶段落地，所以它们不在跌停板上）→ `HUN_DAO`（救市后一字断魂刀）。掷骰走独立 salt `"hotstreak"`，不消费 `"script"` 那条流，所以既有名场面的日期一字不变；复牌补跌复用 `resumeHaltedStocks`，不另写一套停牌。
 - **便携版没有账号**（`world/LocalPlayerService` + `web/LocalGameController`，都带 `@Profile("portable")`）：入口页先 `GET /api/auth/local/status`，拿到 200 就渲染"继续游戏 / 创建新游戏"，404 才渲染登录注册。本地玩家是 `sys_user` 里用户名 `单机玩家` 的一行，密码是随机 BCrypt（谁都登不进去），进入只发免密 JWT。"创建新游戏"走 `GameEndService.restart(userId, null, true)`——第三个参数 `allowInProgress` 是便携版专用：玩家已经在警告框里确认过清空，这时"本局还没结束"不能成为拒绝理由。**默认档仍走两参重载**，进行中重开照旧报 `GAME_NOT_FINISHED`；`LocalEntryIsPortableOnlyTest` 用反射钉住这几个 Bean 必须带 `@Profile("portable")`，免得免密入口漏到线上。
 - **心跳与冷用户节流**：`MarketScheduler` 每 `SCHEDULER_HEARTBEAT_MS`(100ms) 扫一遍在线用户，但**先做内存预判**（`dueForBeat`）：有行情板的按本局 `tickMs` 判到点；没有板的（未开过局 / 刚重启 / 刚登出）按 1 秒节流放行一次。别去掉这个节流——每个停在"还没开盘"页面的在线账号都会变成每秒 10 次 `selectOne`。
@@ -138,7 +141,7 @@
 
 ## 5. 当前验收基线
 
-- **后端 `test` = 455 tests / 0 Failures / 0 Errors**（需本机 `hold_year_test`；portable 档 H2 下同样全绿）。覆盖：同种子可复现、快进=逐跳、并发守恒、结算 12 步、追保/强平/爆仓、高利贷额度与递增计息与到期强卖、事件骨架 116 条与 `event-copy.txt` 一一对应、文案文件全部登记且跨池零重复、剧本日撒点不死循环、`prev_index` 基准、三类流水查询、模式档案、提醒消息惯例（含 `ALERT` 档）、心跳节流、暂停闸门（暂停中一跳不推进、恢复后续走）、开局前历史 K（10 根、day 0 收盘=发行价、同 seed 同形状、单日不越涨跌停）、妖股三幕（连板钉涨停 / 停牌潮先于千股跌停钉板且名单一致 / 断魂刀落在救市后）、`restart` 空 body 沿用本局模式、终局两结局。
+- **后端 `test` = 455 tests / 0 Failures / 0 Errors**（需本机 `hold_year_test`；portable 档 H2 下同样全绿）。覆盖：同种子可复现、快进=逐跳、并发守恒、结算 12 步、追保/强平/爆仓、高利贷额度与递增计息与到期强卖、事件骨架 160 条与 `event-copy.txt` 一一对应、有机σ 3.1% 的分布闸门、文案文件全部登记且跨池零重复、剧本日撒点不死循环、`prev_index` 基准、三类流水查询、模式档案、提醒消息惯例（含 `ALERT` 档）、心跳节流、暂停闸门（暂停中一跳不推进、恢复后续走）、开局前历史 K（20 根、day 0 收盘=发行价、同 seed 同形状、单日不越涨跌停）、妖股三幕（连板钉涨停 / 停牌潮先于千股跌停钉板且名单一致 / 断魂刀落在救市后）、`restart` 空 body 沿用本局模式、终局两结局。
 - **前端 `npm run build` 通过**：入口主包 18.1 kB、`vendor-element` 86.65 kB（按需引入，勿回退）。
 - **除权除息与日K复权已实测**：`CorporateActionServiceTest` 断言 10转10/现金分红把昨收·开·高·低·现价·均价·分时缓冲**整体**折算并双写回 `user_stock_state`；`MarketQueryServiceTest` 用"第 1 日收 170 → 第 2 日除权收 84.15 → 第 3 日 +5%"的三日剧本断言日K连续（第 1 根复权到 85 口径、图内跳幅 == tooltip 涨跌幅、最新一根仍是真实成交价）。
 - **便携版入口已实机走查（2026-10-16，portable 档真跑 jar + 浏览器）**：新机器 status 报无存档 → 「继续游戏」置灰 → 「创建新游戏」直接进第 1 日（右上角显示`单机玩家`，模式仍在状态栏选）→ 退出后入口页显示「第 1 / 72 个交易日、净资产 ¥100,000.00、标准模式」→ 再点「创建新游戏」弹“存档将被清空”，点「取消」留在入口页不清档，点「继续游戏」回到 /market。
@@ -162,7 +165,7 @@
 | `stock-personas.txt` | 24 只票的绰号、股性、专属弹幕（8 条）、专属事件文案（6 条） | `@5:DANMU`（数字 = 股票 id） |
 | `sector-flavor.txt` | 21 板块 + 大盘的权威公告/媒体报道/股吧传闻/玩梗 | `@白酒:RUMOR`，条目 `标题\|正文[\|追报]` |
 | `npc-lines.txt` | 4 个角色线场景台词 + 8 位 NPC 的性格闲聊 | `@SCENE:DAMA_RECOMMEND`、`@CHATTER:DAMA` |
-| `event-copy.txt` | 116 条事件骨架的标题/正文变体与证实·辟谣追报 | `@fund-big-order`，条目 `标题\|正文` / `sector:白酒\|标题\|正文` / `>追报` |
+| `event-copy.txt` | 160 条事件骨架的标题/正文变体与证实·辟谣追报 | `@fund-big-order`，条目 `标题\|正文` / `sector:白酒\|标题\|正文` / `>追报` |
 | `era-narratives.txt` | 11 个纪元的叙事（纪元切换通知的正文） | `@BULL_START`（枚举名，每组恰好一行） |
 | `shark-lines.txt` | 高利贷的 7 个场景台词（借到手 / 每日催债 / 到期 / 逾期 / 强卖 / 结清 / 板块告示） | `@CHATTER`、`@WARNING` |
 
