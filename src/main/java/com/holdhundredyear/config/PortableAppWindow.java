@@ -105,13 +105,7 @@ class PortableAppWindow implements ApplicationListener<ApplicationReadyEvent> {
         String browserName = Path.of(browser).getFileName().toString().toLowerCase();
         Path profile = Path.of(System.getProperty("user.home"), ".hold-hundred-year", "profile", browserName);
         Files.createDirectories(profile);
-        List<String> command = new ArrayList<>(List.of(
-                browser,
-                "--app=" + url,
-                "--user-data-dir=" + profile.toAbsolutePath(),
-                "--class=hold-hundred-year",
-                "--no-first-run",
-                "--no-default-browser-check"));
+        List<String> command = new ArrayList<>(appWindowArguments(browser, url, profile));
         Process process = new ProcessBuilder(command)
                 .redirectErrorStream(true)
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
@@ -129,6 +123,40 @@ class PortableAppWindow implements ApplicationListener<ApplicationReadyEvent> {
             watchWindowAndExit(process);
         }
     }
+
+    /**
+     * 应用窗口的启动命令行。抽成静态方法是为了能单测——少一条就会让"绿色包"在玩家眼里变成
+     * "自带一个满嘴广告词的浏览器"。
+     *
+     * <p>最后两条是给 <b>Chrome for Testing</b> 准备的，实测截图为证（同一份 chrome.exe、同一个
+     * 应用窗口，只改命令行）：
+     * <ul>
+     *   <li>{@code --disable-infobars}：CfT 会在窗口顶部钉一条"Chrome 测试版 vXXX 仅适用于自动
+     *       测试，若要进行常规浏览，请使用可自动更新的标准版 Chrome"。应用模式没有地址栏、这条
+     *       提示条又没有关闭按钮，玩家怎么都关不掉——这就是"弹出下载安装正式版 chrome"的真相。
+     *       普通 Chrome 不认这条开关，CfT 从 121 起实现了它（chromium/385306795），所以我们只在
+     *       自带浏览器上见到它。游戏窗口里本来就没有任何一条信息栏是玩家能处置的，全关即可。</li>
+     *   <li>{@code --simulate-outdated-no-au=<2099 年>}：CfT 天生没有自动更新，等这条构建"过期"
+     *       之后，版本过期检测会换一条"无法更新 Chrome / 请下载正式版"钉上来。绿色包是要发出去
+     *       长期使用的，不能赌玩家第一次打开时构建还没过期，所以直接把"无自动更新截止日"推到
+     *       2099 年——告诉它"你还不算过期构建"。这条是预防，实测当前版本看不出差别。</li>
+     * </ul>
+     * 用系统 Edge/Chrome 时这两条同样无害：不认的开关会被忽略。
+     */
+    static List<String> appWindowArguments(String browser, String url, Path profile) {
+        return List.of(
+                browser,
+                "--app=" + url,
+                "--user-data-dir=" + profile.toAbsolutePath(),
+                "--class=hold-hundred-year",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-infobars",
+                "--simulate-outdated-no-au=" + NO_AU_FAR_FUTURE);
+    }
+
+    /** "本构建的无自动更新截止日"放到 2099 年：等于告诉浏览器"你还不算过期构建"。 */
+    static final String NO_AU_FAR_FUTURE = "Tue, 31 Dec 2099 23:59:59 GMT";
 
     /** 守护线程：等窗口进程结束，再走 Spring 的正常关闭流程（H2 落盘、连接池收摊）。 */
     private void watchWindowAndExit(Process process) {
