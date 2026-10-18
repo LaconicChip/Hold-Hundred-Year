@@ -62,7 +62,9 @@ http.interceptors.response.use(
     const body = error.response ? error.response.data : null
     if (status === 401) {
       setToken('')
-      ElMessage.error('登录已过期，请重新登录')
+      // grouping：一次进页会并发好几个请求同时撞 401（便携版换了存档就会这样），
+      // 不合并的话屏幕会被同一条"登录已过期"叠六七层，玩家以为出了大事。
+      ElMessage.error({ message: '登录已过期，请重新登录', grouping: true })
       if (router.currentRoute.value.name !== 'login') {
         router.push('/login')
       }
