@@ -52,7 +52,7 @@
 - **事件系统**：`EventFactory.maybeRoll` 单 salt 掷骰（`"event{day}.{tick}"`），PendingAction 入队时预填文案，flush 阶段零掷骰；消息三态 PENDING → CONFIRMED/DENIED。
 - **WS 四通道**：`/user/queue/{quotes,messages,notifications,danmu}`，握手 token 走 STOMP connectHeaders；**调度器只推进 WS 在线用户的世界**（刷新页面后必须补连，见 `user store ensureWsConnected`）。
 - **前后端口径陷阱**：① WS 推送的 `changePct` 是小数比率（0.0998），前端 store 统一 ×100 后再用（封板阈值 9.8、`fmtPct` 都依赖这点）；② `MarketSnapshot` 只有 `{tickIndex,indexValue,quotes:[{stockId,current,changePct}]}`，行情表的封板/停牌/ST/连板来自 REST 而非 WS，不要凭空造列；③ 统一响应 `R{code,msg,data}`，`code=0` 成功，401 清 token 跳登录；**一次进页会并发几个请求同时撞 401，提示必须带 `grouping: true`**，否则屏幕会叠六七层同样的"登录已过期"（便携版换档/删 `data\\` 后最常见）；④ NPC 头像由 `NpcAvatar` 用 `import.meta.glob` 按 code 小写取图，JUSHI/LAOQIAN/XINJIMIN/CHENGXUYUAN 无 PNG、走姓氏色块兜底属正常。
-- **文案三级池（反重复）**：弹幕按"个股专属 → 板块 → 全局"混抽——`stock-personas.txt`（24 股 × 绰号/股性/8 条专属弹幕/6 条专属事件文案）、`danmu.txt` 的 21 板块池（×6）与 9 个全局类别池。个股级触发先掷一个 double 决定层级（50/25/25），大盘级与横盘只走全局池。
+- **文案三级池（反重复）**：弹幕按"个股专属 → 板块 → 全局"混抽——`stock-personas.txt`（24 股 × 绰号/股性/8 条专属弹幕/6 条专属事件文案）、`danmu.txt` 的 21 板块池（×12）与 9 个全局类别池。个股级触发先掷一个 double 决定层级（50/25/25），大盘级与横盘只走全局池。
 - **事件文案按股定制**：`EventFactory` 在 STOCK 级事件命中目标股后，45% 用该股 `persona.news` 模板替换通用正文（仍走 `{stock}` 槽位渲染）。掷骰固定在该位置消费，快进与逐跳等价。
 - **重要消息"当面"提醒（全实时，无轮询）**：后端每条消息落库的同一条路径都会 WS 推一份（见下条），前端 `stores/messages.js#pushMessage` 收到后按 `constants/messageMeta.js#channelOf` 分流——AUTHORITY 或标题含千股跌停/涨停/熔断/救市/崩盘/制裁/黑7月/强平/停牌核查 → **头条大弹幕**（`HeadlineDanmu.vue`，`pointer-events:none`，飘过即走）；SYSTEM/INSIDER 与传闻追报 → **右下角浮层**（`NoticePopup.vue`，6 秒自动收起，可点进消息中心）；其余只留在消息中心。首轮静默（`primed`），刷新页面不会把历史未读全弹一遍。
   **消息写入与推送的唯一出口**：`MessageService.publish(UserMessage)` —— insert 完立刻把同一份 `MessageDTO` 推给 `/user/queue/messages`（形状与 REST 列表一致，前端一套逻辑吃两边）。全仓 4 个写入方（`NotifyPublisher`/`EventFactory`×2/`MainScriptService`）一律走它，**不要**再直接 `userMessageMapper.insert`——绕过它就等于写了条玩家永远看不到的哑消息。
@@ -146,7 +146,7 @@
 - **除权除息与日K复权已实测**：`CorporateActionServiceTest` 断言 10转10/现金分红把昨收·开·高·低·现价·均价·分时缓冲**整体**折算并双写回 `user_stock_state`；`MarketQueryServiceTest` 用"第 1 日收 170 → 第 2 日除权收 84.15 → 第 3 日 +5%"的三日剧本断言日K连续（第 1 根复权到 85 口径、图内跳幅 == tooltip 涨跌幅、最新一根仍是真实成交价）。
 - **便携版入口已实机走查（2026-10-16，portable 档真跑 jar + 浏览器）**：新机器 status 报无存档 → 「继续游戏」置灰 → 「创建新游戏」直接进第 1 日（右上角显示`单机玩家`，模式仍在状态栏选）→ 退出后入口页显示「第 1 / 72 个交易日、净资产 ¥100,000.00、标准模式」→ 再点「创建新游戏」弹“存档将被清空”，点「取消」留在入口页不清档，点「继续游戏」回到 /market。
 - **实机走查基线**：注册 → 开盘 → 行情/弹幕/消息 → 买卖（T+1、涨跌停、佣金）→ 融资 → 高利贷 → 打新 → 排行 → 日报 → 双结局 → 再来一局，全程 console error 0、非预期接口错误 0。
-- **2026-10-13 游戏性批次已实机复核**（新号走查）：日K 开局即有 10 根前史（`T-9…T0`，蜡烛等宽 + 底部滑块）；跨日后行情牌的今开/最高/最低/封板都是当日值（第 2 日涨停票挂"封板"、跌 6% 的票无残留涨停红底）；侧栏默认展开；票名已是新化名。
+- **2026-10-13 游戏性批次已实机复核**（新号走查）：日K 开局即有前史（当时 10 根、现为 20 根，见上条；蜡烛等宽 + 底部滑块）；跨日后行情牌的今开/最高/最低/封板都是当日值（第 2 日涨停票挂"封板"、跌 6% 的票无残留涨停红底）；侧栏默认展开；票名已是新化名。
 - 截图只保留**当前版本**（`docs/design/shots/`）：界面改版后重截替换，不叠加历史截图。
 - **变更历史不在本文档里**：`git log` 与 tag `v0.0.1` 是唯一记录。
 
