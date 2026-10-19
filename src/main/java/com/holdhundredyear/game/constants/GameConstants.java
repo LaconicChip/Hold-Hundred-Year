@@ -28,13 +28,14 @@ public final class GameConstants {
 
     // ---- 三层因子基准波动（spec §5.2，每跳 σ）----
     /**
-     * 个股特质波动（每跳）。2026-10-16 重标定：0.0035 → 0.0017。
+     * 个股特质波动（每跳）。2026-10-16 重标定：0.0035 → 0.0017；2026-10-19 微调到 0.0016。
      *
      * <p>旧值下整局实测<b>日收益标准差 8.0%、55% 的股票天收在涨跌停板上</b>（真实 A 股约
      * 2% 与 1%~2%），等于"每天一半时间在板上"，玩家形容为"不是涨停就是跌停"。标定验收见
-     * {@code VolatilityDistributionTest}（跑完整局量分布，不是纸面推算）。
+     * {@code VolatilityDistributionTest}（跑完整局量分布，不是纸面推算）。10-19 把日内 U 型
+     * 压平、盘中段抬高，单跳 σ 略降，保证整日 σ 仍在券商量级，但分时中段不再像一条直线。
      */
-    public static final double SIGMA_STOCK = 0.0017;
+    public static final double SIGMA_STOCK = 0.0016;
     /** 市场因子波动（每跳）：与个股同比例收敛，保住"齐涨齐跌"的相对强度。 */
     public static final double SIGMA_MKT = 0.0009;
     /** 板块因子波动（每跳）。 */
@@ -79,14 +80,19 @@ public final class GameConstants {
     public static final double GARCH_CAP = 1.8;
 
     // ---- 日内 U 型 ----
-    /** 开盘波动（tick 0）。 */
-    public static final double U_OPEN = 1.6;
+    /**
+     * 日内波动曲线（2026-10-19 压平）。旧值 1.6 / 0.9 / 0.8 / 1.4 让开盘和尾盘各爆一下、
+     * 中间 70 跳只有 0.8 倍波动，玩家看到的是"开局动一下 → 一路几乎平盘 → 收盘再动一下"。
+     * 现在保留温和的开收盘抬升（约 1.2~1.3 倍），把盘中段抬到 0.95，让全天都有起伏；
+     * 整日 σ 仍由 {@code VolatilityDistributionTest} 卡在券商量级。
+     */
+    public static final double U_OPEN = 1.25;
     /** 开盘段末端（tick 10，与 U_OPEN 线性过渡）。 */
-    public static final double U_OPEN_END = 0.9;
+    public static final double U_OPEN_END = 1.0;
     /** 盘中波动（tick 11..79）。 */
-    public static final double U_MID = 0.8;
+    public static final double U_MID = 0.95;
     /** 尾盘波动（tick 80..89）。 */
-    public static final double U_CLOSE = 1.4;
+    public static final double U_CLOSE = 1.15;
 
     // ---- 磁吸效应（Phase 6 封板机用，先立常量）----
     /**

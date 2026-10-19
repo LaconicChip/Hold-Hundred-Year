@@ -9,7 +9,7 @@
           <i class="lg-line" :style="{ background: m.color }"></i>{{ m.name }}
         </span>
       </span>
-      <span class="chart-sub muted-2 push">红涨绿跌 · 滚轮缩放 · 底部滑块拖看历史</span>
+      <span class="chart-sub muted-2 push">红涨绿跌 · 滚轮缩放 · 底部滑块拖看历史 · 股吧弹幕飘过</span>
     </div>
 
     <!-- 空态：尚无结算日，蜡烛一根都还没长出来 -->
@@ -21,6 +21,18 @@
 
     <div v-else ref="wrapEl" class="chart">
       <VChart class="chart-canvas" :option="option" :autoresize="true" @datazoom="onZoom" />
+      <!-- 股吧弹幕：叠在 K 线绘图区里，不挡鼠标；完整列表仍在「股吧」标签页 -->
+      <div v-if="flying.length" class="danmu-layer" aria-hidden="true">
+        <span
+          v-for="item in flying"
+          :key="item.key"
+          class="danmu"
+          :class="item.cls"
+          :style="item.style"
+        >
+          <b v-if="item.category" class="danmu-cat">{{ item.category }}</b>{{ item.text }}
+        </span>
+      </div>
     </div>
   </div>
 </template>
@@ -48,7 +60,104 @@ use([
 
 const props = defineProps({
   // 日K序列（game_day 升序）：[{ gameDay, open, high, low, close, changePct }]
-  kline: { type: Array, default: () => [] }
+  kline: { type: Array, default: () => [] },
+  // 股吧帖子（按 seq 稳定）：本票专属 + 大盘闲聊，由个股页传入
+  danmu: { type: Array, default: () => [] }
+})
+
+// ---- 股吧弹幕：K 线图内的轻量飘屏 ----
+// 只消费新增帖子；第一次挂载时最多回放最近 6 条，避免一进页把 30 条积压一次性糊上来。
+const flying = ref([])
+const queue = []
+const seen = new Set()
+let lastSeq = 0
+let spawnTimer = null
+let nextKey = 0
+
+function seqOf(post) {
+  return Number(post && (post.seq != null ? post.seq : post.id)) || 0
+}
+
+function enqueue(post) {
+  const seq = seqOf(post)
+  if (!seq || seen.has(seq)) return
+  seen.add(seq)
+  queue.push(post)
+  while (queue.length > 12) queue.shift()
+}
+
+function scheduleSpawn() {
+  if (spawnTimer) return
+  spawnTimer = setTimeout(() => {
+    spawnTimer = null
+    if (queue.length && flying.value.length < 4) {
+      spawn(queue.shift())
+    }
+    if (queue.length) scheduleSpawn()
+  }, 1200)
+}
+
+function spawn(post) {
+  const used = new Set(flying.value.map((item) => item.lane))
+  const lane = [0, 1, 2, 3].find((n) => !used.has(n))
+  if (lane == null) {
+    queue.unshift(post)
+    scheduleSpawn()
+    return
+  }
+  const text = String(post.text || '')
+  const key = ++nextKey
+  const category = String(post.category || '')
+  const cls = category === '涨停' || category === '急拉'
+    ? 'is-up'
+    : category === '跌停' || category === '跳水'
+      ? 'is-down'
+      : ''
+  flying.value.push({
+    key,
+    lane,
+    category,
+    text,
+    cls,
+    style: {
+      top: `${34 + lane * 30}px`,
+      animationDuration: `${9 + Math.min(30, text.length) * 0.12}s`
+    }
+  })
+  setTimeout(() => {
+    flying.value = flying.value.filter((item) => item.key !== key)
+  }, 14000)
+}
+
+watch(
+  () => props.danmu,
+  (posts) => {
+    const list = Array.isArray(posts) ? posts : []
+    const seqs = list.map(seqOf).filter(Boolean)
+    const maxSeq = seqs.length ? Math.max(...seqs) : 0
+    if (maxSeq < lastSeq) {
+      // 换了一局/换了票：seq 回退，清空旧记忆
+      seen.clear()
+      queue.length = 0
+      flying.value = []
+    }
+    lastSeq = Math.max(lastSeq, maxSeq)
+    if (!seen.size && list.length) {
+      // 首次挂载：只回放最近 6 条，给玩家一个“这里有人聊”的信号
+      list.slice(-6).forEach(enqueue)
+    } else {
+      list.forEach(enqueue)
+    }
+    if (queue.length) scheduleSpawn()
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => {
+  if (spawnTimer) {
+    clearTimeout(spawnTimer)
+    spawnTimer = null
+  }
 })
 
 // 蜡烛宽度口径：默认一屏 40 根（证券软件"最近一段"的观感），宽度 = 绘图区宽 ÷ 根数，
@@ -409,7 +518,43 @@ const option = computed(() => {
 }
 .lg { display: inline-flex; align-items: center; gap: 5px; }
 .lg-line { width: 16px; height: 3px; border-radius: 2px; display: inline-block; }
-.chart { width: 100%; height: 400px; }
+.chart { width: 100%; height: 400px; position: relative; overflow: hidden; }
+.danmu-layer {
+  position: absolute;
+  left: 56px;
+  right: 46px;
+  top: 20px;
+  height: 58%;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 2;
+}
+.danmu {
+  position: absolute;
+  left: 100%;
+  white-space: nowrap;
+  padding: 2px 8px;
+  border: 1.5px solid var(--ink);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 252, 244, 0.92);
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.35;
+  box-shadow: 2px 2px 0 var(--ink);
+  animation-name: danmu-fly;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+  will-change: left;
+}
+.danmu-cat { margin-right: 4px; color: var(--brand); }
+.danmu.is-up { color: var(--up); border-color: var(--up); }
+.danmu.is-up .danmu-cat { color: var(--up); }
+.danmu.is-down { color: var(--down); border-color: var(--down); }
+.danmu.is-down .danmu-cat { color: var(--down); }
+@keyframes danmu-fly {
+  from { left: 100%; }
+  to { left: -100%; }
+}
 .chart-empty { height: 320px; }
 .chart-mascot { width: 56px; height: 56px; opacity: 0.8; }
 </style>

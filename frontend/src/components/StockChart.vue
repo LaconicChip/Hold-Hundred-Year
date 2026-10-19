@@ -104,8 +104,10 @@ const option = computed(() => {
   }
 
   const base = props.prevClose > 0 ? props.prevClose : lastPoint.value?.price || 1
-  // 双轴对称范围：昨收上下等幅展开，把现价/均价/涨跌停全部包进来
-  let dev = base * 0.01
+  // 双轴对称范围：按当日真实振幅自适应，留 15% 白；最小 ±0.8% 防止横盘日把噪声拉成
+  // 巨浪。不要把涨跌停价算进来——那会让纵轴永远按 ±10%（快速 ±20%）铺满，盘中 1%
+  // 的波动看起来就是一条直线（玩家反馈"开局动一下，中间几乎平盘"的视觉主因）。
+  let dev = base * 0.008
   for (const p of props.points) {
     if (p.price != null) dev = Math.max(dev, Math.abs(p.price - base))
   }
@@ -113,9 +115,7 @@ const option = computed(() => {
     const lastAvg = [...avg].reverse().find((v) => v != null)
     if (lastAvg != null) dev = Math.max(dev, Math.abs(lastAvg - base))
   }
-  if (props.limitUp > 0) dev = Math.max(dev, Math.abs(props.limitUp - base))
-  if (props.limitDown > 0) dev = Math.max(dev, Math.abs(base - props.limitDown))
-  dev *= 1.08
+  dev *= 1.15
   const yMin = base - dev
   const yMax = base + dev
   const pctMin = -((dev / base) * 100)
@@ -230,10 +230,11 @@ const option = computed(() => {
             { yAxis: base, lineStyle: { color: cInk3 }, label: { formatter: '昨收 ' + base.toFixed(2) } },
             // 午休断轴分隔线（11:30 与 13:00 之间留白）
             { xAxis: times[44], lineStyle: { color: cDash }, label: { show: false } },
-            ...(props.limitUp > 0
+            // 涨跌停线只在进入当前视野时画；平时把纵轴还给真实振幅
+            ...(props.limitUp > 0 && props.limitUp <= yMax
               ? [{ yAxis: props.limitUp, lineStyle: { color: cUp }, label: { formatter: '涨停 ' + props.limitUp.toFixed(2), color: cUp } }]
               : []),
-            ...(props.limitDown > 0
+            ...(props.limitDown > 0 && props.limitDown >= yMin
               ? [{ yAxis: props.limitDown, lineStyle: { color: cDown }, label: { formatter: '跌停 ' + props.limitDown.toFixed(2), color: cDown } }]
               : [])
           ]

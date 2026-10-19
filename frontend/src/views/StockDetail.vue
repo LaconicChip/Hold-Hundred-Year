@@ -70,7 +70,7 @@
       :limit-down="limitDownPrice"
       :closed="isClosed"
     />
-    <KlineChart v-else-if="tab === 'kline'" :kline="kline" />
+    <KlineChart v-else-if="tab === 'kline'" :kline="kline" :danmu="forumPosts" />
     <StockForum v-else :stock-id="stock.id" :stock-name="stock.name" />
 
     <!-- 买卖面板卡片 -->
@@ -212,8 +212,9 @@ const balance = computed(() => (user.assets ? user.assets.cash : 0))
 
 // 持仓：复用 user store 的持仓列表（行情表高亮同一份，成交后统一刷新）
 const position = computed(() => user.positions.find((p) => p.stockId === stockId.value) || null)
+const forumPosts = computed(() => messages.forumPosts(stockId.value))
 // 股吧标签上的条数只做“有动静”提示，真正的列表在 StockForum 里
-const forumCount = computed(() => messages.forumPosts(stockId.value).length)
+const forumCount = computed(() => forumPosts.value.length)
 function loadPosition() {
   return user.fetchPositions()
 }

@@ -155,8 +155,11 @@ class VolatilityEngineTest {
 
     /**
      * U 型：完整交易日（每跳 NORMAL、muMkt=0，garchK 跨日延续），tick 0..10 与 80..89 的
-     * 平均 |r| 均 > tick 30..60 平均 |r| × 1.5。计划原文为 ≥22 日；用 1000 日稳定分桶均值
-     * （实测 open/mid ≈ 2.2、close/mid ≈ 1.86；短窗口下日内 GARCH 自相关会放大波动）。
+     * 平均 |r| 要略高于 tick 30..60，但不能高到把中间压成一条直线。
+     *
+     * <p>2026-10-19 把 U 型压平后，这里从"开/尾 > 盘中 × 1.5"改成"温和抬升 1.08~1.5 倍"，
+     * 并额外断言盘中段仍有足够波动（> 0.75×SIGMA_STOCK）。原因是玩家反馈"开局动一下，
+     * 中间几乎平盘，收盘再动一下"——旧阈值会把这种过度 U 型当成正确行为锁死。
      */
     @Test
     void intradayAbsoluteReturnsFollowUShape() {
@@ -194,12 +197,15 @@ class VolatilityEngineTest {
             double avgOpen = sumOpen / nOpen;
             double avgMid = sumMid / nMid;
             double avgClose = sumClose / nClose;
-            assertTrue(avgOpen > avgMid * 1.5,
-                    "seed " + seed + ": 开盘段 |r|=" + avgOpen + " 必须大于盘中段 " + avgMid + " × 1.5（实测比 "
-                            + (avgOpen / avgMid) + "）");
-            assertTrue(avgClose > avgMid * 1.5,
-                    "seed " + seed + ": 尾盘段 |r|=" + avgClose + " 必须大于盘中段 " + avgMid + " × 1.5（实测比 "
-                            + (avgClose / avgMid) + "）");
+            assertTrue(avgMid > GameConstants.SIGMA_STOCK * 0.75,
+                    "seed " + seed + ": 盘中段 |r|=" + avgMid + " 太安静，必须大于 "
+                            + (GameConstants.SIGMA_STOCK * 0.75));
+            assertTrue(avgOpen > avgMid * 1.08 && avgOpen < avgMid * 1.5,
+                    "seed " + seed + ": 开盘段 |r|=" + avgOpen + " 必须比盘中段 " + avgMid
+                            + " 高 1.08~1.5 倍（实测比 " + (avgOpen / avgMid) + "）");
+            assertTrue(avgClose > avgMid * 1.08 && avgClose < avgMid * 1.5,
+                    "seed " + seed + ": 尾盘段 |r|=" + avgClose + " 必须比盘中段 " + avgMid
+                            + " 高 1.08~1.5 倍（实测比 " + (avgClose / avgMid) + "）");
         }
     }
 
