@@ -37,6 +37,13 @@ export const useMessagesStore = defineStore('messages', {
     // 未读数（实时由 list 计算，保证与读状态一致）
     unreadCount(state) {
       return state.list.filter((m) => !m.isRead).length
+    },
+
+    // 某只票的股吧帖子：本票专属 + 不点名的大盘闲聊。
+    // 个股页的股吧标签和帖子列表共用这一份过滤口径，避免两处各写一遍后漂移。
+    forumPosts: (state) => (stockId) => {
+      const id = Number(stockId)
+      return state.danmu.filter((d) => !d.stockId || Number(d.stockId) === id)
     }
   },
 

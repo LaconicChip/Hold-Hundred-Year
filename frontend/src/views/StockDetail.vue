@@ -51,11 +51,14 @@
       </div>
     </div>
 
-    <!-- 分时 / 日K tab 切换 -->
+    <!-- 分时 / 日K / 股吧：股吧放在显眼的标签位，别再被买卖面板挤到首屏之外 -->
     <div class="chart-tabs">
       <div class="seg">
         <button :class="{ on: tab === 'intraday' }" @click="tab = 'intraday'">分时</button>
         <button :class="{ on: tab === 'kline' }" @click="switchToKline">日K</button>
+        <button :class="{ on: tab === 'forum' }" @click="tab = 'forum'">
+          股吧<span v-if="forumCount" class="tab-count">{{ forumCount }}</span>
+        </button>
       </div>
     </div>
 
@@ -67,7 +70,8 @@
       :limit-down="limitDownPrice"
       :closed="isClosed"
     />
-    <KlineChart v-else :kline="kline" />
+    <KlineChart v-else-if="tab === 'kline'" :kline="kline" />
+    <StockForum v-else :stock-id="stock.id" :stock-name="stock.name" />
 
     <!-- 买卖面板卡片 -->
     <StockTradePanel
@@ -81,9 +85,6 @@
       :holding-value="position ? position.marketValue : 0"
       @traded="onTraded"
     />
-
-    <!-- 股吧：从大盘页底部搬进来——盯这只票的时候才想知道别人在聊它，而不是在页脚看别人刷屏 -->
-    <StockForum :stock-id="stock.id" :stock-name="stock.name" />
 
     <!-- 我的持仓卡片 -->
     <div class="pos-card card">
@@ -211,6 +212,8 @@ const balance = computed(() => (user.assets ? user.assets.cash : 0))
 
 // 持仓：复用 user store 的持仓列表（行情表高亮同一份，成交后统一刷新）
 const position = computed(() => user.positions.find((p) => p.stockId === stockId.value) || null)
+// 股吧标签上的条数只做“有动静”提示，真正的列表在 StockForum 里
+const forumCount = computed(() => messages.forumPosts(stockId.value).length)
 function loadPosition() {
   return user.fetchPositions()
 }
@@ -424,6 +427,20 @@ watch(stockId, async () => {
 /* ---------- 图表 tab ---------- */
 .chart-tabs { display: flex; }
 .chart-tabs .seg { box-shadow: var(--shadow-sm); }
+.tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--brand);
+  color: var(--on-brand);
+  font-size: var(--fs-xs);
+  line-height: 1;
+}
 
 /* ---------- 持仓 ---------- */
 .pos-card { padding: var(--sp-3) var(--sp-4); }
