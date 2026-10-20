@@ -39,8 +39,15 @@ public final class DanmuTexts {
     public static final List<String> DIVE_MINOR = ContentCatalog.require(FILE, "DIVE_MINOR");
     /** 横盘冷门（全部活跃股 |涨跌幅| < 1%）。 */
     public static final List<String> FLAT = ContentCatalog.require(FILE, "FLAT");
+    /**
+     * 日常闲聊（2026-10-20 新增，250+ 条）：不与涨跌挂钩的碎碎念。
+     *
+     * <p>这是"每时每刻都有人在聊"的那部分：玩家打开任意一只票的股吧，看到的绝大多数帖子
+     * 应该是这种话（这票明天怎么看、主力在干嘛、我是不是该割了），而不是清一色的涨跌播报。
+     */
+    public static final List<String> CHATTER = ContentCatalog.require(FILE, "CHATTER");
 
-    /** 全局类别池：类别名 -> 弹幕池，就是上面那 9 个常量的汇总视图（供计数与遍历）。 */
+    /** 全局类别池：类别名 -> 弹幕池，就是上面这些常量的汇总视图（供计数与遍历）。 */
     static final Map<String, List<String>> GLOBAL_POOLS = globalPools();
 
     /** 板块池：key 为板块名（与 StockDefs.sector 同集合），value 为该板块的股吧口吻短评。 */
@@ -75,6 +82,7 @@ public final class DanmuTexts {
         byCategory.put("RALLY_MINOR", RALLY_MINOR);
         byCategory.put("DIVE_MINOR", DIVE_MINOR);
         byCategory.put("FLAT", FLAT);
+        byCategory.put("CHATTER", CHATTER);
         return Map.copyOf(byCategory);
     }
 

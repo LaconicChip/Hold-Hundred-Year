@@ -34,12 +34,23 @@ class DanmuTextsTest {
             DanmuTexts.DIVE,
             DanmuTexts.RALLY_MINOR,
             DanmuTexts.DIVE_MINOR,
-            DanmuTexts.FLAT);
+            DanmuTexts.FLAT,
+            DanmuTexts.CHATTER);
 
     @Test
     void totalCountIsAtLeastOneHundredFifty() {
         assertTrue(DanmuTexts.totalCount() >= 150,
                 "danmu pool must hold at least 150 texts, got " + DanmuTexts.totalCount());
+    }
+
+    /**
+     * 日常闲聊池是"每时每刻都有人在聊"的那部分（2026-10-20）：玩家打开任意一只票的股吧，
+     * 看到的绝大多数帖子应该是这种话，而不是清一色的涨跌播报。
+     */
+    @Test
+    void chatterPoolIsBigEnoughToKeepEveryStockTalking() {
+        assertTrue(DanmuTexts.CHATTER.size() >= 200,
+                "chatter pool must hold at least 200 lines, got " + DanmuTexts.CHATTER.size());
     }
 
     @Test

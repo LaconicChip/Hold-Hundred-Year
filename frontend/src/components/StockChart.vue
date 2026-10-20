@@ -23,7 +23,11 @@
       </span>
     </div>
 
-    <VChart v-else class="chart" :option="option" :autoresize="true" />
+    <div v-else class="chart-wrap">
+      <VChart class="chart" :option="option" :autoresize="true" />
+      <!-- 股吧飘屏：分时图里也要有人说话（2026-10-20 与日K图共用 DanmuLayer） -->
+      <DanmuLayer :posts="danmu" />
+    </div>
   </div>
 </template>
 
@@ -41,6 +45,7 @@ import {
 import VChart from 'vue-echarts'
 import { token } from '@/styles/theme'
 import SvgIcon from './SvgIcon.vue'
+import DanmuLayer from './DanmuLayer.vue'
 
 // 按需注册 ECharts 模块（vue-echarts 要求显式 use）
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, MarkLineComponent, MarkPointComponent])
@@ -55,6 +60,8 @@ const props = defineProps({
   limitDown: { type: Number, default: 0 },
   // 收盘/结算/终局态：显示"已收盘"角标
   closed: { type: Boolean, default: false },
+  // 股吧帖子流（分时图里飘的弹幕）：本票专属 + 不点名的大盘闲聊
+  danmu: { type: Array, default: () => [] },
   // 本局每跳秒数（空态提示语用，来自后端模式档案）
   tickSeconds: { type: Number, default: 1 }
 })
@@ -293,6 +300,7 @@ const option = computed(() => {
 .lg-avg { background: var(--yellow); }
 .closed-badge { margin-left: 4px; }
 .chart { width: 100%; height: 320px; }
+.chart-wrap { position: relative; width: 100%; }
 .chart-empty { height: 320px; }
 .chart-mascot { width: 56px; height: 56px; opacity: 0.8; }
 </style>

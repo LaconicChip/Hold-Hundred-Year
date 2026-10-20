@@ -63,7 +63,7 @@ public class StockController {
     @GetMapping("/{id}/danmu")
     public R<List<DanmuPost>> danmu(@AuthenticationPrincipal Long userId,
                                     @PathVariable("id") long stockId,
-                                    @RequestParam(defaultValue = "30") int limit) {
+                                    @RequestParam(defaultValue = "80") int limit) {
         return R.ok(danmuService.recentFor(userId, stockId, limit));
     }
 }

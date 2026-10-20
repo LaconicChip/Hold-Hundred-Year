@@ -44,7 +44,7 @@ class StockPersonasTest {
             String who = "stock " + persona.stockId();
             assertFalse(persona.nickname().isBlank(), who + " needs a nickname");
             assertFalse(persona.temper().isBlank(), who + " needs a temper line");
-            assertTrue(persona.danmu().size() >= 8, who + " must own at least 8 danmu lines");
+            assertTrue(persona.danmu().size() >= 16, who + " must own at least 16 danmu lines");
             assertTrue(persona.news().size() >= 6, who + " must own at least 6 event lines");
             for (String line : persona.danmu()) {
                 assertReadable(line, who + " danmu");

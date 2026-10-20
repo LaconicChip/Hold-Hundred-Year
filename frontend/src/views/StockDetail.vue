@@ -69,6 +69,7 @@
       :limit-up="limitUpPrice"
       :limit-down="limitDownPrice"
       :closed="isClosed"
+      :danmu="forumPosts"
     />
     <KlineChart v-else-if="tab === 'kline'" :kline="kline" :danmu="forumPosts" />
     <StockForum v-else :stock-id="stock.id" :stock-name="stock.name" />
@@ -278,7 +279,7 @@ async function loadMessages() {
 // 股吧历史：这只票最近在聊什么（弹幕只在盘中实时推，一次性拉一段回来，页面才有内容）
 async function loadForum() {
   try {
-    const posts = await fetchStockDanmu(stockId.value, 30)
+    const posts = await fetchStockDanmu(stockId.value, 80)
     messages.setDanmuHistory(stockId.value, posts)
   } catch {
     // 股吧拉不到不阻塞个股详情（标签页会显示"还没人聊这只票"）

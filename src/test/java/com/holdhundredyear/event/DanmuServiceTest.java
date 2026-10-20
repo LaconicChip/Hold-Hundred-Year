@@ -24,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Random;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -167,27 +168,65 @@ class DanmuServiceTest {
     // ---- 节流：冷却与去重 ----
 
     /**
-     * 节流三件事各验一条：任意两条至少隔 3 跳、同一类别至少隔 10 跳、
-     * 与最近 8 条重复的文案直接不推。旧版每跳最多一条且同一句能连着来八遍，
-     * 那就是"人机味"和"刷屏"的来源。
+     * 节流三件事各验一条：同一只票的两条至少隔 1 跳、同一只票的同一类别至少隔 4 跳、
+     * 与最近 8 条重复的文案直接不推；<b>并且冷却按票算</b>——A 股的股吧是每只票各自有人
+     * 说话，各有各的节奏，别的票刷屏不该把这只票的冷却也占了。
      */
     @Test
-    void throttleBlocksTooCloseAndRepeatedLines() {
+    void throttleIsPerStockAndBlocksTooCloseSameCategoryAndRepeat() {
         long userId = 991001L;
         var flat = new DanmuService.DanmuLine("清淡", "全员装死", 0L);
         assertTrue(danmuService.allow(userId, 0, flat), "第一条必须放行");
-        assertFalse(danmuService.allow(userId, 1, new DanmuService.DanmuLine("涨停", "封死了", 3L)),
-                "只隔 1 跳：任意两条的最小间隔没到");
-        assertFalse(danmuService.allow(userId, 4, flat),
+        assertFalse(danmuService.allow(userId, 1, new DanmuService.DanmuLine("清淡", "另一句", 0L)),
+                "同一只票只隔 1 跳：最小间隔没到");
+        assertFalse(danmuService.allow(userId, 2, flat),
                 "同一句文案在记忆里：重复的不推");
-        assertTrue(danmuService.allow(userId, 4, new DanmuService.DanmuLine("涨停", "另一句", 3L)),
-                "过了最小间隔且不是重复句，应当放行");
-        assertFalse(danmuService.allow(userId, 8, new DanmuService.DanmuLine("涨停", "又一句", 3L)),
-                "涨停类别只隔 4 跳，仍在同类冷却里");
-        assertTrue(danmuService.allow(userId, 15, new DanmuService.DanmuLine("涨停", "再一句", 3L)),
-                "同类冷却（10 跳）已过，可以再说一次");
-        assertTrue(danmuService.allow(userId, 3, new DanmuService.DanmuLine("大盘", "跨日也来一句", 0L)),
+        assertTrue(danmuService.allow(userId, 2, new DanmuService.DanmuLine("涨停", "封死了", 3L)),
+                "另一只票有自己独立的冷却，不该被这只票挡住");
+        assertFalse(danmuService.allow(userId, 3, new DanmuService.DanmuLine("涨停", "又一句", 3L)),
+                "同一只票的同类只隔 1 跳，仍在同类冷却里");
+        assertTrue(danmuService.allow(userId, 4, new DanmuService.DanmuLine("涨停", "再一句", 3L)),
+                "同类冷却（2 跳）已过，可以再说一次");
+        assertTrue(danmuService.allow(userId, 5, new DanmuService.DanmuLine("闲聊", "新的一天", 0L)),
+                "先在第 5 跳说一句");
+        assertTrue(danmuService.allow(userId, 1, new DanmuService.DanmuLine("闲聊", "第二天第一跳", 0L)),
                 "跳序回零视为新的一天：冷却表作废，第二天开盘第一跳就该能说话");
+    }
+
+    /**
+     * 每只票各自成流（2026-10-20）：玩家要"每只票尤其热点票每时每刻都有好多条弹幕"。
+     *
+     * <p>这里钉"热度曲线"：冷门票也会有人问一句（不是只有涨停票才有话说），越热的话越多，
+     * 封板再加一档。这条曲线就是"热点票的股吧永远比冷门票热闹"的量化版。
+     */
+    @Test
+    void hotStocksGetMoreChatterThanColdOnes() {
+        QuoteBoard board = flatBoard(1000.0);
+        Quote cold = board.quote(StockDefs.ALL.get(1).id());
+        Quote hot = board.quote(StockDefs.ALL.get(0).id());
+        hot.setCurrent(Quote.round2(hot.getPrevClose() * 1.08));
+        Quote sealed = board.quote(StockDefs.ALL.get(2).id());
+        sealed.setSealed(SealState.UP);
+        sealed.setCurrent(sealed.limitUpPrice());
+
+        double coldP = DanmuService.chatterProbability(cold);
+        double hotP = DanmuService.chatterProbability(hot);
+        double sealedP = DanmuService.chatterProbability(sealed);
+        assertTrue(coldP > 0, "冷门票也要有人说话（日常闲聊），got " + coldP);
+        assertTrue(hotP > coldP * 2, "热门票的话要多得多：hot=" + hotP + " cold=" + coldP);
+        assertTrue(sealedP > hotP, "封板是全场最热的话题，sealed=" + sealedP + " hot=" + hotP);
+        assertTrue(sealedP <= 0.9, "产出概率必须留出刷屏的余地，got " + sealedP);
+    }
+
+    /** 涨跌之外一律落到"闲聊"类别——这才是股吧里绝大多数帖子。 */
+    @Test
+    void quietStockFallsBackToChatterCategory() {
+        QuoteBoard board = flatBoard(1000.0);
+        Quote q = board.quote(StockDefs.ALL.get(0).id());
+        DanmuService.DanmuLine line = DanmuService.pickLineFor(q, WorldRandom.of(1L, "chatter"));
+        assertNotNull(line, "横盘票也要有话说");
+        assertEquals("闲聊", line.category(), "涨跌不明的票应该说日常闲聊");
+        assertEquals(StockDefs.ALL.get(0).id(), line.stockId(), "闲聊也要点名这只票");
     }
 
     /** 载荷必须是带 stockId 的 JSON：个股页的股吧要分得清"在说谁"。 */

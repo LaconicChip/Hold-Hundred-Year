@@ -44,7 +44,7 @@ function whoOf(seq, given) {
   return NAMES[seq % NAMES.length]
 }
 
-const MAX_POSTS = 30
+const MAX_POSTS = 80
 
 const shown = computed(() => {
   return messages.forumPosts(props.stockId)

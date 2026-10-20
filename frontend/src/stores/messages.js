@@ -6,7 +6,7 @@ import { fetchMessages, markMessageRead, markAllRead } from '@/api/message'
 import { useUserStore } from './user'
 import { channelOf, toneOf, CHANNEL } from '@/constants/messageMeta'
 
-const DANMU_MAX = 30 // 弹幕环形缓冲上限（只用于回看；飘动按 seq 取增量，不再依赖数组长度）
+const DANMU_MAX = 60 // 弹幕环形缓冲上限（只用于回看；飘动按 seq 取增量，不再依赖数组长度）
 const BANNER_MAX = 5 // 大弹幕队列上限（超了丢最旧的，绝不无限堆）
 const POPUP_MAX = 3 // 同屏浮层上限
 // 轻量通知 kind -> 标题（后端 pushNotification 只带 kind 时兜底）

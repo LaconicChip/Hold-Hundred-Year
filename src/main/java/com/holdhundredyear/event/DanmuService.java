@@ -47,20 +47,41 @@ public class DanmuService {
 
     private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
-    /** 同一类别两条之间的最少跳数：涨停封板能连钉 30 跳，不设冷却就是一屏"封死涨停"。 */
-    static final int SAME_CATEGORY_COOLDOWN_TICKS = 10;
-    /** 任意两条之间的最少跳数：弹幕是背景氛围，不是机关枪。 */
-    static final int MIN_GAP_TICKS = 3;
+    /** 同一类别两条之间的最少跳数（按票计）：封板能连钉 30 跳，不设冷却就是一屏"封死涨停"。 */
+    static final int SAME_CATEGORY_COOLDOWN_TICKS = 2;
+    /** 同一只票的两条之间的最少跳数：弹幕是背景氛围，不是机关枪。 */
+    static final int MIN_GAP_TICKS = 1;
     /** 记住最近几条文案，重复的直接不推（同一句看两次，人机味就出来了）。 */
     static final int RECENT_TEXT_MEMORY = 8;
     /** 每只票保留的历史弹幕条数（内存态，够个股页翻一屏）。 */
-    static final int HISTORY_PER_STOCK = 20;
-    /** 大盘闲聊保留条数：每只票的股吧都带着它们（"不点名的大盘闲聊"）。 */
-    static final int HISTORY_MARKET = 10;
+    static final int HISTORY_PER_STOCK = 80;
+    /** 大盘闲聊保留条数：每只票的股吧都带着它们。 */
+    static final int HISTORY_MARKET = 20;
+    /** 每跳每只票"开口说话"的概率基准（冷门票）。 */
+    static final double CHATTER_BASE_P = 0.16;
+    /** 热门加成：涨跌幅越大说话的人越多（涨跌幅 8% 时拿满）。 */
+    static final double CHATTER_HOT_GAIN = 0.7;
+    /** 封板额外加成：封板是全场最热的话题，人人都在问能不能买。 */
+    static final double CHATTER_SEAL_BONUS = 0.3;
+    /** 每跳出一条"不点名的大盘闲聊"的概率（每个股吧都看得见）。 */
+    static final double MARKET_LINE_P = 0.12;
+    /**
+     * 票在动的时候，仍然说日常闲聊的概率。
+     *
+     * <p>真实股吧里绝大多数帖子是闲话（这票明天怎么看、我是不是该割了），涨跌播报只是其中
+     * 一小撮。以前涨跌一有动静就必说涨跌，股吧里清一色"急拉/跳水"，看着像行情播报不像人话。
+     */
+    static final double CHATTER_MIX_WHEN_MOVING = 0.35;
 
     private final ObjectProvider<PushService> pushProvider;
-    /** per-user 发送节流（内存态，跨日靠跳序回零自动复位；重启后从头计也没坏处）。 */
-    private final Map<Long, Throttle> throttles = new ConcurrentHashMap<>();
+    /**
+     * per-user × per-stock 发送节流（内存态，跨日靠跳序回零自动复位；重启后从头计也没坏处）。
+     *
+     * <p><b>按票计</b>是 2026-10-20 改的：原来节流是整个账户一把锁（任意两条隔 3 跳），
+     * 于是全市场一天只能出三十来条、24 只票一分每票 1~2 条——玩家反馈"弹幕太少了"。
+     * 真实的股吧是每只票各自有人说话，各有各的节奏，所以冷却也要按票算。
+     */
+    private final Map<Long, Map<Long, Throttle>> throttles = new ConcurrentHashMap<>();
     /** per-user 弹幕历史（内存态）：个股页要能翻出"这只票最近在聊什么"。 */
     private final Map<Long, UserDanmu> histories = new ConcurrentHashMap<>();
 
@@ -180,12 +201,76 @@ public class DanmuService {
             return;
         }
         int tick = board.getTickIndex();
-        DanmuLine line = pickLine(userId, board, WorldRandom.of(userId, "danmu" + tick));
-        if (line == null || !allow(userId, tick, line)) {
-            return;
+        Random rng = WorldRandom.of(userId, "danmu" + tick);
+        // ① 每只票各自的流：热门的票话多、冷门的票偶尔一句（真实的股吧就是这样）
+        for (Quote q : board.getQuotes().values()) {
+            if (q.isHalted()) {
+                continue;
+            }
+            if (rng.nextDouble() > chatterProbability(q)) {
+                continue;
+            }
+            DanmuLine line = pickLineFor(q, rng);
+            if (!allow(userId, tick, line)) {
+                continue;
+            }
+            long seq = remember(userId, line);
+            push.pushDanmu(userId, payload(line, seq));
         }
-        long seq = remember(userId, line);
-        push.pushDanmu(userId, payload(line, seq));
+        // ② 一条不点名的大盘闲聊：每个股吧都看得见（指数涨跌、全场清淡这类）
+        if (rng.nextDouble() < MARKET_LINE_P) {
+            DanmuLine market = pickLine(userId, board, rng);
+            if (market != null && allow(userId, tick, market)) {
+                long seq = remember(userId, market);
+                push.pushDanmu(userId, payload(market, seq));
+            }
+        }
+    }
+
+    /**
+     * 这只票这一跳"有人说话"的概率：冷门基准 12%，涨得越多话越多，封板再加一档。
+     *
+     * <p>这就是"热点票的股吧永远比冷门票热闹"的量化版——玩家抱怨"每只票尤其热点票应该
+     * 每时每刻都有好多条弹幕"，而冷门票也该有人问一句"这票怎么不动"。
+     */
+    static double chatterProbability(Quote q) {
+        double heat = Math.min(1.0, Math.abs(q.dayChangePct()) / 0.08);
+        double p = CHATTER_BASE_P + CHATTER_HOT_GAIN * heat;
+        if (q.getSealed() != SealState.NONE) {
+            p += CHATTER_SEAL_BONUS;
+        }
+        return Math.min(0.9, p);
+    }
+
+    /**
+     * 一条<b>关于某只票</b>的弹幕：类别按这只票自己的状态选，文案走三级混抽。
+     *
+     * <p>涨跌之外一律落到"闲聊"——这才是股吧里绝大多数帖子（这票明天怎么看、主力在干嘛、
+     * 我是不是该割了），否则每只票的股吧除了涨跌播报就没别的了。
+     */
+    static DanmuLine pickLineFor(Quote q, Random rng) {
+        double chg = q.dayChangePct();
+        double abs = Math.abs(chg);
+        // 票在动的时候也常有闲话：先掷一次决定"说涨跌"还是"说闲话"（横盘的票不必掷，直接说闲话）
+        boolean moving = q.getSealed() != SealState.NONE || abs > 0.03;
+        boolean chatter = !moving || rng.nextDouble() < CHATTER_MIX_WHEN_MOVING;
+        if (q.getSealed() == SealState.UP && !chatter) {
+            return new DanmuLine("涨停", pickStockFlavor(q, DanmuTexts.LIMIT_UP, rng), q.getStockId());
+        }
+        if (q.getSealed() == SealState.DOWN && !chatter) {
+            return new DanmuLine("跌停", pickStockFlavor(q, DanmuTexts.LIMIT_DOWN, rng), q.getStockId());
+        }
+        if (abs > 0.05 && !chatter) {
+            return chg > 0
+                    ? new DanmuLine("急拉", pickStockFlavor(q, DanmuTexts.RALLY, rng), q.getStockId())
+                    : new DanmuLine("跳水", pickStockFlavor(q, DanmuTexts.DIVE, rng), q.getStockId());
+        }
+        if (abs > 0.03 && !chatter) {
+            return chg > 0
+                    ? new DanmuLine("急拉", pickStockFlavor(q, DanmuTexts.RALLY_MINOR, rng), q.getStockId())
+                    : new DanmuLine("跳水", pickStockFlavor(q, DanmuTexts.DIVE_MINOR, rng), q.getStockId());
+        }
+        return new DanmuLine("闲聊", pickStockFlavor(q, DanmuTexts.CHATTER, rng), q.getStockId());
     }
 
     /**
@@ -235,12 +320,16 @@ public class DanmuService {
     }
 
     /**
-     * 冷却判定与记账（同一用户对象上同步，跨用户无竞争）。
+     * 冷却判定与记账（同一只票上同步，跨票互不影响）。
      * 包内可见是为了让节流规则能被直接单测——它关系到"刷屏"这个玩家投诉点，
      * 不能只靠"看起来少了一点"来验收。
+     *
+     * <p>冷却按<b>票</b>算（2026-10-20）：每只票有自己的股吧、各有各的刷屏节奏。
+     * 早年是整个账户一把锁（任意两条隔 3 跳），结果全市场一天只出三十来条。
      */
     boolean allow(long userId, int tick, DanmuLine line) {
-        Throttle t = throttles.computeIfAbsent(userId, key -> new Throttle());
+        Throttle t = throttles.computeIfAbsent(userId, key -> new ConcurrentHashMap<>())
+                .computeIfAbsent(line.stockId(), key -> new Throttle());
         synchronized (t) {
             if (tick < t.lastTick) {
                 // 跨日：跳序回零，冷却表整体作废，并把"上一条"推到本跳之前刚好满足最小间隔。
