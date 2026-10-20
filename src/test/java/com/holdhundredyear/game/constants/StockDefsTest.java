@@ -83,7 +83,7 @@ class StockDefsTest {
         assertStockCode("獐岛水产", "600012");
         assertStockCode("毛豆传媒", "600014");
         assertStockCode("瓷器曙光", "600015");
-        assertStockCode("中心通讯", "600024");
+        assertStockCode("中星通讯", "600024");
     }
 
     @Test
