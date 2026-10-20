@@ -64,16 +64,16 @@ class VolatilityEngineTest {
     }
 
     /**
-     * 板块联动：同板块两只（宁王新能/光茅绿能）vs 跨板块两只（宁王新能/葵花银行），
+     * 板块联动：同板块两只（宁得时代/光茅绿能）vs 跨板块两只（宁得时代/招笑银行），
      * Pearson 相关 corr(同板块) > corr(跨板块) + 0.05。
      * 计划原文为 2000 跳；提升到 6000 跳使 gap 收敛（2000 跳时种子间 gap 波动 0.05–0.15，
      * 个别种子贴近阈值）。实测 gap ∈ [0.074, 0.117]。
      */
     @Test
     void sameSectorPairOutCorrelatesCrossSectorPair() {
-        StockDefs.StockDef wolong = StockDefs.byCode("600003").orElseThrow(); // 宁王新能 新能源 β=1.15
+        StockDefs.StockDef wolong = StockDefs.byCode("600003").orElseThrow(); // 宁得时代 新能源 β=1.15
         StockDefs.StockDef houyi = StockDefs.byCode("600004").orElseThrow();  // 光茅绿能 新能源 β=1.10
-        StockDefs.StockDef datong = StockDefs.byCode("600007").orElseThrow(); // 葵花银行 银行 β=0.75
+        StockDefs.StockDef datong = StockDefs.byCode("600007").orElseThrow(); // 招笑银行 银行 β=0.75
         for (long seed : SEEDS) {
             VolatilityEngine engine = new VolatilityEngine();
             Random ctxRng = new Random(seed);

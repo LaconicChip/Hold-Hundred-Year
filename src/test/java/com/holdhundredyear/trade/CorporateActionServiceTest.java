@@ -48,7 +48,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Transactional
 class CorporateActionServiceTest {
 
-    /** 测试用股票（茅王酒业，现价 168.00 = prevClose，基准价）。 */
+    /** 测试用股票（贵州茅王，现价 168.00 = prevClose，基准价）。 */
     private static final long STOCK = 1L;
     private static final double BASE = 168.00;
 

@@ -285,7 +285,7 @@ class MessageServiceTest {
     void includeSectorAddsSectorWideNewsToTheStockView() {
         long userId = worldSeeder.seedUser("msg_sector1", "$2a$10$bcrypthash");
         UserMessage onStock = insertMsg(userId, "MEDIA", null, false, 1, 10, null);
-        onStock.setStockId(15L); // 曙光算力，属"算力"板块
+        onStock.setStockId(15L); // 瓷器曙光，属"算力"板块
         userMessageMapper.updateById(onStock);
         UserMessage sameSector = insertMsg(userId, "AUTHORITY", null, false, 1, 20, null);
         sameSector.setSector("算力");

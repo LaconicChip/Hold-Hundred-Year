@@ -18,7 +18,7 @@ public final class NpcDefs {
             new Npc("LAOLI", "保安老李", "定投指数型"),
             new Npc("CHIEF", "首席分析师", "一本正经胡说八道"),
             new Npc("JUSHI", "炒股养家居士", "死捂一只不动"),
-            new Npc("LAOQIAN", "拆迁户老钱", "满仓葵花银行吃股息"),
+            new Npc("LAOQIAN", "拆迁户老钱", "满仓招笑银行吃股息"),
             new Npc("XINJIMIN", "95后新基民", "追题材风口"),
             new Npc("CHENGXUYUAN", "辞职炒股的程序猿", "量化幻觉型"));
 

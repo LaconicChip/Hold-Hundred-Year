@@ -159,7 +159,7 @@ class MarketQueryServiceTest {
         StockQuoteDTO first = rows.get(0);
         assertEquals(1L, first.getStockId());
         assertEquals("600001", first.getCode());
-        assertEquals("茅王酒业", first.getName());
+        assertEquals("贵州茅王", first.getName());
         assertEquals("白酒", first.getSector());
         assertEquals(168.00, first.getBasePrice(), 1e-9);
         assertEquals(168.00, first.getPrevClose(), 1e-9);
