@@ -28,13 +28,13 @@ const props = defineProps({
   // 帖子流：[{seq, text, category}]
   posts: { type: Array, default: () => [] },
   // 同时可见的航道数
-  lanes: { type: Number, default: 5 },
-  // 每条之间的间隔（毫秒）
-  spawnMs: { type: Number, default: 700 },
+  lanes: { type: Number, default: 7 },
+  // 每条之间的间隔（毫秒，实际会再乘一个随机抖动）
+  spawnMs: { type: Number, default: 400 },
   // 飞行时长（毫秒）
-  flightMs: { type: Number, default: 11000 },
+  flightMs: { type: Number, default: 8000 },
   // 首帧回放条数
-  replay: { type: Number, default: 8 }
+  replay: { type: Number, default: 10 }
 })
 
 const items = ref([])
@@ -58,13 +58,16 @@ function enqueue(post) {
 
 function scheduleSpawn() {
   if (spawnTimer) return
+  // 间隔带随机抖动：匀速吐会看成"来一波→飘完→等一下→又来一波"的脉冲，
+  // 抖开之后才是持续的流（真实的股吧也不是整齐划一地发）
+  const delay = props.spawnMs * (0.4 + Math.random() * 1.4)
   spawnTimer = setTimeout(() => {
     spawnTimer = null
     if (queue.length && items.value.length < props.lanes) {
       spawn(queue.shift())
     }
     if (queue.length) scheduleSpawn()
-  }, props.spawnMs)
+  }, delay)
 }
 
 function spawn(post) {

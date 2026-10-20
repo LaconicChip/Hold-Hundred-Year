@@ -58,13 +58,13 @@ public class DanmuService {
     /** 大盘闲聊保留条数：每只票的股吧都带着它们。 */
     static final int HISTORY_MARKET = 20;
     /** 每跳每只票"开口说话"的概率基准（冷门票）。 */
-    static final double CHATTER_BASE_P = 0.16;
+    static final double CHATTER_BASE_P = 0.38;
     /** 热门加成：涨跌幅越大说话的人越多（涨跌幅 8% 时拿满）。 */
-    static final double CHATTER_HOT_GAIN = 0.7;
+    static final double CHATTER_HOT_GAIN = 0.45;
     /** 封板额外加成：封板是全场最热的话题，人人都在问能不能买。 */
     static final double CHATTER_SEAL_BONUS = 0.3;
     /** 每跳出一条"不点名的大盘闲聊"的概率（每个股吧都看得见）。 */
-    static final double MARKET_LINE_P = 0.12;
+    static final double MARKET_LINE_P = 0.2;
     /**
      * 票在动的时候，仍然说日常闲聊的概率。
      *
@@ -94,12 +94,13 @@ public class DanmuService {
     }
 
     /**
-     * 一条已推送的弹幕（带本账户内自增序号）。
+     * 一条已推送的弹幕（带本账户内自增序号与产生它的跳号）。
      *
      * <p>序号由后端统一发：前端拿它去重（WS 实时推的那条与历史接口拉回来的那条是同一条），
-     * 也用它做"最新在上"的排序依据。
+     * 也用它做"最新在上"的排序依据。跳号留着量节奏用——"弹幕是一波一波还是持续的"
+     * 靠看相邻两条的跳号间隔才能说话。
      */
-    public record DanmuPost(long seq, String category, String text, long stockId) {
+    public record DanmuPost(long seq, String category, String text, long stockId, int tick) {
     }
 
     /** 纯判定函数：按 board 快照返回命中类别的一条文案，未命中返回 null。
@@ -201,34 +202,38 @@ public class DanmuService {
             return;
         }
         int tick = board.getTickIndex();
-        Random rng = WorldRandom.of(userId, "danmu" + tick);
         // ① 每只票各自的流：热门的票话多、冷门的票偶尔一句（真实的股吧就是这样）
         for (Quote q : board.getQuotes().values()) {
             if (q.isHalted()) {
                 continue;
             }
-            if (rng.nextDouble() > chatterProbability(q)) {
+            long stockId = q.getStockId();
+            // 每只票一条自己的随机流：24 只票共用一条流会让"谁在说话"绑在同一拍上，
+            // 看上去是全场一起刷屏；分开之后各说各的，节奏才像真的。
+            Random rng = WorldRandom.of(userId, "danmu" + tick + "." + stockId);
+            if (!dueForSpeech(userId, stockId, tick, chatterProbability(q), rng)) {
                 continue;
             }
             DanmuLine line = pickLineFor(q, rng);
             if (!allow(userId, tick, line)) {
                 continue;
             }
-            long seq = remember(userId, line);
-            push.pushDanmu(userId, payload(line, seq));
+            long seq = remember(userId, line, tick);
+            push.pushDanmu(userId, payload(line, seq, tick));
         }
         // ② 一条不点名的大盘闲聊：每个股吧都看得见（指数涨跌、全场清淡这类）
-        if (rng.nextDouble() < MARKET_LINE_P) {
-            DanmuLine market = pickLine(userId, board, rng);
+        Random marketRng = WorldRandom.of(userId, "danmu" + tick + ".market");
+        if (marketRng.nextDouble() < MARKET_LINE_P) {
+            DanmuLine market = pickLine(userId, board, marketRng);
             if (market != null && allow(userId, tick, market)) {
-                long seq = remember(userId, market);
-                push.pushDanmu(userId, payload(market, seq));
+                long seq = remember(userId, market, tick);
+                push.pushDanmu(userId, payload(market, seq, tick));
             }
         }
     }
 
     /**
-     * 这只票这一跳"有人说话"的概率：冷门基准 12%，涨得越多话越多，封板再加一档。
+     * 这只票这一跳"有人说话"的概率：冷门基准 35%，涨得越多话越多，封板再加一档。
      *
      * <p>这就是"热点票的股吧永远比冷门票热闹"的量化版——玩家抱怨"每只票尤其热点票应该
      * 每时每刻都有好多条弹幕"，而冷门票也该有人问一句"这票怎么不动"。
@@ -240,6 +245,34 @@ public class DanmuService {
             p += CHATTER_SEAL_BONUS;
         }
         return Math.min(0.9, p);
+    }
+
+    /**
+     * 这只票这一跳该轮到他说话了没——按"下一次发言时刻"排期，间隔服从指数分布。
+     *
+     * <p><b>为什么不用"每跳掷骰"</b>：那样出来的间隔是几何分布，会成团（连着两三条），
+     * 看上去就是"一轮一轮的"；而且同类别冷却再叠一层，节奏会固定成"隔两跳一条"，
+     * 更像机关枪不像人。这里改成给每只票排一个随机的"下次发言跳号"，
+     * 间隔在 1~几跳之间随机，连着来与隔很久来都会出现——节奏才是活的。
+     */
+    private boolean dueForSpeech(long userId, long stockId, int tick, double p, Random rng) {
+        Throttle t = throttleOf(userId, stockId);
+        synchronized (t) {
+            if (tick < t.lastTick) {
+                // 跨日：跳序回零，一切重排
+                t.nextSpeechTick = -1;
+                t.byCategory.clear();
+                t.lastTick = tick - MIN_GAP_TICKS;
+            }
+            if (t.nextSpeechTick < 0 || tick >= t.nextSpeechTick) {
+                double mean = 1.0 / Math.max(0.05, p);
+                // 间隔服从指数分布：1 跳、2 跳、5 跳、9 跳都会出现（不是固定节奏）
+                int interval = (int) (-Math.log(1.0 - rng.nextDouble()) * mean);
+                t.nextSpeechTick = tick + Math.max(1, interval);
+                return true;
+            }
+            return false;
+        }
     }
 
     /**
@@ -279,11 +312,11 @@ public class DanmuService {
      * <p>历史是"个股页能翻出这只票最近在聊什么"的唯一来源——前端原来只有 30 条全局环形缓冲，
      * 24 只票一分，个股页几乎总是空的（玩家反馈"股吧弹幕不会正常显示"）。
      */
-    private long remember(long userId, DanmuLine line) {
+    private long remember(long userId, DanmuLine line, int tick) {
         UserDanmu history = histories.computeIfAbsent(userId, key -> new UserDanmu());
         synchronized (history) {
             long seq = ++history.seq;
-            DanmuPost post = new DanmuPost(seq, line.category(), line.text(), line.stockId());
+            DanmuPost post = new DanmuPost(seq, line.category(), line.text(), line.stockId(), tick);
             if (line.stockId() > 0) {
                 Deque<DanmuPost> queue = history.byStock.computeIfAbsent(line.stockId(), key -> new ArrayDeque<>());
                 queue.addLast(post);
@@ -328,8 +361,7 @@ public class DanmuService {
      * 早年是整个账户一把锁（任意两条隔 3 跳），结果全市场一天只出三十来条。
      */
     boolean allow(long userId, int tick, DanmuLine line) {
-        Throttle t = throttles.computeIfAbsent(userId, key -> new ConcurrentHashMap<>())
-                .computeIfAbsent(line.stockId(), key -> new Throttle());
+        Throttle t = throttleOf(userId, line.stockId());
         synchronized (t) {
             if (tick < t.lastTick) {
                 // 跨日：跳序回零，冷却表整体作废，并把"上一条"推到本跳之前刚好满足最小间隔。
@@ -358,26 +390,35 @@ public class DanmuService {
         }
     }
 
-    /** 下发载荷：带上类别与焦点股，个股页的股吧才分得出"在说谁"。 */
-    static String payload(DanmuLine line) {
-        return payload(line, 0L);
+    /** 取（并初始化）某个用户在某只票上的节流/排期状态。 */
+    private Throttle throttleOf(long userId, long stockId) {
+        return throttles.computeIfAbsent(userId, key -> new ConcurrentHashMap<>())
+                .computeIfAbsent(stockId, key -> new Throttle());
     }
 
-    /** 下发载荷（带本账户内序号）：前端据此把实时推送与历史接口拉回来的条目去重合并。 */
-    static String payload(DanmuLine line, long seq) {
+    /** 下发载荷：带上类别与焦点股，个股页的股吧才分得出"在说谁"。 */
+    static String payload(DanmuLine line) {
+        return payload(line, 0L, 0);
+    }
+
+    /** 下发载荷（带本账户内序号与跳号）：前端据此把实时推送与历史接口拉回来的条目去重合并。 */
+    static String payload(DanmuLine line, long seq, int tick) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("seq", seq);
+        body.put("tick", tick);
         body.put("category", line.category());
         body.put("stockId", line.stockId());
         body.put("text", line.text());
         return MAPPER.writeValueAsString(body);
     }
 
-    /** 单个用户的弹幕节流状态。 */
+    /** 单个用户的单只票的节流与排期状态。 */
     private static final class Throttle {
         private final Map<String, Integer> byCategory = new HashMap<>();
         private final Deque<String> recent = new ArrayDeque<>();
         private int lastTick = -MIN_GAP_TICKS;
+        /** 下一次发言的跳号（-1 = 未排期）：按随机间隔排期，节奏才不会"一轮一轮"。 */
+        private int nextSpeechTick = -1;
     }
 
     /** 单个用户的弹幕历史（内存态）：每股最近若干条 + 大盘闲聊若干条。 */
