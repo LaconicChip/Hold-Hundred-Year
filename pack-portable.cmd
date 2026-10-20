@@ -19,7 +19,7 @@ rem  便携包只在"升版本号 + 明确要求打包"两个条件同时满足时才重新生成（见 AGENTS.
 rem  本文件与 game.cmd 一样必须存成 GBK(936)：cmd 读 UTF-8 中文批处理会按字节读错位。
 rem =========================================================================
 
-set "VER=0.0.1"
+set "VER=0.0.2"
 set "JAR=Hold-Hundred-Year-%VER%.jar"
 set "IN=target\package-in"
 set "OUT=target\package-out"
@@ -28,7 +28,7 @@ set "CACHE=%LOCALAPPDATA%\hold-hundred-year-build\chrome"
 set "MIRROR=https://cdn.npmmirror.com/binaries/chrome-for-testing"
 
 if not defined JAVA_HOME (
-  if exist "C:\Users\chip\.jdks\ms-17.0.20.1\bin\jpackage.exe" set "JAVA_HOME=C:\Users\chip\.jdks\ms-17.0.20.1"
+  if exist "%USERPROFILE%\.jdks\ms-17.0.20.1\bin\jpackage.exe" set "JAVA_HOME=%USERPROFILE%\.jdks\ms-17.0.20.1"
 )
 if not exist "%JAVA_HOME%\bin\jpackage.exe" (
   echo  没找到 jpackage.exe（JDK 17 自带）。请把 JAVA_HOME 指到完整的 JDK 17 目录。

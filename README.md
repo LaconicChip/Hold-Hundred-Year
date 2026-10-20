@@ -7,7 +7,11 @@ A 股模拟炒股游戏：一局 72 个交易日（3 年 × 24 天），约 1 �
 - 后端：Spring Boot 4.1.1 / Java 17 / MySQL / MyBatis-Plus / WebSocket(STOMP)，**不使用 Redis 与 MQ**
 - 前端：Vue 3 + Vite + Element Plus + ECharts + Pinia
 - 视觉：散户营业部·漫画贴纸风（米纸底 + 墨色描边 + 硬阴影）、红涨绿跌、**全站禁 emoji**
-- 版本：**v0.0.1**（`pom.xml`、`frontend/package.json` 与 git tag 三处同号）
+- 版本：**v0.0.2**（`pom.xml`、`frontend/package.json` 与 git tag 三处同号）
+
+![登录页](docs/design/shots/01-login.png)
+![大盘](docs/design/shots/02-market.png)
+![个股页](docs/design/shots/03-stock.png)
 
 ## 目录结构
 
@@ -37,12 +41,12 @@ src/main/resources/db/
 src/main/resources/content/
   danmu.txt / stock-personas.txt / sector-flavor.txt / npc-lines.txt / event-copy.txt /
   era-narratives.txt / shark-lines.txt
-  全部游戏文案（弹幕、24 股人设、板块与大盘消息、NPC 台词、92 条事件骨架的标题正文与追报、11 条纪元叙事、高利贷台词）
+  全部游戏文案（弹幕、24 股人设、板块与大盘消息、NPC 台词、160 条事件骨架的标题正文与追报、11 条纪元叙事、高利贷台词）
   —— 改文案只改这七个 txt，不动 Java；格式与校验见 docs/implementation-notes.md §7
 
 frontend/src/
   views/        8 个页面（Login/Market/StockDetail/Assets/Messages/Leaderboard/DailySummary/GameResult）
-  components/   19 个组件（GameLayout 竖向菜单、StockChart 分时、KlineChart 日K、QuoteTable 等）
+  components/   21 个组件（GameLayout 竖向菜单、StockChart 分时、KlineChart 日K、DanmuLayer 股吧弹幕层、ModePicker 开局选模式、QuoteTable 等）
   api/          axios 接口层 + ws.js（STOMP 四通道，握手带 JWT）
   stores/       Pinia（user/market/quotes/messages）
   utils/        通用格式化（涨跌配色与金额/百分比展示，跨页面共用）
@@ -58,20 +62,21 @@ docs/
 
 ## 快速开始
 
-前置：PowerShell 7、JDK 17、Node.js、MySQL 8（开发库 `hold_year`、测试库 `hold_year_test`，账号见
-`src/main/resources/application.properties`）。
+前置：PowerShell 7、JDK 17、Node.js 20+（Vite 6 的最低要求）、MySQL 8（开发库 `hold_year`、测试库
+`hold_year_test`，账号与密码见 `src/main/resources/application.properties`，本机开发默认值是 `root` / `123456`）。
 
 ```powershell
 # 1. 首次或换机：建库并建表（两个库都要）
-mysql -uroot -p123456 -e "CREATE DATABASE IF NOT EXISTS hold_year DEFAULT CHARACTER SET utf8mb4; CREATE DATABASE IF NOT EXISTS hold_year_test DEFAULT CHARACTER SET utf8mb4;"
-mysql -uroot -p123456 hold_year      -e "source 仓库绝对路径/src/main/resources/db/schema.sql"
-mysql -uroot -p123456 hold_year_test -e "source 仓库绝对路径/src/main/resources/db/schema.sql"
+#    下面用 -p 交互输入密码，不要把密码直接写在命令行里
+mysql -uroot -p -e "CREATE DATABASE IF NOT EXISTS hold_year DEFAULT CHARACTER SET utf8mb4; CREATE DATABASE IF NOT EXISTS hold_year_test DEFAULT CHARACTER SET utf8mb4;"
+mysql -uroot -p hold_year      -e "source src/main/resources/db/schema.sql"
+mysql -uroot -p hold_year_test -e "source src/main/resources/db/schema.sql"
 
 # 2. 后端（8080）
 .\mvnw.cmd spring-boot:run
 
 # 3. 前端（5173，/api 与 /ws 代理到 8080）
-cd frontend; npm install; npm run dev
+cd frontend; npm ci; npm run dev
 
 # 4. 全量后端测试（需 MySQL 的 hold_year_test 库）
 .\mvnw.cmd test
@@ -91,7 +96,7 @@ MySQL 仍然用你本机那个 `MySQL80` 服务（存档就在里面）。
 ### 一次性打包
 
 ```powershell
-.\game.cmd build      # 前端构建 -> 拷进后端资源目录 -> 打成 target\Hold-Hundred-Year-0.0.1.jar
+.\game.cmd build      # 前端构建 -> 拷进后端资源目录 -> 打成 target\Hold-Hundred-Year-0.0.2.jar
 ```
 
 ### 每次开一局之前
@@ -179,16 +184,25 @@ $env:HOLD_DB_PASSWORD = '你的MySQL密码'                  # 只在备份/还�
 改了表结构不用写迁移脚本：按 `src/main/resources/db/schema.sql` 重建库即可（见下面"已知环境坑"
 第 3 条）。
 
-### 给别人玩之前，两件建议顺手做的事
+### 给别人玩之前，三件建议顺手做的事
 
-1. **换掉 JWT 密钥**（默认值就写在 `application.properties` 里，等于公开的）：
+1. **换掉 MySQL 密码**（默认值 `123456` 就写在 `application.properties` 里，等于公开的）：
+
+   ```powershell
+   $env:HOLD_DB_PASSWORD = '你的MySQL密码'   # 再启动游戏
+   ```
+
+2. **换掉 JWT 密钥**（默认值同样写在 `application.properties` 里，公开密钥等于别人能伪造登录令牌）：
 
    ```powershell
    $env:HOLD_JWT_SECRET = '随便敲一大串，越长越好'    # 再启动游戏；换密钥会让已登录的人重新登录
    ```
 
-2. **别把 MySQL 暴露出去**：`3306` 只监听本机就好，对外只开 8080。数据库地址/账号/密码/端口
+3. **别把 MySQL 暴露出去**：`3306` 只监听本机就好，对外只开 8080。数据库地址/账号/密码/端口
    都能用 `HOLD_DB_URL` / `HOLD_DB_USER` / `HOLD_DB_PASSWORD` / `HOLD_PORT` 覆盖，不用改代码。
+
+> 绿色包（`portable` 档）不用管第 1、2 条：它用内嵌 H2，**登录密钥默认每次启动随机生成**，
+> 读过源码的人伪造不了别人的令牌。
 
 ## 已知环境坑
 
@@ -212,6 +226,21 @@ $env:HOLD_DB_PASSWORD = '你的MySQL密码'                  # 只在备份/还�
 8. **`game.cmd` 必须存成 GBK（代码页 936），不能改成 UTF-8**：cmd 读带中文的 UTF-8 批处理会按字节错位，
    表现是某行中文注释被当成命令执行（`"xxx 不是内部或外部命令"`）甚至跳行。IDEA 里改这个文件时
    右下角编码要选 GBK；README/源码仍是 UTF-8，只有这一个 `.cmd` 例外。
+
+## 素材、授权与免责声明
+
+- **美术素材**：界面里的吉祥物与 NPC 头像（`frontend/src/assets/img/*.png`）由 AI 图像生成工具产出，
+  仅用于本项目；`docs/design/mascot-*.jpg` 是它们的定稿截图。
+- **字体**：站酷快乐体通过 CDN 引入（`frontend/index.html`），仅用于标题装饰，正文使用系统字体。
+- **第三方内容**：`.trae/skills/humanizer-zh/` 是外部 MIT 协议的去 AI 味文案 skill 副本
+  （原作者 歸藏 / op7418），已随仓库保留其 LICENSE 与来源说明。
+- **股票与公司全部虚构**：24 只票的名字、代码、发行价、人设都是编的，只玩梗、不使用任何真实
+  股票代码，也不影射任何真实公司。
+- **不构成投资建议**：这是一个模拟游戏，行情、事件、消息全部是程序生成的虚构内容。
+
+## License
+
+[MIT](LICENSE) © 2026 路痴。字体、图标与文案等第三方内容的授权见上文。
 
 ## 权威文档与优先级
 

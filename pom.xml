@@ -10,12 +10,16 @@
     </parent>
     <groupId>com.HoldHundredYear</groupId>
     <artifactId>Hold-Hundred-Year</artifactId>
-    <version>0.0.1</version>
+    <version>0.0.2</version>
     <name>Hold-Hundred-Year</name>
-    <description>Hold-Hundred-Year</description>
+    <description>你持有一百年看看 —— A 股模拟炒股游戏</description>
     <url/>
     <licenses>
-        <license/>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
     </licenses>
     <developers>
         <developer/>
