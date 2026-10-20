@@ -154,6 +154,17 @@
 手工等价命令：`Remove-Item src/main/resources/static -Recurse -Force; Copy-Item frontend/dist src/main/resources/static -Recurse`，
 之后再 package。
 
+**坑⑦：绿色包里的中文文件名不能由 `.cmd` 用 `echo >` 生成**（2026-10-20 实测，翻车的就是这一条）。
+`pack-portable.cmd` 存的是 GBK，而 cmd.exe 解析批处理里的中文用的是**当前控制台代码页**：在开了
+「使用 Unicode UTF-8 提供全球语言支持」的 Windows 上（活动代码页 65001），GBK 字节被当成非法的
+UTF-8 序列，落盘的文件名直接变成替换符——实测 `怎么玩.txt` 落盘成 `\uFFFD\uFFFDô\uFFFD\uFFFD.txt`，
+zip 只是忠实记录了乱码名（解压后看到的就是这个）。因此那两个说明文件改由
+`scripts/write-portable-extras.ps1` 生成：**文件名走 Windows 的 Unicode API**（不经过任何代码页），
+**内容显式编码**（`怎么玩.txt` 用 UTF-8+BOM，记事本在任何系统上都显示中文）。
+另一条同源的规矩：**批处理文件的内容一律只用 ASCII**——中文写进 `.bat` 后，cmd 在 UTF-8 代码页上会
+把它解成乱码并**当成命令去执行**（实测报 `is not recognized as an internal or external command`）；
+文件名用 Unicode 反而是安全的。同理本仓库的 `.cmd` 必须存 GBK、不能改 UTF-8（见 `AGENTS.md`）。
+
 **坑**：① 测试无 H2 兜底，`hold_year_test` 不存在会大面积报 `Unknown database`；② 旧库不执行迁移会让 `user_game_state` 读写报 `Unknown column`；③ 前端依赖后端，先起后端；④ `mvnw.cmd` 内部调用 Windows PowerShell 5.1，某些机器会死在 `(Get-Item ~/.m2).Target[0]`（报 `Cannot index into a null array` / `Cannot start maven from wrapper`）——可直接用 wrapper 已下载的 Maven：设好 `JAVA_HOME` 后执行 `& "$env:USERPROFILE\.m2\wrapper\dists\apache-maven-*\*\apache-maven-*\bin\mvn.cmd" test`；⑤ 本机 `localhost` 解析到 IPv6，用 `127.0.0.1` 探端口/代理可能看起来"拒绝连接"，浏览器与脚本请用 `localhost`。
 
 **回归防护**：任何触及开盘管线 / 结算 / 引擎的改动，必跑 `VolatilityEngineTest`、`VolatilityDistributionTest`、`VolatilityCoMovementTest`、`FastForwardServiceTest`、`TradeConcurrencyTest`、`WorldTickServiceTest`，并复验"快进与正常推进同种子结果一致"。**改波动常量必须同时看 `VolatilityDistributionTest`（量级）与 `VolatilityCoMovementTest`（共性）两条线**——σ 抬上去会把共性一起抬起来，只看其中一条会把另一个问题做坏。

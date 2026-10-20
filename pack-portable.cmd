@@ -119,25 +119,8 @@ exit /b 1
 
 :zip
 echo [6/7] 附说明 ...
-> "%OUT%\%APP%\怎么玩.txt" (
-  echo  《你持有一百年看看》 绿色版
-  echo.
-  echo  1. 解压到任意文件夹（路径里有中文和空格都没关系）
-  echo  2. 双击 hold-hundred-year.exe
-  echo  3. 会弹出一个独立游戏窗口（没有地址栏），里面点"注册"，起个名字就能玩
-  echo  4. 关掉那个游戏窗口就是退出游戏；万一没退干净，双击 停止游戏.bat
-  echo.
-  echo  存档：同目录 data\hold_year.mv.db 这一个文件。复制它=备份，删掉它=重开一局。
-  echo  同一局域网里也可以只开一份：别人用 http://你的IP:8080 进来各自注册，互不影响。
-  echo  第一次运行 Windows 若提示"已保护你的电脑"：点 更多信息，再点 仍然要运行（我们没做代码签名）
-  echo  窗口没弹出来时：手动开浏览器访问 http://localhost:8080 一样能玩
-)
-rem 只杀我们自己的进程：自带浏览器也叫 chrome.exe，按映像名杀会把朋友自己的 Chrome 一起干掉
-> "%OUT%\%APP%\停止游戏.bat" (
-  echo @taskkill /f /im %APP%.exe ^>nul 2^>^&1
-  echo @echo 已退出游戏。若游戏窗口还开着，直接点右上角关掉即可。
-  echo @pause
-)
+pwsh -NoProfile -File "scripts\write-portable-extras.ps1" -OutDir "%OUT%\%APP%"
+if errorlevel 1 (echo  生成说明文件失败 & exit /b 1)
 
 echo [7/7] 压成 zip ...
 if not exist dist mkdir dist
