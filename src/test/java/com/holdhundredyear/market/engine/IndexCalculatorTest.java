@@ -72,9 +72,9 @@ class IndexCalculatorTest {
         // 手算：自定义权重 2/1/1（Σw=4），收益 +8%/-4%/缺报（按 0 处理）
         // Σw·r = 2×0.08 + 1×(-0.04) + 1×0 = 0.12；归一 0.12/4 = 0.03 → 1000×1.03 = 1030
         List<StockDef> stocks = List.of(
-                new StockDef(101L, "900001", "甲", "白酒", 10.0, 1.0, 2.0),
-                new StockDef(102L, "900002", "乙", "医药", 10.0, 1.0, 1.0),
-                new StockDef(103L, "900003", "丙", "军工", 10.0, 1.0, 1.0));
+                new StockDef(101L, "900001", "甲", "白酒", 10.0, 1.0, 1.0, 0, 1.0, 2.0),
+                new StockDef(102L, "900002", "乙", "医药", 10.0, 1.0, 1.0, 0, 1.0, 1.0),
+                new StockDef(103L, "900003", "丙", "军工", 10.0, 1.0, 1.0, 0, 1.0, 1.0));
         Map<Long, Double> returns = new HashMap<>();
         returns.put(101L, 0.08);
         returns.put(102L, -0.04);
@@ -86,7 +86,7 @@ class IndexCalculatorTest {
     @Test
     void zeroWeightSumKeepsIndexUnchanged() {
         List<StockDef> stocks = List.of(
-                new StockDef(201L, "900011", "丁", "白酒", 10.0, 1.0, 0.0));
+                new StockDef(201L, "900011", "丁", "白酒", 10.0, 1.0, 1.0, 0, 1.0, 0.0));
         assertEquals(1000.0, calculator.nextIndex(BASE_INDEX, stocks, Map.of(201L, 0.05)), EPS,
                 "权重和为 0（除零保护）返回 prevIndex 不变");
     }

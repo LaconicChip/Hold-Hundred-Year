@@ -30,8 +30,8 @@ class VolatilityEngineTest {
      */
     @Test
     void betaSensitivityShowsInRegressionSlopeOnSharedMarketFactor() {
-        StockDefs.StockDef hiBeta = new StockDefs.StockDef(991L, "T991", "测试高贝塔", "新能源", 100.0, 1.5, 0.0);
-        StockDefs.StockDef loBeta = new StockDefs.StockDef(992L, "T992", "测试低贝塔", "新能源", 100.0, 0.7, 0.0);
+        StockDefs.StockDef hiBeta = new StockDefs.StockDef(991L, "T991", "测试高贝塔", "新能源", 100.0, 1.5, 1.0, 0, 1.0, 0.0);
+        StockDefs.StockDef loBeta = new StockDefs.StockDef(992L, "T992", "测试低贝塔", "新能源", 100.0, 0.7, 1.0, 0, 1.0, 0.0);
         for (long seed : SEEDS) {
             VolatilityEngine engine = new VolatilityEngine();
             Random ctxRng = new Random(seed);
@@ -49,8 +49,8 @@ class VolatilityEngineTest {
                 rMkt[i] = GameConstants.SIGMA_MKT * VolatilityEngine.uShapeFactor(tick) * ctx.zMkt();
                 rHi[i] = engine.rawReturn(hiQ, hiBeta, 0.0, Map.of(), VolRegime.NORMAL, tick, ctx, hiRng);
                 rLo[i] = engine.rawReturn(loQ, loBeta, 0.0, Map.of(), VolRegime.NORMAL, tick, ctx, loRng);
-                engine.updateGarch(hiQ, rHi[i]);
-                engine.updateGarch(loQ, rLo[i]);
+                engine.updateGarch(hiQ, rHi[i], VolatilityEngine.conditionalSigma(hiQ, hiBeta, VolRegime.NORMAL, tick));
+                engine.updateGarch(loQ, rLo[i], VolatilityEngine.conditionalSigma(loQ, loBeta, VolRegime.NORMAL, tick));
             }
             double slopeHi = originSlope(rHi, rMkt);
             double slopeLo = originSlope(rLo, rMkt);
@@ -93,9 +93,9 @@ class VolatilityEngineTest {
                 rA[i] = engine.rawReturn(qA, wolong, 0.0, Map.of(), VolRegime.NORMAL, tick, ctx, rngA);
                 rB[i] = engine.rawReturn(qB, houyi, 0.0, Map.of(), VolRegime.NORMAL, tick, ctx, rngB);
                 rC[i] = engine.rawReturn(qC, datong, 0.0, Map.of(), VolRegime.NORMAL, tick, ctx, rngC);
-                engine.updateGarch(qA, rA[i]);
-                engine.updateGarch(qB, rB[i]);
-                engine.updateGarch(qC, rC[i]);
+                engine.updateGarch(qA, rA[i], VolatilityEngine.conditionalSigma(qA, wolong, VolRegime.NORMAL, tick));
+                engine.updateGarch(qB, rB[i], VolatilityEngine.conditionalSigma(qB, houyi, VolRegime.NORMAL, tick));
+                engine.updateGarch(qC, rC[i], VolatilityEngine.conditionalSigma(qC, datong, VolRegime.NORMAL, tick));
             }
             double same = pearson(rA, rB);
             double cross = pearson(rA, rC);
@@ -116,7 +116,7 @@ class VolatilityEngineTest {
      */
     @Test
     void garchClustersVolatilityAfterFiveSigmaJump() {
-        StockDefs.StockDef def = new StockDefs.StockDef(993L, "T993", "测试丙", "新能源", 100.0, 1.0, 0.0);
+        StockDefs.StockDef def = new StockDefs.StockDef(993L, "T993", "测试丙", "新能源", 100.0, 1.0, 1.0, 0, 1.0, 0.0);
         for (long seed : SEEDS) {
             VolatilityEngine engine = new VolatilityEngine();
             Random ctxRng = new Random(seed);
@@ -135,14 +135,16 @@ class VolatilityEngineTest {
                         // 基线只取收敛后的最后 5 跳，前 35 跳是"从初值降下来"的过程，不算基线
                         sumBefore += Math.abs(r);
                     }
-                    engine.updateGarch(q, r);
+                    engine.updateGarch(q, r, VolatilityEngine.conditionalSigma(q, def, VolRegime.NORMAL, 40));
                 }
-                engine.updateGarch(q, 5.0 * GameConstants.SIGMA_STOCK); // 注入一次 5σ 大跳
+                // 注入一次 5σ 大跳（σ 用本股当前的条件尺度，不是全局基准）
+                double sigmaNow = VolatilityEngine.conditionalSigma(q, def, VolRegime.NORMAL, 40);
+                engine.updateGarch(q, 5.0 * sigmaNow, sigmaNow);
                 for (int tick = 0; tick < after; tick++) {
                     VolatilityEngine.TickContext ctx = engine.beginTick(ctxRng);
                     double r = engine.rawReturn(q, def, 0.0, Map.of(), VolRegime.NORMAL, 45 + tick, ctx, rng);
                     sumAfter += Math.abs(r);
-                    engine.updateGarch(q, r);
+                    engine.updateGarch(q, r, VolatilityEngine.conditionalSigma(q, def, VolRegime.NORMAL, 45 + tick));
                 }
             }
             double avgBefore = sumBefore / (trials * 5);
@@ -154,58 +156,67 @@ class VolatilityEngineTest {
     }
 
     /**
-     * U 型：完整交易日（每跳 NORMAL、muMkt=0，garchK 跨日延续），tick 0..10 与 80..89 的
-     * 平均 |r| 要略高于 tick 30..60，但不能高到把中间压成一条直线。
+     * 日内波动形状（2026-10-20 引擎大改后重写，原来只测一条全市场共性 U 型）。
      *
-     * <p>2026-10-19 把 U 型压平后，这里从"开/尾 > 盘中 × 1.5"改成"温和抬升 1.08~1.5 倍"，
-     * 并额外断言盘中段仍有足够波动（> 0.75×SIGMA_STOCK）。原因是玩家反馈"开局动一下，
-     * 中间几乎平盘，收盘再动一下"——旧阈值会把这种过度 U 型当成正确行为锁死。
+     * <p>玩家反馈："每只股票的波动情况很相似，都会在固定时间突然大涨或者大跌一轮"。
+     * 改法是把"日内形状"拆成两层，所以这里也拆成两条断言：
+     * <ol>
+     *   <li><b>全市场共性 U 型</b>（纯函数）：开/尾盘比盘中段高 1.05~1.25 倍。
+     *       旧版 1.6/0.8/1.4 已被否掉——玩家看到的是"开局动一下、中间几乎平盘、收盘再动一下"。</li>
+     *   <li><b>个股相位</b>：两只票相位差 45 跳，模拟出来的 |r| 峰值必须落在不同的时段。
+     *       这条直接钉住"每只股不该有共性"——旧版 24 只票共用一条曲线，必然同涨同跌。</li>
+     * </ol>
+     * 另附：盘中段仍有足够波动（> 0.75 × 本股 σ 尺度），不许被压成一条直线。
      */
     @Test
-    void intradayAbsoluteReturnsFollowUShape() {
-        StockDefs.StockDef def = new StockDefs.StockDef(994L, "T994", "测试丁", "新能源", 100.0, 1.0, 0.0);
+    void intradayShapeKeepsCommonUShapeAndPerStockPhase() {
+        // ① 全市场共性 U 型（纯函数断言）
+        double mid = VolatilityEngine.uShapeFactor(45);
+        double open = VolatilityEngine.uShapeFactor(0);
+        double close = VolatilityEngine.uShapeFactor(85);
+        assertTrue(open > mid * 1.05 && open < mid * 1.25,
+                "开盘段共性 U 型必须是盘中的 1.05~1.25 倍，实测 " + (open / mid));
+        assertTrue(close > mid * 1.03 && close < mid * 1.25,
+                "尾盘段共性 U 型必须是盘中的 1.03~1.25 倍，实测 " + (close / mid));
+
+        // ② 个股相位：两只票相位差 45 跳，活跃峰值必须错开
+        StockDefs.StockDef morning = new StockDefs.StockDef(994L, "T994", "测试早盘票", "新能源", 100.0, 1.0, 1.0, 4, 1.0, 0.0);
+        StockDefs.StockDef afternoon = new StockDefs.StockDef(996L, "T996", "测试午后票", "新能源", 100.0, 1.0, 1.0, 49, 1.0, 0.0);
         for (long seed : SEEDS) {
             VolatilityEngine engine = new VolatilityEngine();
             Random ctxRng = new Random(seed);
-            Random rng = new Random(seed * 1_000 + 1);
-            Quote q = new Quote();
-            int days = 1000;
-            double sumOpen = 0.0;
-            double sumMid = 0.0;
-            double sumClose = 0.0;
-            int nOpen = 0;
-            int nMid = 0;
-            int nClose = 0;
+            Random rngA = new Random(seed * 1_000 + 1);
+            Random rngB = new Random(seed * 1_000 + 2);
+            Quote qA = new Quote();
+            Quote qB = new Quote();
+            int days = 400;
+            double[] bandA = new double[9];
+            double[] bandB = new double[9];
+            double sumMidA = 0;
+            int nMidA = 0;
             for (int day = 0; day < days; day++) {
                 for (int tick = 0; tick < GameConstants.TOTAL_TICKS; tick++) {
                     VolatilityEngine.TickContext ctx = engine.beginTick(ctxRng);
-                    double r = engine.rawReturn(q, def, 0.0, Map.of(), VolRegime.NORMAL, tick, ctx, rng);
-                    engine.updateGarch(q, r);
-                    double abs = Math.abs(r);
-                    if (tick <= 10) {
-                        sumOpen += abs;
-                        nOpen++;
-                    } else if (tick >= 30 && tick <= 60) {
-                        sumMid += abs;
-                        nMid++;
-                    } else if (tick >= 80) {
-                        sumClose += abs;
-                        nClose++;
+                    double rA = engine.rawReturn(qA, morning, 0.0, Map.of(), VolRegime.NORMAL, tick, ctx, rngA);
+                    double rB = engine.rawReturn(qB, afternoon, 0.0, Map.of(), VolRegime.NORMAL, tick, ctx, rngB);
+                    engine.updateGarch(qA, rA, VolatilityEngine.conditionalSigma(qA, morning, VolRegime.NORMAL, tick));
+                    engine.updateGarch(qB, rB, VolatilityEngine.conditionalSigma(qB, afternoon, VolRegime.NORMAL, tick));
+                    bandA[tick / 10] += Math.abs(rA);
+                    bandB[tick / 10] += Math.abs(rB);
+                    if (tick >= 30 && tick <= 60) {
+                        sumMidA += Math.abs(rA);
+                        nMidA++;
                     }
                 }
             }
-            double avgOpen = sumOpen / nOpen;
-            double avgMid = sumMid / nMid;
-            double avgClose = sumClose / nClose;
-            assertTrue(avgMid > GameConstants.SIGMA_STOCK * 0.75,
-                    "seed " + seed + ": 盘中段 |r|=" + avgMid + " 太安静，必须大于 "
-                            + (GameConstants.SIGMA_STOCK * 0.75));
-            assertTrue(avgOpen > avgMid * 1.08 && avgOpen < avgMid * 1.5,
-                    "seed " + seed + ": 开盘段 |r|=" + avgOpen + " 必须比盘中段 " + avgMid
-                            + " 高 1.08~1.5 倍（实测比 " + (avgOpen / avgMid) + "）");
-            assertTrue(avgClose > avgMid * 1.08 && avgClose < avgMid * 1.5,
-                    "seed " + seed + ": 尾盘段 |r|=" + avgClose + " 必须比盘中段 " + avgMid
-                            + " 高 1.08~1.5 倍（实测比 " + (avgClose / avgMid) + "）");
+            int peakA = argmax(bandA);
+            int peakB = argmax(bandB);
+            assertTrue(Math.abs(peakA - peakB) >= 2,
+                    "seed " + seed + ": 两只相位差 45 跳的票，活跃峰值时段必须错开，实测 "
+                            + peakA + " vs " + peakB);
+            double avgMid = sumMidA / nMidA;
+            assertTrue(avgMid > VolatilityEngine.sigmaScale(qA, morning) * 0.5,
+                    "seed " + seed + ": 盘中段 |r|=" + avgMid + " 太安静，必须大于本股基准 σ 的 0.5 倍");
         }
     }
 
@@ -220,7 +231,7 @@ class VolatilityEngineTest {
      */
     @Test
     void dailyReturnsAreFatTailedRelativeToGaussian() {
-        StockDefs.StockDef def = new StockDefs.StockDef(995L, "T995", "测试戊", "新能源", 100.0, 1.0, 0.0);
+        StockDefs.StockDef def = new StockDefs.StockDef(995L, "T995", "测试戊", "新能源", 100.0, 1.0, 1.0, 0, 1.0, 0.0);
         for (long seed : SEEDS) {
             VolatilityEngine engine = new VolatilityEngine();
             Random ctxRng = new Random(seed);
@@ -233,7 +244,7 @@ class VolatilityEngineTest {
                 for (int tick = 0; tick < GameConstants.TOTAL_TICKS; tick++) {
                     VolatilityEngine.TickContext ctx = engine.beginTick(ctxRng);
                     double r = engine.rawReturn(q, def, 0.0, Map.of(), VolRegime.NORMAL, tick, ctx, rng);
-                    engine.updateGarch(q, r);
+                    engine.updateGarch(q, r, VolatilityEngine.conditionalSigma(q, def, VolRegime.NORMAL, tick));
                     daySum += r;
                 }
                 daily[day] = daySum;
@@ -251,6 +262,17 @@ class VolatilityEngineTest {
                     "seed " + seed + ": σ_emp=" + sigma + ", |r|>3σ 经验频率=" + freq + " 必须大于正态预测 "
                             + normalPred + " × 1.5（实测比 " + (freq / normalPred) + "）");
         }
+    }
+
+    /** 数组最大值所在的下标。 */
+    private static int argmax(double[] xs) {
+        int best = 0;
+        for (int i = 1; i < xs.length; i++) {
+            if (xs[i] > xs[best]) {
+                best = i;
+            }
+        }
+        return best;
     }
 
     /** 原点回归斜率 Σxy / Σx²。 */

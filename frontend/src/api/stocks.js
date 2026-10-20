@@ -15,3 +15,8 @@ export function fetchStockQuotes(stockId) {
 export function fetchStockKline(stockId, limit = 60) {
   return http.get(`/api/stocks/${stockId}/kline`, { params: { limit } })
 }
+
+// 单股股吧近期弹幕：GET /api/stocks/{id}/danmu（这只票专属 + 不点名的大盘闲聊）
+export function fetchStockDanmu(stockId, limit = 30) {
+  return http.get(`/api/stocks/${stockId}/danmu`, { params: { limit } })
+}

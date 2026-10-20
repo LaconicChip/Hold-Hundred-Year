@@ -1,6 +1,8 @@
 package com.holdhundredyear.web;
 
 import com.holdhundredyear.common.R;
+import com.holdhundredyear.event.DanmuService;
+import com.holdhundredyear.event.DanmuService.DanmuPost;
 import com.holdhundredyear.game.model.dto.IntradayPointDTO;
 import com.holdhundredyear.game.model.dto.KlinePointDTO;
 import com.holdhundredyear.game.model.dto.StockQuoteDTO;
@@ -23,9 +25,11 @@ import java.util.List;
 public class StockController {
 
     private final MarketQueryService marketQueryService;
+    private final DanmuService danmuService;
 
-    public StockController(MarketQueryService marketQueryService) {
+    public StockController(MarketQueryService marketQueryService, DanmuService danmuService) {
         this.marketQueryService = marketQueryService;
+        this.danmuService = danmuService;
     }
 
     /** 24 只股票静态信息 + 本账户最新行情（StockDefs 档案序）。 */
@@ -47,5 +51,19 @@ public class StockController {
                                         @PathVariable("id") long stockId,
                                         @RequestParam(defaultValue = "60") int limit) {
         return R.ok(marketQueryService.stockKline(userId, stockId, limit));
+    }
+
+    /**
+     * 单股股吧近期弹幕（2026-10-20 新增）：这只票专属 + 不点名的大盘闲聊，按 seq 升序。
+     *
+     * <p>为什么要有这个接口：弹幕只在盘中实时推，前端原本只留 30 条全局环形缓冲，
+     * 24 只票一分，个股页打开时几乎总是空的（玩家反馈"股吧弹幕不会正常显示"）。
+     * 后端按账户留一份每股历史，这里一次拉回来，页面才有"这里有人在聊"的样子。
+     */
+    @GetMapping("/{id}/danmu")
+    public R<List<DanmuPost>> danmu(@AuthenticationPrincipal Long userId,
+                                    @PathVariable("id") long stockId,
+                                    @RequestParam(defaultValue = "30") int limit) {
+        return R.ok(danmuService.recentFor(userId, stockId, limit));
     }
 }

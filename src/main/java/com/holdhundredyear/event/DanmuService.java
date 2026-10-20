@@ -14,6 +14,8 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -26,9 +28,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * 弹幕服务（Phase 8.3，spec §7.3）：按行情板当前快照判定触发类别并随机抽一条文案。
  *
  * <p>触发优先序（自顶向下首个命中即返回，全不命中返回 null 避免每跳刷屏）：
- * ① 指数大跌（≤ -2%）/ ② 指数大涨（≥ +2%）；③ 封板（任一 sealed=UP→涨停 / DOWN→跌停）；
- * ④ 暴涨暴跌（任一 |dayChangePct| &gt; 5%→急拉/跳水）；⑤ 小级别急动（3%~5%→次级急拉/跳水）；
- * ⑥ 横盘冷门（全部活跃股 |dayChangePct| &lt; 1%）；⑦ 否则 null。
+ * ① 封板（任一 sealed=UP→涨停 / DOWN→跌停，焦点票在封板的那几只里随机取）；
+ * ② 指数大跌（≤ -2%）/ ③ 指数大涨（≥ +2%）；
+ * ④ 暴涨暴跌（任一 |dayChangePct| > 5%→急拉/跳水）；⑤ 小级别急动（3%~5%→次级急拉/跳水）；
+ * ⑥ 横盘冷门（全部活跃股 |dayChangePct| < 1%）；⑦ 否则 null。
  *
  * <p>文案三级混抽（解决"来去就那几句"）：个股级触发先抽该股专属池（{@link StockPersonas}），
  * 50% 命中；否则 25% 抽所属板块池（{@link DanmuTexts#SECTOR_FLAVOR}），余下抽全局类别池。
@@ -50,10 +53,16 @@ public class DanmuService {
     static final int MIN_GAP_TICKS = 3;
     /** 记住最近几条文案，重复的直接不推（同一句看两次，人机味就出来了）。 */
     static final int RECENT_TEXT_MEMORY = 8;
+    /** 每只票保留的历史弹幕条数（内存态，够个股页翻一屏）。 */
+    static final int HISTORY_PER_STOCK = 20;
+    /** 大盘闲聊保留条数：每只票的股吧都带着它们（"不点名的大盘闲聊"）。 */
+    static final int HISTORY_MARKET = 10;
 
     private final ObjectProvider<PushService> pushProvider;
     /** per-user 发送节流（内存态，跨日靠跳序回零自动复位；重启后从头计也没坏处）。 */
     private final Map<Long, Throttle> throttles = new ConcurrentHashMap<>();
+    /** per-user 弹幕历史（内存态）：个股页要能翻出"这只票最近在聊什么"。 */
+    private final Map<Long, UserDanmu> histories = new ConcurrentHashMap<>();
 
     public DanmuService(ObjectProvider<PushService> pushProvider) {
         this.pushProvider = pushProvider;
@@ -61,6 +70,15 @@ public class DanmuService {
 
     /** 一条弹幕：类别（冷却与前端分组）、文案、焦点股（0 = 大盘级，不点名某只票）。 */
     record DanmuLine(String category, String text, long stockId) {
+    }
+
+    /**
+     * 一条已推送的弹幕（带本账户内自增序号）。
+     *
+     * <p>序号由后端统一发：前端拿它去重（WS 实时推的那条与历史接口拉回来的那条是同一条），
+     * 也用它做"最新在上"的排序依据。
+     */
+    public record DanmuPost(long seq, String category, String text, long stockId) {
     }
 
     /** 纯判定函数：按 board 快照返回命中类别的一条文案，未命中返回 null。
@@ -72,7 +90,32 @@ public class DanmuService {
 
     /** 纯判定函数：同上，但带上类别与焦点股。 */
     static DanmuLine pickLine(long userId, QuoteBoard board, Random rng) {
-        // ①② 大盘级：只抽全局池
+        // ① 封板：焦点票在封板的那几只里随机取
+        // （旧版永远取"第一只封板的票"，弹幕于是全落在同一只票上，别的票的股吧一直空着）
+        // 优先级放在大盘之前（2026-10-20）：个股页的股吧该先说"这只票封板了"，
+        // 而不是先说大盘涨跌——日 σ 抬到 5% 之后指数经常 ±2%，大盘级弹幕会把名额占满，
+        // 结果每只票的股吧里全是"指数高歌猛进"这类不点名的闲聊。
+        List<Quote> sealedUp = new ArrayList<>();
+        List<Quote> sealedDown = new ArrayList<>();
+        for (Quote q : board.getQuotes().values()) {
+            if (q.isHalted()) {
+                continue;
+            }
+            if (q.getSealed() == SealState.UP) {
+                sealedUp.add(q);
+            } else if (q.getSealed() == SealState.DOWN) {
+                sealedDown.add(q);
+            }
+        }
+        if (!sealedUp.isEmpty()) {
+            Quote focus = sealedUp.get(rng.nextInt(sealedUp.size()));
+            return new DanmuLine("涨停", pickStockFlavor(focus, DanmuTexts.LIMIT_UP, rng), focus.getStockId());
+        }
+        if (!sealedDown.isEmpty()) {
+            Quote focus = sealedDown.get(rng.nextInt(sealedDown.size()));
+            return new DanmuLine("跌停", pickStockFlavor(focus, DanmuTexts.LIMIT_DOWN, rng), focus.getStockId());
+        }
+        // ② 大盘级：只抽全局池
         if (board.getPrevIndex() > 0) {
             double indexPct = board.getIndexValue() / board.getPrevIndex() - 1;
             if (indexPct <= -0.02) {
@@ -82,23 +125,11 @@ public class DanmuService {
                 return new DanmuLine("大盘", pick(DanmuTexts.INDEX_RISE, rng), 0L);
             }
         }
-        // ③ 封板：焦点股就是封板那只
-        for (Quote q : board.getQuotes().values()) {
-            if (q.isHalted()) {
-                continue;
-            }
-            if (q.getSealed() == SealState.UP) {
-                return new DanmuLine("涨停", pickStockFlavor(q, DanmuTexts.LIMIT_UP, rng), q.getStockId());
-            }
-            if (q.getSealed() == SealState.DOWN) {
-                return new DanmuLine("跌停", pickStockFlavor(q, DanmuTexts.LIMIT_DOWN, rng), q.getStockId());
-            }
-        }
         boolean allCalm = true;
-        Quote bigUp = null;
-        Quote bigDown = null;
-        Quote minorUp = null;
-        Quote minorDown = null;
+        List<Quote> bigUps = new ArrayList<>();
+        List<Quote> bigDowns = new ArrayList<>();
+        List<Quote> minorUps = new ArrayList<>();
+        List<Quote> minorDowns = new ArrayList<>();
         for (Quote q : board.getQuotes().values()) {
             if (q.isHalted()) {
                 continue;
@@ -106,33 +137,29 @@ public class DanmuService {
             double pct = q.dayChangePct();
             double abs = Math.abs(pct);
             if (abs > 0.05) {
-                if (pct > 0) {
-                    bigUp = firstOrNull(bigUp, q);
-                } else {
-                    bigDown = firstOrNull(bigDown, q);
-                }
+                (pct > 0 ? bigUps : bigDowns).add(q);
             } else if (abs > 0.03) {
-                if (pct > 0) {
-                    minorUp = firstOrNull(minorUp, q);
-                } else {
-                    minorDown = firstOrNull(minorDown, q);
-                }
+                (pct > 0 ? minorUps : minorDowns).add(q);
             } else if (abs >= 0.01) {
                 allCalm = false;
             }
         }
-        // ④ 暴涨暴跌、⑤ 小级别急动：焦点股取第一个越线的股
-        if (bigUp != null) {
-            return new DanmuLine("急拉", pickStockFlavor(bigUp, DanmuTexts.RALLY, rng), bigUp.getStockId());
+        // ④ 暴涨暴跌、⑤ 小级别急动：焦点票在同类里随机取（见上：不能让弹幕总落在同一只票上）
+        if (!bigUps.isEmpty()) {
+            Quote focus = bigUps.get(rng.nextInt(bigUps.size()));
+            return new DanmuLine("急拉", pickStockFlavor(focus, DanmuTexts.RALLY, rng), focus.getStockId());
         }
-        if (bigDown != null) {
-            return new DanmuLine("跳水", pickStockFlavor(bigDown, DanmuTexts.DIVE, rng), bigDown.getStockId());
+        if (!bigDowns.isEmpty()) {
+            Quote focus = bigDowns.get(rng.nextInt(bigDowns.size()));
+            return new DanmuLine("跳水", pickStockFlavor(focus, DanmuTexts.DIVE, rng), focus.getStockId());
         }
-        if (minorUp != null) {
-            return new DanmuLine("急拉", pickStockFlavor(minorUp, DanmuTexts.RALLY_MINOR, rng), minorUp.getStockId());
+        if (!minorUps.isEmpty()) {
+            Quote focus = minorUps.get(rng.nextInt(minorUps.size()));
+            return new DanmuLine("急拉", pickStockFlavor(focus, DanmuTexts.RALLY_MINOR, rng), focus.getStockId());
         }
-        if (minorDown != null) {
-            return new DanmuLine("跳水", pickStockFlavor(minorDown, DanmuTexts.DIVE_MINOR, rng), minorDown.getStockId());
+        if (!minorDowns.isEmpty()) {
+            Quote focus = minorDowns.get(rng.nextInt(minorDowns.size()));
+            return new DanmuLine("跳水", pickStockFlavor(focus, DanmuTexts.DIVE_MINOR, rng), focus.getStockId());
         }
         // ⑤ 横盘冷门
         if (allCalm) {
@@ -157,7 +184,54 @@ public class DanmuService {
         if (line == null || !allow(userId, tick, line)) {
             return;
         }
-        push.pushDanmu(userId, payload(line));
+        long seq = remember(userId, line);
+        push.pushDanmu(userId, payload(line, seq));
+    }
+
+    /**
+     * 记进本账户的弹幕历史并分配序号（内存态：弹幕不落库，重启后从头计）。
+     *
+     * <p>历史是"个股页能翻出这只票最近在聊什么"的唯一来源——前端原来只有 30 条全局环形缓冲，
+     * 24 只票一分，个股页几乎总是空的（玩家反馈"股吧弹幕不会正常显示"）。
+     */
+    private long remember(long userId, DanmuLine line) {
+        UserDanmu history = histories.computeIfAbsent(userId, key -> new UserDanmu());
+        synchronized (history) {
+            long seq = ++history.seq;
+            DanmuPost post = new DanmuPost(seq, line.category(), line.text(), line.stockId());
+            if (line.stockId() > 0) {
+                Deque<DanmuPost> queue = history.byStock.computeIfAbsent(line.stockId(), key -> new ArrayDeque<>());
+                queue.addLast(post);
+                while (queue.size() > HISTORY_PER_STOCK) {
+                    queue.removeFirst();
+                }
+            } else {
+                history.market.addLast(post);
+                while (history.market.size() > HISTORY_MARKET) {
+                    history.market.removeFirst();
+                }
+            }
+            return seq;
+        }
+    }
+
+    /**
+     * 某只票的近期弹幕：这只票专属 + 不点名的大盘闲聊（按 seq 升序，最新在后）。
+     *
+     * <p>与前端 {@code forumPosts} 的过滤口径一致（"在说这只票的 + 不点名的大盘闲聊"）。
+     */
+    public List<DanmuPost> recentFor(long userId, long stockId, int limit) {
+        UserDanmu history = histories.get(userId);
+        if (history == null) {
+            return List.of();
+        }
+        synchronized (history) {
+            List<DanmuPost> all = new ArrayList<>(history.byStock.getOrDefault(stockId, new ArrayDeque<>()));
+            all.addAll(history.market);
+            all.sort(Comparator.comparingLong(DanmuPost::seq));
+            int from = Math.max(0, all.size() - Math.max(1, limit));
+            return List.copyOf(all.subList(from, all.size()));
+        }
     }
 
     /**
@@ -197,7 +271,13 @@ public class DanmuService {
 
     /** 下发载荷：带上类别与焦点股，个股页的股吧才分得出"在说谁"。 */
     static String payload(DanmuLine line) {
+        return payload(line, 0L);
+    }
+
+    /** 下发载荷（带本账户内序号）：前端据此把实时推送与历史接口拉回来的条目去重合并。 */
+    static String payload(DanmuLine line, long seq) {
         Map<String, Object> body = new LinkedHashMap<>();
+        body.put("seq", seq);
         body.put("category", line.category());
         body.put("stockId", line.stockId());
         body.put("text", line.text());
@@ -209,6 +289,16 @@ public class DanmuService {
         private final Map<String, Integer> byCategory = new HashMap<>();
         private final Deque<String> recent = new ArrayDeque<>();
         private int lastTick = -MIN_GAP_TICKS;
+    }
+
+    /** 单个用户的弹幕历史（内存态）：每股最近若干条 + 大盘闲聊若干条。 */
+    private static final class UserDanmu {
+        /** 本账户内自增序号（前端据此去重与排序）。 */
+        private long seq;
+        /** stockId → 该票的弹幕（焦点票专属）。 */
+        private final Map<Long, Deque<DanmuPost>> byStock = new HashMap<>();
+        /** 不点名的大盘闲聊：每只票的股吧都带着它们。 */
+        private final Deque<DanmuPost> market = new ArrayDeque<>();
     }
 
     /**
@@ -224,11 +314,6 @@ public class DanmuService {
             return pick(DanmuTexts.sectorPool(StockDefs.byId(focus.getStockId()).sector()), rng);
         }
         return pick(globalPool, rng);
-    }
-
-    /** 保留第一个命中的焦点股（后续同类越线股不覆盖）。 */
-    private static Quote firstOrNull(Quote current, Quote candidate) {
-        return current != null ? current : candidate;
     }
 
     /** 从类别池随机抽一条文案（非空池，nextIndex 恒在界内）。 */

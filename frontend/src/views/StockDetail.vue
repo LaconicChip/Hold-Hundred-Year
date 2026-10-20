@@ -144,7 +144,7 @@ import { useQuotesStore } from '@/stores/quotes'
 import { useMarketStore } from '@/stores/market'
 import { useUserStore } from '@/stores/user'
 import { useMessagesStore } from '@/stores/messages'
-import { fetchStockList, fetchStockQuotes, fetchStockKline } from '@/api/stocks'
+import { fetchStockList, fetchStockQuotes, fetchStockKline, fetchStockDanmu } from '@/api/stocks'
 import StockChart from '@/components/StockChart.vue'
 import KlineChart from '@/components/KlineChart.vue'
 import StockForum from '@/components/StockForum.vue'
@@ -275,6 +275,16 @@ async function loadMessages() {
   }
 }
 
+// 股吧历史：这只票最近在聊什么（弹幕只在盘中实时推，一次性拉一段回来，页面才有内容）
+async function loadForum() {
+  try {
+    const posts = await fetchStockDanmu(stockId.value, 30)
+    messages.setDanmuHistory(stockId.value, posts)
+  } catch {
+    // 股吧拉不到不阻塞个股详情（标签页会显示"还没人聊这只票"）
+  }
+}
+
 // 市场状态轮询（2 秒一次：午休↔下午盘切换时交易面板与倒计时随动）
 let statePoll = null
 // 分时轮询：一跳一拉，间隔与引擎跳速对齐（收盘态拉到完整 90 点，开销可忽略）
@@ -304,6 +314,7 @@ onMounted(async () => {
   await loadPosition()
   await user.fetchAssets().catch(() => {})
   await loadMessages()
+  await loadForum()
 })
 
 onUnmounted(() => {
@@ -318,6 +329,7 @@ watch(stockId, async () => {
   await loadChartData()
   await loadPosition()
   await loadMessages()
+  await loadForum()
 })
 </script>
 

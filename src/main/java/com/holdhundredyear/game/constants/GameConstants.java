@@ -28,18 +28,29 @@ public final class GameConstants {
 
     // ---- 三层因子基准波动（spec §5.2，每跳 σ）----
     /**
-     * 个股特质波动（每跳）。2026-10-16 重标定：0.0035 → 0.0017；2026-10-19 微调到 0.0016。
+     * 个股特质波动（每跳）。2026-10-20 引擎大改：0.0016 → 0.0050。
      *
-     * <p>旧值下整局实测<b>日收益标准差 8.0%、55% 的股票天收在涨跌停板上</b>（真实 A 股约
-     * 2% 与 1%~2%），等于"每天一半时间在板上"，玩家形容为"不是涨停就是跌停"。标定验收见
-     * {@code VolatilityDistributionTest}（跑完整局量分布，不是纸面推算）。10-19 把日内 U 型
-     * 压平、盘中段抬高，单跳 σ 略降，保证整日 σ 仍在券商量级，但分时中段不再像一条直线。
+     * <p>三次标定的账：0.0035 → 满屏涨停（日 σ 8.0%、55% 的股票天收在板上）→ 0.0017/0.0016
+     * → 波动太小（实测日 σ 3.0~3.2%，玩家反馈"没感觉"）。这次把 0.0016 抬到 0.0050：
+     * 有机日 σ 落到 4.5%~5.5%（用户 2026-10-20 明确选的"够刺激"档），贴板率另有闸门管住。
+     *
+     * <p>注意这是<b>基准</b>值，实际每只票乘自己的 {@code volMult}（0.55~1.70），
+     * 所以银行/煤炭是死水、算力/券商是疯票；ST 票再乘 {@link #ST_VOL_FACTOR} 收窄
+     * （±5% 的板很近，ST 还按普通波动跑就会天天顶在板上）。验收见
+     * {@code VolatilityDistributionTest}（跑完整局量分布，不是纸面推算）。
      */
-    public static final double SIGMA_STOCK = 0.0016;
-    /** 市场因子波动（每跳）：与个股同比例收敛，保住"齐涨齐跌"的相对强度。 */
-    public static final double SIGMA_MKT = 0.0009;
-    /** 板块因子波动（每跳）。 */
-    public static final double SIGMA_SEC = 0.0006;
+    public static final double SIGMA_STOCK = 0.0038;
+    /**
+     * 市场因子波动（每跳）。2026-10-20 引擎大改：0.0009 → 0.0013。
+     *
+     * <p>个股特质 σ 抬了 3 倍多之后，市场因子的相对分量被稀释，"大盘齐涨齐跌"的手感会变淡
+     * （同板块两票的相关差从 0.10 掉到 0.03，板块联动几乎看不出来）。所以把市场与板块因子
+     * 同步抬一档，保住"大盘带着走、板块一起动"这个 A 股体感——但冲击落地时按个股敏感度分化
+     * （{@code StockDef.policyBeta}），不是 24 只票被砸同一个数。
+     */
+    public static final double SIGMA_MKT = 0.0013;
+    /** 板块因子波动（每跳）。2026-10-20 引擎大改：0.0006 → 0.0020（同上，保住板块联动）。 */
+    public static final double SIGMA_SEC = 0.0020;
 
     /** 波动状态乘子（不可变，按 CALM/NORMAL/WILD 保序）。 */
     public static final Map<VolRegime, Double> VOL_REGIME;
@@ -59,11 +70,17 @@ public final class GameConstants {
      * 跳跃由此从"事件"退化成"背景噪声"，日收益被它推着走。现在每股每天约 0.45 次，
      * 单次幅度也放大（见 JUMP_K_*），让"跳"重新变成看得出来的事，而不是天天有。
      */
-    public static final double JUMP_PROB = 0.005;
-    /** 跳跃强度下限（× SIGMA_STOCK）：SIGMA_STOCK 降了，倍数补回来，单次跳跃仍是 0.9%~1.5% 量级。 */
+    public static final double JUMP_PROB = 0.007;
+    /**
+     * 跳跃强度下限（× 该股当跳 σ）。2026-10-20 引擎大改：5 → 4。
+     *
+     * <p>跳跃幅度跟<b>该股自己的 σ</b> 走（不是全局基准），所以银行跳得轻、妖股跳得重；
+     * 倍数从 5~9 降到 4~6，是因为 σ 抬了 3 倍多——照旧 5~9 倍就是单跳 4% 的巨跳，
+     * 一次跳跃直接把这只票送上涨停板，贴板率会失控。
+     */
     public static final int JUMP_K_MIN = 5;
-    /** 跳跃强度上限（× SIGMA_STOCK）。 */
-    public static final int JUMP_K_MAX = 9;
+    /** 跳跃强度上限（× 该股当跳 σ）。 */
+    public static final int JUMP_K_MAX = 8;
 
     // ---- GARCH 波动聚集 ----
     /** 衰减系数。 */
@@ -81,29 +98,55 @@ public final class GameConstants {
 
     // ---- 日内 U 型 ----
     /**
-     * 日内波动曲线（2026-10-19 压平）。旧值 1.6 / 0.9 / 0.8 / 1.4 让开盘和尾盘各爆一下、
-     * 中间 70 跳只有 0.8 倍波动，玩家看到的是"开局动一下 → 一路几乎平盘 → 收盘再动一下"。
-     * 现在保留温和的开收盘抬升（约 1.2~1.3 倍），把盘中段抬到 0.95，让全天都有起伏；
-     * 整日 σ 仍由 {@code VolatilityDistributionTest} 卡在券商量级。
+     * 全市场共性的日内波动曲线（2026-10-20 引擎大改，从 1.25/1.0/0.95/1.15 压到 1.12/1.02/1.0/1.08）。
+     *
+     * <p>只作用于<b>市场因子与板块因子</b>：所有票共享同一条曲线，"开盘与尾盘略活跃"这个
+     * A 股共性保留，但幅度刻意温和——旧版 1.6/0.8/1.4 会让玩家看到"开局动一下、中间几乎平盘、
+     * 收盘再动一下"。个股特质项另走 {@link #U_PHASE_AMP} 的相位调制，两者是乘法关系。
      */
-    public static final double U_OPEN = 1.25;
+    public static final double U_OPEN = 1.12;
     /** 开盘段末端（tick 10，与 U_OPEN 线性过渡）。 */
-    public static final double U_OPEN_END = 1.0;
+    public static final double U_OPEN_END = 1.02;
     /** 盘中波动（tick 11..79）。 */
-    public static final double U_MID = 0.95;
+    public static final double U_MID = 1.0;
     /** 尾盘波动（tick 80..89）。 */
-    public static final double U_CLOSE = 1.15;
+    public static final double U_CLOSE = 1.08;
+
+    /**
+     * 个股日内相位振幅（2026-10-20 引擎大改新增）。
+     *
+     * <p>每只票一天里有一条自己的"活跃包络"：σ 在相位点最高（1+amp），相位点后 45 跳最低
+     * （1−amp），相位由 {@code StockDef.volPhase} 决定，24 只票互不相同。玩家反馈的
+     * "都会在固定时间突然大涨或者大跌一轮"，根因就是旧版 24 只票共用同一条 U 型曲线——
+     * 波动永远在同样的时段整体放大。现在改成"各股各节奏"：银行的活跃段在尾盘、
+     * 券商在开盘、光伏在午后，全市场不再有固定的暴动时刻。
+     */
+    public static final double U_PHASE_AMP = 0.22;
+
+    /**
+     * ST 票的波动收窄系数（2026-10-20 引擎大改新增）。
+     *
+     * <p>ST 的涨跌停只有 ±5%，而本局的日 σ 抬到了 5% 上下——ST 票若按普通波动跑，
+     * 盘中摸到 ±4% 的概率很高、天天顶在板上（现实里 ST 股恰恰是波动很小的品种，
+     * 因为价格被窄幅限制住）。所以戴帽后按 0.55 收一档，摘帽自动恢复。
+     */
+    public static final double ST_VOL_FACTOR = 0.55;
 
     // ---- 磁吸效应（Phase 6 封板机用，先立常量）----
     /**
-     * 日内均值回归强度（每跳，向当日均价回拉的系数）。2026-10-16 新增，见
-     * {@link com.holdhundredyear.market.engine.VolatilityEngine#rawReturn}。
+     * 日内均值回归强度（每跳，向当日均价回拉的系数）。2026-10-16 新增，
+     * 见 {@link com.holdhundredyear.market.engine.VolatilityEngine#rawReturn}。
      *
      * <p>纯随机游走只有"越走越远"，没有"涨多了回一下"，所以分时图像一条斜线而不是一团抖动。
-     * 往当日均价回拉才有真实分时那种围绕均价来回震荡的手感；0.06 是实测出来的：再大就把
-     * 日内趋势抹平（板块行情演不出来），再小就没有抖动。
+     * 往当日均价回拉才有真实分时那种围绕均价来回震荡的手感。
+     *
+     * <p>2026-10-20 引擎大改：0.06 → 0.035。原因是这个力是<b>随偏离变大而变强</b>的：
+     * 开盘几跳均价几乎等于现价、几乎不拉，越到收盘偏离越大、拉得越狠，于是收盘前的波动被
+     * 系统性压平（实测日内方差从开盘往收盘一路衰减，"爆发起点"有 38% 挤在开盘那一段）。
+     * 调小后回归仍看得见（偏离 3% 时每跳拉 0.1%，相对单跳 σ 0.4% 仍有手感），
+     * 但不再把下午压成直线，日内的形状交给每只票自己的相位。
      */
-    public static final double OU_KAPPA = 0.06;
+    public static final double OU_KAPPA = 0.035;
 
     /**
      * 纪元漂移统一标定系数：{@link com.holdhundredyear.game.constants.EraDefs} 里的
@@ -117,16 +160,20 @@ public final class GameConstants {
     public static final double ERA_DRIFT_SCALE = 0.055;
 
     /**
-     * 触发磁吸的涨跌幅阈值。2026-10-16 重标定：0.065 → 0.08。
+     * 触发磁吸的涨跌幅阈值。2026-10-16 重标定 0.065 → 0.08；2026-10-20 引擎大改再抬到 0.09。
      *
      * <p>这条是"满屏涨停"真正的推手：旧阈值下只要当天涨过 6.5%，就开始每跳 +0.15% 的单向
      * 漂移——上午 10 点半涨到 6.5% 的话，剩下 40 跳能再推 6%，等于<b>一旦摸到 6.5% 就必然
      * 收在涨停板上</b>。磁吸效应本该是"越靠近板越难出去"，不该是"过线就自动上板"，所以把
      * 触发线抬到 8%：离板 2% 以内才吸，快收盘才涨过线的票也就吸几跳，不至于凭空多出一批板。
+     *
+     * <p>2026-10-20 再抬到 9% 并改成<b>按贴近度增强</b>：日 σ 抬到 5% 上下后，盘中摸到 8% 的票
+     * 会多得多，旧版"一过线就给恒定漂移"等于"只要摸到线就必然收在涨停板上"（实测有机贴板 16%，
+     * 相当于每天 4 只票上板）。现在触发线处吸力为 0、越靠近板越强，只有真正贴到板边的票被按住。
      */
-    public static final double MAGNET_TRIGGER = 0.08;
-    /** 磁吸漂移（每跳向涨跌停方向 0.15%）。 */
-    public static final double MAGNET_DRIFT = 0.0015;
+    public static final double MAGNET_TRIGGER = 0.09;
+    /** 磁吸漂移（每跳向涨跌停方向的最大值，贴到板时达到，触发线处为 0）。 */
+    public static final double MAGNET_DRIFT = 0.0012;
     /** 连板磁吸强度加成系数（仅涨停方向）。 */
     public static final double STREAK_MAGNET_BONUS = 0.5;
     /** 连板磁吸加成上限（连板数封顶）。 */

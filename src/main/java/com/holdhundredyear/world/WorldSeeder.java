@@ -28,6 +28,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -259,6 +260,45 @@ public class WorldSeeder {
             info.setBeta(def.beta());
             info.setIndexWeight(def.weight());
             stockInfoMapper.insertIgnore(info);
+        }
+        syncStockInfoWithDefs();
+    }
+
+    /**
+     * 让落库的 stock_info 与 StockDefs 对齐（2026-10-20 引擎大改加的）。
+     *
+     * <p>播种是 INSERT IGNORE：档案一旦改动（本次改了 24 只票的 β），存量库里的旧值会原地留着，
+     * 于是"档案与落库副本"不一致——`WorldSeederTest` 断言两边相等，会直接红；玩家在
+     * 老存档里看到的 β 也是旧档。StockDefs 是唯一真源，stock_info 只是它的落库副本，
+     * 所以这里把差异行补齐（改名同理：以前要手工 UPDATE 存量库，现在自动跟上）。
+     *
+     * <p>只在有差异时才写库，正常情况下这是一次查询、零更新。
+     */
+    private void syncStockInfoWithDefs() {
+        Map<Long, StockInfo> existing = new HashMap<>();
+        for (StockInfo row : stockInfoMapper.selectList(null)) {
+            existing.put(row.getId(), row);
+        }
+        for (StockDefs.StockDef def : StockDefs.ALL) {
+            StockInfo row = existing.get(def.id());
+            if (row == null) {
+                continue;
+            }
+            boolean same = def.code().equals(row.getStockCode())
+                    && def.name().equals(row.getStockName())
+                    && def.sector().equals(row.getSector())
+                    && row.getBasePrice() != null && row.getBasePrice().doubleValue() == def.basePrice()
+                    && row.getBeta() != null && row.getBeta().doubleValue() == def.beta();
+            if (same) {
+                continue;
+            }
+            row.setStockCode(def.code());
+            row.setStockName(def.name());
+            row.setSector(def.sector());
+            row.setBasePrice(BigDecimal.valueOf(def.basePrice()));
+            row.setBeta(def.beta());
+            row.setIndexWeight(def.weight());
+            stockInfoMapper.updateById(row);
         }
     }
 

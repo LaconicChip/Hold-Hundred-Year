@@ -116,10 +116,21 @@ const option = computed(() => {
     if (lastAvg != null) dev = Math.max(dev, Math.abs(lastAvg - base))
   }
   dev *= 1.15
-  const yMin = base - dev
-  const yMax = base + dev
-  const pctMin = -((dev / base) * 100)
-  const pctMax = (dev / base) * 100
+  let yMin = base - dev
+  let yMax = base + dev
+  // 涨跌停价是硬边界（2026-10-20）：顶到涨停时，纵轴必须停在涨停价上，
+  // 否则"10% 的板"被 15% 的留白顶到 11.5%，板就贴不到顶（玩家反馈"涨停时上面多显示
+  // 一点点空白，很难看"）。留 0.1% 的余量给涨跌停线的标签，其余空间还给真实振幅。
+  const EDGE = 0.001
+  if (props.limitUp > 0 && yMax > props.limitUp) {
+    yMax = Math.min(yMax, props.limitUp * (1 + EDGE))
+  }
+  if (props.limitDown > 0 && yMin < props.limitDown) {
+    yMin = Math.max(yMin, props.limitDown * (1 - EDGE))
+  }
+  // 右轴涨跌幅必须跟着夹紧后的左轴走（两根轴共用同一把尺子，否则百分比会与价格对不上）
+  const pctMin = ((yMin - base) / base) * 100
+  const pctMax = ((yMax - base) / base) * 100
 
   const last = lastPoint.value
   const lastPct = last ? ((last.price - base) / base) * 100 : 0

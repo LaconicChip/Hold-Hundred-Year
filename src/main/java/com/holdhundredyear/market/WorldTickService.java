@@ -161,8 +161,13 @@ public class WorldTickService {
                     continue;
                 }
                 double prev = q.getCurrent();
+                // 全市场冲击按个股敏感度分化（2026-10-20 引擎大改）：降准降息这类消息
+                // 落地时，券商/地产反应大（policyBeta 1.3~1.5）、银行/煤炭反应小（0.6~0.8），
+                // 而不是 24 只票在同一跳被砸同一个数——那正是玩家说的"都在固定时间
+                // 突然大涨或大跌一轮"。个股专属冲击与剧本冲击原样保留（那是"这只票自己的故事"）。
                 double r = volEngine.rawReturn(q, def, muMkt, sectorCoefs, board.getVolRegime(), tick, ctx, rng)
-                        + marketShock + board.getShocks().consumeStock(q.getStockId())
+                        + marketShock * def.policyBeta()
+                        + board.getShocks().consumeStock(q.getStockId())
                         + sealMachine.magnetDrift(q);
                 double newPrice = Math.max(q.limitDownPrice(),
                         Math.min(q.limitUpPrice(), Quote.round2(prev * (1 + r))));
@@ -170,7 +175,8 @@ public class WorldTickService {
                 sealMachine.apply(q, tick, rng, board.getShocks());
                 double finalPrice = q.getCurrent();
                 q.appendTick(finalPrice);
-                volEngine.updateGarch(q, (finalPrice - prev) / prev);
+                volEngine.updateGarch(q, (finalPrice - prev) / prev,
+                        VolatilityEngine.conditionalSigma(q, def, board.getVolRegime(), tick));
                 returns.put(q.getStockId(), (finalPrice - prev) / prev);
             }
 

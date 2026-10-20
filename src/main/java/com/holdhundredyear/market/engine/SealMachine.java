@@ -18,19 +18,27 @@ import java.util.Random;
 public class SealMachine {
 
     /** 未封板时的磁吸漂移（无随机）：|dayChange|>=MAGNET_TRIGGER 时朝触发方向漂移。
-     *  幅度 = MAGNET_DRIFT × (1 + STREAK_MAGNET_BONUS × min(limitUpStreak, STREAK_MAGNET_CAP))，仅涨停方向享连板加成。
-     *  dayChange>0 → 正漂移（向上磁吸）；<0 → 负漂移。未触发 → 0。 */
+     *  幅度 = MAGNET_DRIFT × 贴近度 × (1 + STREAK_MAGNET_BONUS × min(limitUpStreak, STREAK_MAGNET_CAP))，
+     *  仅涨停方向享连板加成。dayChange>0 → 正漂移（向上磁吸）；<0 → 负漂移。未触发 → 0。
+     *
+     *  <p><b>贴近度</b>（2026-10-20 引擎大改）：吸力随"离板还有多远"线性增强——触发线处为 0，
+     *  板上为满档。旧版是"一过线就给恒定漂移"，等于"只要摸到 6.5% 就必然收在涨停板上"；
+     *  日 σ 抬到 5% 之后更夸张（实测有机贴板 16%，等于每天 4 只票上板，玩家又要说
+     *  "不是涨停就是跌停"）。现在只有真正贴到板边的票才被按住，涨到 8% 就回落是常态。 */
     public double magnetDrift(Quote q) {
         double chg = q.dayChangePct();
-        if (Math.abs(chg) < GameConstants.MAGNET_TRIGGER) {
+        double abs = Math.abs(chg);
+        if (abs < GameConstants.MAGNET_TRIGGER) {
             return 0.0;
         }
+        double room = Math.max(1e-6, q.effectiveLimitPct() - GameConstants.MAGNET_TRIGGER);
+        double strength = Math.min(1.0, (abs - GameConstants.MAGNET_TRIGGER) / room);
         if (chg > 0) {
             double streakBonus = GameConstants.STREAK_MAGNET_BONUS
                     * Math.min(q.getLimitUpStreak(), GameConstants.STREAK_MAGNET_CAP);
-            return GameConstants.MAGNET_DRIFT * (1 + streakBonus);
+            return GameConstants.MAGNET_DRIFT * strength * (1 + streakBonus);
         }
-        return -GameConstants.MAGNET_DRIFT;
+        return -GameConstants.MAGNET_DRIFT * strength;
     }
 
     /** 价格更新后调用（tick = 当前跳序 0..89；halted 股票调用方应跳过，本方法不检查）。

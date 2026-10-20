@@ -122,8 +122,8 @@ class SealMachineTest {
     @Test
     void beyondMagnetLineUpSealsMoreThanHalfWithinTwentyTicks() {
         for (long seed : SEEDS) {
-            // 108.5 = 昨收 100 涨 8.5%，在新触发线 8% 之上（旧用例用的 7% 现在不该吸，见 GameConstants）
-            int sealed = countSealedWithinTicks(108.5, 0, seed, TRIALS);
+            // 109.5 = 昨收 100 涨 9.5%，在磁吸线（9%）之上
+            int sealed = countSealedWithinTicks(109.5, 0, seed, TRIALS);
             assertTrue(sealed > TRIALS / 2,
                     "seed " + seed + ": 磁吸线上方 20 跳封板率 " + (sealed / (double) TRIALS) + " 必须 > 50%");
         }
@@ -132,7 +132,7 @@ class SealMachineTest {
     @Test
     void beyondMagnetLineDownSealsMoreThanHalfWithinTwentyTicks() {
         for (long seed : SEEDS) {
-            int sealed = countSealedWithinTicks(91.5, 0, seed, TRIALS);
+            int sealed = countSealedWithinTicks(90.5, 0, seed, TRIALS);
             assertTrue(sealed > TRIALS / 2,
                     "seed " + seed + ": 磁吸线下方 20 跳封板率 " + (sealed / (double) TRIALS)
                             + " 必须 > 50%（跌停方向对称）");
@@ -246,28 +246,46 @@ class SealMachineTest {
     @Test
     void streakTwoSealsMoreThanStreakZeroWithinTwentyTicks() {
         for (long seed : SEEDS) {
-            // 109 = 涨 9%，在新磁吸线（MAGNET_TRIGGER=8%）之上、涨停价 110 之下
-            int plain = countSealedWithinTicks(109.0, 0, seed, TRIALS);
-            int hot = countSealedWithinTicks(109.0, 2, seed, TRIALS);
+            // 109.5 = 涨 9.5%，在磁吸线（9%）之上、涨停价 110 之下
+            int plain = countSealedWithinTicks(109.5, 0, seed, TRIALS);
+            int hot = countSealedWithinTicks(109.5, 2, seed, TRIALS);
             assertTrue(hot > plain,
                     "seed " + seed + ": streak=2 封板率 " + (hot / (double) TRIALS)
                             + " 必须高于 streak=0 的 " + (plain / (double) TRIALS));
         }
     }
 
+    /**
+     * 磁吸漂移：<b>按贴近度增强</b>（2026-10-20 引擎大改）。
+     *
+     * <p>旧版是"一过触发线就给恒定漂移"——那等于"只要摸到线就必然收在涨停板上"，
+     * 是"不是涨停就是跌停"的元凶。现在触发线处吸力为 0，越贴近板越强（板上为满档），
+     * 连板加成照旧只给涨停方向。
+     */
     @Test
-    void magnetDriftScalesWithCappedStreakBonusUpOnly() {
-        assertEquals(0.0015, machine.magnetDrift(quote(109.0, 0)), 1e-12,
-                "streak=0 → 基础磁吸 MAGNET_DRIFT");
-        assertEquals(0.0030, machine.magnetDrift(quote(109.0, 2)), 1e-12,
-                "streak=2 → MAGNET_DRIFT×(1+0.5×2) = 0.0015×2");
-        assertEquals(0.0045, machine.magnetDrift(quote(109.0, 4)), 1e-12,
-                "streak=4 → MAGNET_DRIFT×(1+0.5×4) = 0.0015×3");
-        assertEquals(0.0045, machine.magnetDrift(quote(109.0, 6)), 1e-12,
+    void magnetDriftGrowsWithClosenessToTheBoardAndOnlyUpGetsStreakBonus() {
+        double trigger = GameConstants.MAGNET_TRIGGER;
+        double limit = 0.10;
+        double drift = GameConstants.MAGNET_DRIFT;
+        // 触发线上：贴近度 0 → 无漂移
+        assertEquals(0.0, machine.magnetDrift(quote(100 * (1 + trigger), 0)), 1e-12,
+                "恰好压在磁吸线上 → 贴近度为 0，不推");
+        // 板边（+10%）：贴近度 1 → 满档
+        assertEquals(drift, machine.magnetDrift(quote(110.0, 0)), 1e-12,
+                "贴到涨停价 → 满档磁吸 MAGNET_DRIFT");
+        // 半程：贴近度 0.5 → 半档
+        double half = trigger + (limit - trigger) * 0.5;
+        assertEquals(drift * 0.5, machine.magnetDrift(quote(100 * (1 + half), 0)), 1e-12,
+                "半程贴近 → 半档磁吸");
+        // 连板加成只给涨停方向
+        assertEquals(drift * 2, machine.magnetDrift(quote(110.0, 2)), 1e-12,
+                "streak=2 → MAGNET_DRIFT×(1+0.5×2)");
+        assertEquals(drift * 3, machine.magnetDrift(quote(110.0, 4)), 1e-12,
+                "streak=4 → MAGNET_DRIFT×(1+0.5×4)");
+        assertEquals(drift * 3, machine.magnetDrift(quote(110.0, 6)), 1e-12,
                 "streak=6 连板数封顶于 STREAK_MAGNET_CAP=4，与 streak=4 同值");
-        // 91 = 跌 9%，在新磁吸线（8%）之下；旧用例的 -7% 现在不该吸
-        assertEquals(-GameConstants.MAGNET_DRIFT,
-                machine.magnetDrift(quote(91.0, 4)), 1e-12,
+        // 跌停方向不享连板加成
+        assertEquals(-drift, machine.magnetDrift(quote(90.0, 4)), 1e-12,
                 "跌停方向不享连板加成，恒为 -MAGNET_DRIFT");
     }
 
@@ -321,16 +339,17 @@ class SealMachineTest {
         // 触发线读常量，别再把数字抄进断言里：2026-09 那版把 6.5% 写死，抬到 8% 时全靠改测试才发现
         double trigger = GameConstants.MAGNET_TRIGGER;
         double drift = GameConstants.MAGNET_DRIFT;
-        assertEquals(drift, machine.magnetDrift(quote(100 * (1 + trigger + 0.02), 0)), 1e-12,
-                "触发线上方 → 正向磁吸");
-        assertEquals(-drift, machine.magnetDrift(quote(100 * (1 - trigger - 0.02), 0)), 1e-12,
-                "触发线下方 → 负向磁吸");
+        // 板边（贴近度 1）→ 满档正/负漂移
+        assertEquals(drift, machine.magnetDrift(quote(110.0, 0)), 1e-12,
+                "贴到涨停价 → 正向磁吸满档");
+        assertEquals(-drift, machine.magnetDrift(quote(90.0, 0)), 1e-12,
+                "贴到跌停价 → 负向磁吸满档");
         assertEquals(0.0, machine.magnetDrift(quote(105.0, 0)), 1e-12, "|chg|=5% 未触发 → 0");
         assertEquals(0.0, machine.magnetDrift(quote(95.0, 0)), 1e-12, "|chg|=5% 未触发 → 0");
-        // 恰好压线：>= 含等号（旧用例在 6.5% 上验这条，逻辑没变，跟着阈值走）
-        assertEquals(drift, machine.magnetDrift(quote(100 * (1 + trigger), 0)), 1e-12,
-                "chg 恰为触发线 → 触发（>= 含等号）");
-        assertEquals(-drift, machine.magnetDrift(quote(100 * (1 - trigger))), 1e-12,
-                "chg 恰为负触发线 → 触发（>= 含等号）");
+        // 恰好压线：>= 含等号，但贴近度为 0 → 不推（旧用例在 6.5% 上验这条，逻辑没变，跟着阈值走）
+        assertEquals(0.0, machine.magnetDrift(quote(100 * (1 + trigger), 0)), 1e-12,
+                "chg 恰为触发线 → 触发（>= 含等号）但贴近度为 0");
+        assertEquals(0.0, machine.magnetDrift(quote(100 * (1 - trigger))), 1e-12,
+                "chg 恰为负触发线 → 触发（>= 含等号）但贴近度为 0");
     }
 }

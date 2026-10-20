@@ -25,7 +25,8 @@ export const useMessagesStore = defineStore('messages', {
     list: [], // MessageDTO 列表
     total: 0,
     danmu: [], // 弹幕环形缓冲：[{seq,text,user?}]，仅保留最近 DANMU_MAX 条
-    danmuSeq: 0, // 弹幕自增序号
+    danmuHistory: {}, // stockId → 后端拉回的股吧历史（个股页进页时取一次）
+    danmuSeq: 0, // 弹幕自增序号（后端下发，前端只做兜底）
     danmuVersion: 0, // 每来一条 +1：组件 watch 它，而不是 watch 会封顶的数组长度
     notifications: [], // 轻量通知对象（字段不定）
     banners: [], // 头条大弹幕队列（新消息按通道入队，播一条移一条）
@@ -39,11 +40,27 @@ export const useMessagesStore = defineStore('messages', {
       return state.list.filter((m) => !m.isRead).length
     },
 
-    // 某只票的股吧帖子：本票专属 + 不点名的大盘闲聊。
-    // 个股页的股吧标签和帖子列表共用这一份过滤口径，避免两处各写一遍后漂移。
+    /**
+     * 某只票的股吧帖子：本票专属 + 不点名的大盘闲聊。
+     * 个股页的股吧标签、帖子列表与日K图内飘弹幕共用这一份合并口径，避免两处各写一遍后漂移。
+     *
+     * <p>合并两路来源：① 后端历史接口拉回的（进个股页时取一次，几十条）；
+     * ② WS 实时推的（环形缓冲 30 条）。两路都用后端下发的 seq，按 seq 去重与排序。
+     */
     forumPosts: (state) => (stockId) => {
       const id = Number(stockId)
-      return state.danmu.filter((d) => !d.stockId || Number(d.stockId) === id)
+      const history = state.danmuHistory[id] || []
+      const live = state.danmu.filter((d) => !d.stockId || Number(d.stockId) === id)
+      const seen = new Set()
+      const merged = []
+      for (const p of [...history, ...live]) {
+        const key = p.seq ? `s${p.seq}` : `t${p.text}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        merged.push(p)
+      }
+      merged.sort((a, b) => (a.seq || 0) - (b.seq || 0))
+      return merged
     }
   },
 
@@ -167,7 +184,8 @@ export const useMessagesStore = defineStore('messages', {
 
     /**
      * 弹幕入列。载荷两种长相：
-     * ① 后端新版 {category, stockId, text}（个股页股吧靠 stockId 分得清"在说谁"）；
+     * ① 后端新版 {seq, category, stockId, text}（个股页股吧靠 stockId 分得清"在说谁"，
+     *    seq 用来跟历史接口拉回来的条目去重）；
      * ② 老版纯文本，容错解析"股吧ID：内容"。
      */
     pushDanmu(raw) {
@@ -176,10 +194,12 @@ export const useMessagesStore = defineStore('messages', {
       let user
       let category = ''
       let stockId = 0
+      let seq = 0
       if (typeof raw === 'object') {
         content = String(raw.text || '')
         category = raw.category || ''
         stockId = Number(raw.stockId) || 0
+        seq = Number(raw.seq) || 0
       } else {
         const str = String(raw)
         const idx = str.indexOf('：')
@@ -191,13 +211,38 @@ export const useMessagesStore = defineStore('messages', {
         }
       }
       if (!content) return
-      this.danmuSeq += 1
-      this.danmu.push({ id: this.danmuSeq, seq: this.danmuSeq, text: content, user, category, stockId })
+      // 序号优先用后端下发的（与历史接口同一套号，才能去重合并）；老版载荷才本地兜底
+      if (seq > this.danmuSeq) {
+        this.danmuSeq = seq
+      } else if (!seq) {
+        seq = ++this.danmuSeq
+      }
+      this.danmu.push({ id: seq, seq, text: content, user, category, stockId })
       // 维持环形缓冲上限
       if (this.danmu.length > DANMU_MAX) {
         this.danmu.splice(0, this.danmu.length - DANMU_MAX)
       }
       this.danmuVersion += 1 // 通知消费方按 seq 取增量（数组封顶不影响）
+    },
+
+    /**
+     * 存下某只票的股吧历史（进个股页时拉一次）。
+     *
+     * <p>光靠 WS 实时推是不够的：弹幕一天也就二三十条、还分散在 24 只票上，
+     * 前端只留 30 条环形缓冲的话，个股页打开时几乎总是空的。
+     */
+    setDanmuHistory(stockId, posts) {
+      const id = Number(stockId)
+      this.danmuHistory[id] = (posts || []).map((p) => {
+        const seq = Number(p.seq) || 0
+        return {
+          id: seq,
+          seq,
+          text: String(p.text || ''),
+          category: p.category || '',
+          stockId: Number(p.stockId) || 0
+        }
+      })
     },
 
     // 轻量通知入列（容错 title/content/kind 字段）

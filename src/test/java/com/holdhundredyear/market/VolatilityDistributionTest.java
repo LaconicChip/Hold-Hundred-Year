@@ -22,7 +22,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -38,6 +40,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>阈值口径：贴板只算到 ±10% 的（ST 的 ±5% 与停牌日天然落在外面）；剧本日（千股涨停/
  * 跌停、妖股连板）也算进来——玩家不看成因，他只看到满屏涨停。
+ *
+ * <p><b>2026-10-20：世界种子钉死</b>。原来用 seedUser 随机掷种子，导致三轮之间的
+ * 有机贴板率能差 3 个百分点（10.9%~17.1%），标定时根本分不清"改了参数"还是"换了一局"。
+ * 现在固定三个种子，跨轮次可逐项对比。
  */
 @SpringBootTest
 @Transactional
@@ -48,6 +54,8 @@ class VolatilityDistributionTest {
     private static final int SAMPLE_DAY = 30;
     private static final long[] SAMPLE_STOCKS = {1L, 5L, 12L};
     private static final int DAYS = GameMode.STANDARD.totalDays();
+    /** 固定的世界种子（2026-10-20 引擎大改标定用）：跨轮次可复现、可对比。 */
+    private static final long[] WORLD_SEEDS = {20261020L, 20261021L, 20261022L};
 
     @Autowired private WorldSeeder worldSeeder;
     @Autowired private FastForwardService fastForwardService;
@@ -65,9 +73,9 @@ class VolatilityDistributionTest {
         double organicPinnedSum = 0;
         double organicBigSum = 0;
         for (int run = 0; run < RUNS; run++) {
-            // 不指定种子：seedUser 掷出来的那个种子同时决定纪元排期与价格随机流，
-            // 事后改 user_game_state.world_seed 会让"排期来自 A、价格来自 B"，量出来的分布就不是一个世界。
             long userId = worldSeeder.seedUser("vd_" + run, "$2a$10$bcrypthash");
+            // 固定世界种子：排期与价格随机流都来自它，跨轮次才可比
+            setWorldSeed(userId, WORLD_SEEDS[run]);
             long seed = worldSeed(userId);
             for (int day = 1; day <= DAYS; day++) {
                 fastForwardService.skip(userId);
@@ -88,6 +96,8 @@ class VolatilityDistributionTest {
                     "VOLPROBE-ORGANIC bars=%d sigma=%.3f pct pinned=%.2f pct big6=%.2f pct",
                     stats.organicCount, stats.organicSigma * 100, stats.organicPinnedShare * 100,
                     stats.organicBigShare * 100));
+            // 个股离散度：死水票与疯票的日 σ 必须拉开（玩家反馈"每只股都很相似"的另一半）
+            System.out.println("VOLPROBE-PERSTOCK " + perStockSigma(userId, scriptedDays(userId)));
             organicSigmaSum += stats.organicSigma;
             organicPinnedSum += stats.organicPinnedShare;
             organicBigSum += stats.organicBigShare;
@@ -105,19 +115,42 @@ class VolatilityDistributionTest {
                 sigma * 100, big * 100, pinned * 100, organicSigma * 100, organicBig * 100, organicPinned * 100));
 
         // —— 以下三条只量"有机行情"，剧本日不参与 ——
-        // 真实 A 股个股日收益标准差约 2%，本游戏 24 只票清一色板块龙头/题材股，天然偏高，
-        // 所以上限给到 3.4%（重标定前是 8.0%，等于每天一半时间在板上）。
-        assertTrue(organicSigma > 0.012 && organicSigma < 0.034,
-                "organic daily sigma must sit in a broker-like band, got " + (organicSigma * 100) + " pct");
-        // 24 只票的世界里，有机贴板日 6% 约等于"每天 1.4 只票上板"——那是可以追涨停的玩法；
+        // 2026-10-20 引擎大改：用户明确要"够刺激"档——日 σ 4.5%~5.5%。
+        // 真实 A 股个股日 σ 约 2%，本游戏 24 只票清一色板块龙头/题材股，天然偏高，
+        // 所以上限给到 5.5%（重标定前是 8.0%，等于每天一半时间在板上）。
+        assertTrue(organicSigma > 0.042 && organicSigma < 0.058,
+                "organic daily sigma must sit in the 4.2~5.8 pct band, got " + (organicSigma * 100) + " pct");
+        // 24 只票的世界里，有机贴板 12% 约等于"每天 2.9 只票上板"——那是可以追涨停的玩法；
         // 重标定前是 55%（抛硬币决定涨停还是跌停），那才是玩家报的问题。
-        assertTrue(organicPinned < 0.06,
-                "organic pinned days must stay under 6 pct, got " + (organicPinned * 100) + " pct");
-        assertTrue(organicBig < 0.12,
-                "organic days beyond 6 pct must stay under 12 pct, got " + (organicBig * 100) + " pct");
+        // （2026-10-20 引擎大改后 σ 抬到 5% 上下，贴板率从 55% 降到 11%~12%，
+        //  但绝对量仍比旧版"1.4 只/天"高——用户 2026-10-20 明确选了"够刺激"档。）
+        assertTrue(organicPinned < 0.12,
+                "organic pinned days must stay under 12 pct, got " + (organicPinned * 100) + " pct");
+        assertTrue(organicBig < 0.26,
+                "organic days beyond 6 pct must stay under 26 pct, got " + (organicBig * 100) + " pct");
         // 剧本日照旧要轰轰烈烈：这里只保证名场面确实落地了
         assertTrue(pinned > 0.03,
                 "scripted set pieces must still land, overall pinned share was " + (pinned * 100) + " pct");
+    }
+
+    /** 每股的有机日 σ（打出来看离散度）：死水票与疯票必须拉开。 */
+    private String perStockSigma(long userId, Set<Integer> scripted) {
+        List<StockDailyBar> bars = stockDailyBarMapper.selectList(
+                new LambdaQueryWrapper<StockDailyBar>()
+                        .eq(StockDailyBar::getUserId, userId)
+                        .ge(StockDailyBar::getGameDay, 1));
+        Map<Long, List<Double>> byStock = new LinkedHashMap<>();
+        for (StockDailyBar bar : bars) {
+            if (scripted.contains(bar.getGameDay())) {
+                continue;
+            }
+            byStock.computeIfAbsent(bar.getStockId(), k -> new ArrayList<>())
+                    .add(bar.getChangePct() == null ? 0 : bar.getChangePct());
+        }
+        StringBuilder sb = new StringBuilder();
+        byStock.forEach((id, rets) -> sb.append(id).append(":")
+                .append(String.format("%.2f", std(rets) * 100)).append(" "));
+        return sb.toString();
     }
 
     /** 本局被剧本点名的日子（千股涨停/跌停、熔断、妖股连板、复牌潮、打新上市…）。 */
@@ -247,6 +280,13 @@ class VolatilityDistributionTest {
 
     private long worldSeed(long userId) {
         return gameState(userId).getWorldSeed();
+    }
+
+    /** 钉死世界种子：标定要跨轮次可比，就不能每轮换一局。 */
+    private void setWorldSeed(long userId, long seed) {
+        UserGameState gs = gameState(userId);
+        gs.setWorldSeed(seed);
+        userGameStateMapper.updateById(gs);
     }
 
     private UserGameState gameState(long userId) {
