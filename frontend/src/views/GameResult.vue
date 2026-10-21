@@ -337,7 +337,7 @@ function goMarket() {
 async function onRestart() {
   if (restarting.value) return
   try {
-    await ElMessageBox.confirm('重新播种一个全新世界，本局数据将封存，确定再来一局？', '再来一局', {
+    await ElMessageBox.confirm('重新播种一个全新世界，本局数据将被清空（不会另存一份），确定再来一局？', '再来一局', {
       type: 'warning',
       confirmButtonText: '再来一局',
       cancelButtonText: '再想想'

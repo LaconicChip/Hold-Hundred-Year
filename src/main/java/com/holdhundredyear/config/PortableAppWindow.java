@@ -13,9 +13,13 @@ import org.springframework.stereotype.Component;
 import java.awt.Desktop;
 import java.io.IOException;
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Predicate;
@@ -86,6 +90,10 @@ class PortableAppWindow implements ApplicationListener<ApplicationReadyEvent> {
         String url = "http://localhost:" + port;
         log.info("game is up at {} (LAN friends: http://<this-machine-ip>:{})", url, port);
 
+        // 别让窗口先于 HTTP 服务打开：玩家第一次解压启动时，浏览器抢在 Tomcat 开始接请求
+        // 之前打开就会得到一个空白窗口（关掉重开又正常）。先等存档架接口能应答，再开窗。
+        waitUntilReachable(url);
+
         String browser = resolveBrowserPath(browserPathOverride, PortableAppWindow::isFile);
         if (browser == null) {
             openWithDefaultBrowser(url);
@@ -97,6 +105,35 @@ class PortableAppWindow implements ApplicationListener<ApplicationReadyEvent> {
             log.info("app window failed to start ({}), falling back to the default browser", e.getMessage());
             openWithDefaultBrowser(url);
         }
+    }
+
+    /** 等本机 HTTP 能应答再开窗（最多 30 秒）；超时也照开，最后还有地址可手动访问。 */
+    private void waitUntilReachable(String url) {
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(500))
+                .build();
+        HttpRequest probe = HttpRequest.newBuilder(URI.create(url + "/api/saves"))
+                .timeout(Duration.ofMillis(800))
+                .GET()
+                .build();
+        long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
+        while (System.nanoTime() < deadline) {
+            try {
+                client.send(probe, HttpResponse.BodyHandlers.discarding());
+                return;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            } catch (IOException e) {
+                try {
+                    Thread.sleep(200);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        }
+        log.info("local server did not answer within 30s; opening the window anyway");
     }
 
     private void launchAppWindow(String browser, String url) throws IOException {

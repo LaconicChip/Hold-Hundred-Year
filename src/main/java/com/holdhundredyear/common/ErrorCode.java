@@ -3,7 +3,10 @@ package com.holdhundredyear.common;
 import lombok.Getter;
 
 /**
- * 业务错误码。编码从 1001 开始按声明顺序递增，成功 code=0。
+ * 业务错误码。编码从 1001 开始，成功 code=0。
+ *
+ * <p>1014（用户名已存在）与 1017（登录失败）随着账号系统一起删除，空号保留不复用——
+ * 老客户端/旧日志里仍可能出现这两个数字，复用会让它们被误读成另一件事。
  */
 @Getter
 public enum ErrorCode {
@@ -21,10 +24,8 @@ public enum ErrorCode {
     MARGIN_EXCEED(1011, "融资额度不足，累计负债不能超过净资产"),
     REPAY_EXCEED(1012, "还款金额超过负债"),
     FINISHED_STATE(1013, "本局已结束，无法操作"),
-    USERNAME_EXISTS(1014, "用户名已被注册"),
     PARAM_ERROR(1015, "请求参数错误"),
     INTERNAL_ERROR(1016, "系统开小差了，请稍后重试"),
-    LOGIN_FAILED(1017, "用户名或密码错误"),
     NOT_FOUND(1018, "资源不存在"),
     GAME_NOT_FINISHED(1019, "本局尚未结束"),
     SHARK_EXCEED(1020, "高利贷额度不足，已超过可借上限");

@@ -1,7 +1,11 @@
 package com.holdhundredyear.web;
 
+import com.holdhundredyear.common.BizException;
+import com.holdhundredyear.common.ErrorCode;
 import com.holdhundredyear.common.PageResult;
 import com.holdhundredyear.common.R;
+import com.holdhundredyear.market.entity.SysUser;
+import com.holdhundredyear.market.mapper.SysUserMapper;
 import com.holdhundredyear.game.model.dto.AssetsDTO;
 import com.holdhundredyear.game.model.dto.IpoRecordItemDTO;
 import com.holdhundredyear.game.model.dto.LoanRecordItemDTO;
@@ -15,19 +19,32 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 /**
- * 个人资料接口（spec §11）：资产看板 / 持仓列表 / 交易·融资·打新流水分页 / 已解锁称号徽章。
- * 只读查询委托 MeQueryService（现价 mark-to-market 与交易同源）。
+ * 个人资料接口（spec §11）：当前存档身份 / 资产看板 / 持仓列表 / 交易·融资·打新流水分页 /
+ * 已解锁称号徽章。只读查询委托 MeQueryService（现价 mark-to-market 与交易同源）。
  */
 @RestController
 @RequestMapping("/api/me")
 public class MeController {
 
     private final MeQueryService meQueryService;
+    private final SysUserMapper sysUserMapper;
 
-    public MeController(MeQueryService meQueryService) {
+    public MeController(MeQueryService meQueryService, SysUserMapper sysUserMapper) {
         this.meQueryService = meQueryService;
+        this.sysUserMapper = sysUserMapper;
+    }
+
+    /** 当前进入的存档（userId + 存档名）。前端刷新后恢复身份用。 */
+    @GetMapping
+    public R<Map<String, Object>> me(@AuthenticationPrincipal Long userId) {
+        SysUser user = sysUserMapper.selectById(userId);
+        if (user == null) {
+            throw new BizException(ErrorCode.NOT_FOUND);
+        }
+        return R.ok(Map.of("userId", user.getId(), "username", user.getUsername()));
     }
 
     /** 资产四项 + 担保比例（spec §6.2）。 */

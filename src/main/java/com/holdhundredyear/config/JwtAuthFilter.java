@@ -18,8 +18,8 @@ import java.util.List;
 
 /**
  * JWT 认证过滤器：解析 Bearer token，成功则把 userId 放入 SecurityContext；
- * 解析失败或<b>令牌签发的用户已经不存在</b>时清空上下文（由 entry point 统一返回 401）；
- * /api/auth/** 直接跳过。
+ * 解析失败或<b>令牌签发的用户（存档）已经不存在</b>时清空上下文（由 entry point 统一返回 401）；
+ * /api/saves/** 直接跳过——存档架本身不需要登录。
  *
  * <p>"用户还在不在"这一步不能省：便携版换包、删掉 data\\ 存档、恢复旧档之后，浏览器里
  * 还留着上一个用户签发的令牌。以前它会被当成合法身份放过，一路走到行情板加载才炸成 500；
@@ -41,7 +41,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return request.getRequestURI().startsWith("/api/auth/");
+        return request.getRequestURI().startsWith("/api/saves/")
+                || request.getRequestURI().equals("/api/saves");
     }
 
     @Override

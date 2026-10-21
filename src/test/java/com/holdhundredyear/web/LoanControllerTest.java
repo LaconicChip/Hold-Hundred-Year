@@ -2,9 +2,11 @@ package com.holdhundredyear.web;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhundredyear.common.ErrorCode;
+import com.holdhundredyear.common.JwtUtil;
 import com.holdhundredyear.market.MarketStateService;
 import com.holdhundredyear.market.entity.UserGameState;
 import com.holdhundredyear.market.mapper.UserGameStateMapper;
+import com.holdhundredyear.world.WorldSeeder;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -46,6 +48,12 @@ class LoanControllerTest {
     @Autowired
     private UserGameStateMapper userGameStateMapper;
 
+    @Autowired
+    private WorldSeeder worldSeeder;
+
+    @Autowired
+    private JwtUtil jwtUtil;
+
     @Test
     void borrowWithoutTokenReturnsUnauthorized() throws Exception {
         JsonNode body = json(mockMvc.perform(post("/api/loan/borrow")
@@ -58,13 +66,8 @@ class LoanControllerTest {
 
     @Test
     void borrowReturnsReceiptWithUpdatedBalanceAndDebt() throws Exception {
-        String username = unique("loan");
-        long userId = json(register(username, "password123")
-                .andExpect(status().isOk()))
-                .path("data").path("userId").asLong();
-        String token = json(login(username, "password123")
-                .andExpect(status().isOk()))
-                .path("data").path("token").asString();
+        long userId = newSave("loan");
+        String token = tokenOf(userId);
 
         UserGameState gs = userGameStateMapper.selectOne(new LambdaQueryWrapper<UserGameState>()
                 .eq(UserGameState::getUserId, userId));
@@ -92,13 +95,8 @@ class LoanControllerTest {
 
     @Test
     void borrowWithMissingAmountReturnsParamError() throws Exception {
-        String username = unique("loan");
-        long userId = json(register(username, "password123")
-                .andExpect(status().isOk()))
-                .path("data").path("userId").asLong();
-        String token = json(login(username, "password123")
-                .andExpect(status().isOk()))
-                .path("data").path("token").asString();
+        long userId = newSave("loan");
+        String token = tokenOf(userId);
 
         UserGameState gs = userGameStateMapper.selectOne(new LambdaQueryWrapper<UserGameState>()
                 .eq(UserGameState::getUserId, userId));
@@ -120,16 +118,13 @@ class LoanControllerTest {
         return "u" + System.nanoTime() + "_" + suffix;
     }
 
-    private ResultActions register(String username, String password) throws Exception {
-        return mockMvc.perform(post("/api/auth/register")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(MAPPER.writeValueAsString(Map.of("username", username, "password", password))));
+    /** 直接播种一份存档（账号系统已删除，测试不再走注册/登录接口）。 */
+    private long newSave(String suffix) {
+        return worldSeeder.seedUser(unique(suffix), "$2a$10$bcrypthash");
     }
 
-    private ResultActions login(String username, String password) throws Exception {
-        return mockMvc.perform(post("/api/auth/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(MAPPER.writeValueAsString(Map.of("username", username, "password", password))));
+    private String tokenOf(long userId) {
+        return jwtUtil.generate(userId);
     }
 
     private static JsonNode json(ResultActions actions) throws Exception {

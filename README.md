@@ -1,13 +1,13 @@
 # 你持有一百年看看
 
 A 股模拟炒股游戏：一局 72 个交易日（3 年 × 24 天），约 1 分 40 秒一个交易日、**整局约 2 小时**，11 个历史纪元剧本；
-开每一局时可选**快速模式**（36 个交易日、约 30 分钟、涨跌停 ±20%）——模式一局一选，注册不绑定，
-世界种子可复现，支持保证金交易与强平，另有**高利贷**（净资产 5 倍额度、日息按账龄递增、到期强制平仓还债，借满就是 6 倍仓位），双结局（爆仓天台 / 通关成绩单）。单机多用户。
+开每一局时可选**快速模式**（36 个交易日、约 30 分钟、涨跌停 ±20%）——模式一局一选，存档不绑定，
+世界种子可复现，支持保证金交易与强平，另有**高利贷**（净资产 5 倍额度、日息按账龄递增、到期强制平仓还债，借满就是 6 倍仓位），双结局（爆仓天台 / 通关成绩单）。**单机多存档**：入口是存档架，新建不覆盖旧档、可逐份删除；局域网里的朋友看到同一张存档架。
 
 - 后端：Spring Boot 4.1.1 / Java 17 / MySQL / MyBatis-Plus / WebSocket(STOMP)，**不使用 Redis 与 MQ**
 - 前端：Vue 3 + Vite + Element Plus + ECharts + Pinia
 - 视觉：散户营业部·漫画贴纸风（米纸底 + 墨色描边 + 硬阴影）、红涨绿跌、**全站禁 emoji**
-- 版本：**v0.0.2**（`pom.xml`、`frontend/package.json` 与 git tag 三处同号）
+- 版本：**v0.0.3**（`pom.xml`、`frontend/package.json` 与 git tag 三处同号）
 
 ![登录页](docs/design/shots/01-login.png)
 ![大盘](docs/design/shots/02-market.png)
@@ -27,7 +27,7 @@ src/main/java/com/holdhundredyear/
   event/     事件与内容（EventFactory、MessageService、DanmuService、NpcService、MainScriptService、
              HaltService、ProgressService）
   ws/        实时推送四通道 /user/queue/{quotes,messages,notifications,danmu}
-  web/       REST 控制器（Auth/Stock/Trade/Loan/Ipo/Market/Message/Me/Game）
+  web/       REST 控制器（Save/Stock/Trade/Loan/Ipo/Market/Message/Me/Game）
   game/      constants（引擎标定 GameConstants、静态档案 StockDefs/EraDefs/NpcDefs/Titles、事件骨架结构 EventSkeletons）
              content（全部游戏文案的读取入口：ContentCatalog + DanmuTexts/StockPersonas/SectorFlavor/
              NpcLines/EventCopy/EraNarratives/SharkLines 七个薄壳）
@@ -85,7 +85,8 @@ cd frontend; npm ci; npm run dev
 cd frontend; npm run build
 ```
 
-账号无需预置，页面注册即用。
+打开 `http://localhost:8080` 就是**存档架**：新建一份存档即开局，已有存档点「继续」。
+没有注册和登录，也没有密码。
 
 ## 给朋友玩（没有云服务器）
 
@@ -96,7 +97,7 @@ MySQL 仍然用你本机那个 `MySQL80` 服务（存档就在里面）。
 ### 一次性打包
 
 ```powershell
-.\game.cmd build      # 前端构建 -> 拷进后端资源目录 -> 打成 target\Hold-Hundred-Year-0.0.2.jar
+.\game.cmd build      # 前端构建 -> 拷进后端资源目录 -> 打成 target\Hold-Hundred-Year-0.0.3.jar
 ```
 
 ### 每次开一局之前
@@ -107,10 +108,13 @@ MySQL 仍然用你本机那个 `MySQL80` 服务（存档就在里面）。
 ```
 
 朋友在**同一个 WiFi/局域网**里，浏览器打开 `http://192.168.x.x:8080`（`game.cmd lan` 给的就是
-它），页面里自己注册账号，各玩各的世界，互不干扰。
+它），页面里就是同一张**存档架**：各自「新建存档」，各玩各的世界，进度互不影响。
 
-**你电脑关机或关掉窗口，朋友就进不来了** —— 这是没有服务器的代价，也正是"账户隔离的单机存档
-游戏"的定位：每个账号一个独立世界，谁也不影响谁。
+**存档架是共享的**：局域网内谁都能看到、进入或删除任意一份存档（没有密码、没有账号隔离）。
+这是熟人环境的设计取舍；不想要这个口子就只让自己访问本机。
+
+**你电脑关机或关掉窗口，朋友就进不来了** —— 这是没有服务器的代价。每份存档一个独立世界，
+但入口不设防。
 
 ### 朋友连不上，按顺序查这三条
 
@@ -133,8 +137,9 @@ MySQL 仍然用你本机那个 `MySQL80` 服务（存档就在里面）。
 测完自动清掉冒烟产生的临时存档。
 
 把 zip 发给朋友：解压 → 双击 `hold-hundred-year.exe` → 弹出一个**独立游戏窗口**（没有地址栏的
-应用窗口，不碰他自己的书签和登录态）→ 点"注册"就能玩。对方不需要装 Java、Node、MySQL
-（JRE 已经捆在包里）。退出：关掉游戏窗口，或者双击包里的 `停止游戏.bat`。
+应用窗口，不碰他自己的书签和登录态）→ 窗口里就是存档架，点「新建存档」就能玩。对方不需要装
+Java、Node、MySQL（JRE 已经捆在包里）。退出：**关掉游戏窗口就是退出**；`停止游戏.bat` 只是
+兜底（窗口关不掉/后台进程没退干净时用，平时用不上）。
 
 > **"关窗即退出"靠的是自带浏览器。** `pack-portable.cmd` 默认把 **Chrome for Testing** 一起打进包，
 > 实测成品 **282 MB**（不带浏览器是 82.6 MB）。浏览器进程由我们创建并持有，玩家关掉窗口 → 进程结束
@@ -192,17 +197,17 @@ $env:HOLD_DB_PASSWORD = '你的MySQL密码'                  # 只在备份/还�
    $env:HOLD_DB_PASSWORD = '你的MySQL密码'   # 再启动游戏
    ```
 
-2. **换掉 JWT 密钥**（默认值同样写在 `application.properties` 里，公开密钥等于别人能伪造登录令牌）：
+2. **换掉 JWT 密钥**（默认值同样写在 `application.properties` 里，公开密钥等于别人能伪造令牌、直接进入任意存档）：
 
    ```powershell
-   $env:HOLD_JWT_SECRET = '随便敲一大串，越长越好'    # 再启动游戏；换密钥会让已登录的人重新登录
+   $env:HOLD_JWT_SECRET = '随便敲一大串，越长越好'    # 再启动游戏；换密钥会让所有人回到存档架
    ```
 
 3. **别把 MySQL 暴露出去**：`3306` 只监听本机就好，对外只开 8080。数据库地址/账号/密码/端口
    都能用 `HOLD_DB_URL` / `HOLD_DB_USER` / `HOLD_DB_PASSWORD` / `HOLD_PORT` 覆盖，不用改代码。
 
-> 绿色包（`portable` 档）不用管第 1、2 条：它用内嵌 H2，**登录密钥默认每次启动随机生成**，
-> 读过源码的人伪造不了别人的令牌。
+> 绿色包（`portable` 档）不用管第 1、2 条：它用内嵌 H2，**会话密钥默认每次启动随机生成**，
+> 读过源码的人伪造不了令牌。
 
 ## 已知环境坑
 
@@ -259,9 +264,11 @@ $env:HOLD_DB_PASSWORD = '你的MySQL密码'                  # 只在备份/还�
 
 完整清单见 `docs/implementation-notes.md`（§1 痛点结论 P1-P15、§2 硬约束、§3 机制速查）。要点：
 
+- 入口是存档架（`/api/saves/**`，匿名可达）：`sys_user` 一行就是一份存档，**没有账号/登录/密码**；进入某份存档后签发的 JWT 才是游戏接口的门票。
 - 引擎/结算路径禁用 `new Random()` / `Math.random()`，一律 `WorldRandom.of(seed, salt)`；同 seed 必同结果，快进与正常推进等价。
 - 并发：`QuoteBoardRegistry.worldLock(userId)` 覆盖调度/快进/交易；`sys_user`、`user_position` 悲观锁；`user_stock_state.version` 乐观锁。
 - 开盘管线在所有价格变动完成后**必须统一重算开盘指数**（`e6fbc19` 修复，不得回退）。
 - 交易规则：T+1、涨停只可卖不可买、涨跌停按本局模式（标准 ±10%/ST ±5%，快速 ±20%/ST ±10%）、佣金万 3 最低 5 元、印花税千 1（卖出）、追保 140% / 强平 120%、年化 8%；高利贷不进担保比例但进净资产与爆仓判定。
 - 视觉：色值只走 `tokens.css` 令牌（仅 `styles/theme.js` 例外）、全站禁 emoji、图标走 SVG sprite。
 - 任何触及开盘管线/结算/引擎的改动，必跑 `VolatilityEngineTest`、`FastForwardServiceTest`、`TradeConcurrencyTest`、`WorldTickServiceTest`。
+- 改波动常量或纪元漂移，必须同时跑 `VolatilityDistributionTest`（量级/贴板率）与 `EraSignalVisibilityTest`（主线方向）、`VolatilityCoMovementTest`（齐动度）。

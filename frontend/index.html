@@ -7,9 +7,43 @@
     <!-- 站酷快乐体 CDN，失败时 --font-fun 回退系统字体 -->
     <link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap" rel="stylesheet" />
     <title>你持有一百年看看</title>
+    <style>
+      /* Vue 挂载前的启动兜底页：只在这几秒里出现，配色与 tokens.css 同值（此时令牌还没加载） */
+      html, body { margin: 0; height: 100%; }
+      body { background: #f6f1e7; color: #2b2620; font-family: "PingFang SC", "Microsoft YaHei", 微软雅黑, sans-serif; }
+      .boot-splash {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+      }
+      .boot-title { font-size: 22px; font-weight: 700; letter-spacing: 2px; }
+      .boot-desc { font-size: 14px; color: #6f675c; margin: 0; }
+    </style>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <div class="boot-splash" id="boot-splash">
+        <p class="boot-title">百年证券营业部</p>
+        <p class="boot-desc">正在开门…</p>
+      </div>
+    </div>
+    <script>
+      // 首次启动兜底：8 秒还没挂载就先提示，再自动刷新一次（只在本次会话里刷一次，避免死循环）。
+      // 便携包第一次打开时，浏览器偶尔会抢在脚本就绪之前显示白页；关掉重开能好，说明就是竞态。
+      window.__hhyMounted = false
+      setTimeout(function () {
+        if (window.__hhyMounted) return
+        var desc = document.querySelector('#boot-splash .boot-desc')
+        if (desc) desc.textContent = '服务还在启动，马上重试…'
+        if (!sessionStorage.getItem('hhy-boot-reloaded')) {
+          sessionStorage.setItem('hhy-boot-reloaded', '1')
+          location.reload()
+        }
+      }, 8000)
+    </script>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

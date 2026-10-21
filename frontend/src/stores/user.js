@@ -1,8 +1,7 @@
-// 用户 store（登录态 / 资产 / WS 接线）
+// 用户 store（当前存档 / 资产 / WS 接线）
 import { defineStore } from 'pinia'
-import { login as apiLogin, register as apiRegister, fetchMe } from '@/api/auth'
-import { localResume, localNewGame } from '@/api/local'
-import { fetchAssets, fetchPositions } from '@/api/me'
+import { fetchMe, fetchAssets, fetchPositions } from '@/api/me'
+import { createSave, openSave } from '@/api/saves'
 import { setToken, getToken } from '@/api/http'
 import { ws } from '@/api/ws'
 import { useQuotesStore } from './quotes'
@@ -29,10 +28,6 @@ export const useUserStore = defineStore('user', {
   }),
 
   getters: {
-    isLoggedIn(state) {
-      return !!state.token
-    },
-
     // 持仓索引：stockId -> { shares, availableShares, costPrice }，供行情表一眼找出持仓股
     heldMap(state) {
       const map = {}
@@ -44,33 +39,19 @@ export const useUserStore = defineStore('user', {
   },
 
   actions: {
-    // 登录：成功后存 token + 用户信息，拉 /api/me、拉资产、连接 WS
-    async login(username, password) {
-      const data = await apiLogin(username, password)
+    // 进入一份存档：拿到会话令牌后拉身份与资产、连接 WS
+    async openSaveById(id) {
+      const data = await openSave(id)
       this._applyAuth(data)
-      await this._afterLogin()
+      await this._afterOpen()
       return data
     },
 
-    // 注册：只建账号；模式在开每一局时选
-    async register(username, password) {
-      await apiRegister(username, password)
-      return this.login(username, password)
-    },
-
-    // 便携版「继续游戏」：拿本地存档的令牌，等价于一次免密登录
-    async resumeLocal() {
-      const data = await localResume()
+    // 新建一份存档：不覆盖旧存档，直接进入新世界
+    async createNewSave() {
+      const data = await createSave()
       this._applyAuth(data)
-      await this._afterLogin()
-      return data
-    },
-
-    // 便携版「创建新游戏」：清空重播后直接进新局（调用方负责先拿到玩家的二次确认）
-    async startLocalNewGame() {
-      const data = await localNewGame()
-      this._applyAuth(data)
-      await this._afterLogin()
+      await this._afterOpen()
       return data
     },
 
@@ -84,8 +65,8 @@ export const useUserStore = defineStore('user', {
       if (data.username) this.username = data.username
     },
 
-    // 登录后的补充动作
-    async _afterLogin() {
+    // 进入存档后的补充动作
+    async _afterOpen() {
       try {
         const me = await fetchMe()
         if (me.userId != null) this.userId = me.userId
@@ -121,7 +102,7 @@ export const useUserStore = defineStore('user', {
       return this.positions
     },
 
-    // 已登录时确保 WS 在线（页面刷新后 token 从 localStorage 恢复，但连接不会
+    // 已进入存档时确保 WS 在线（页面刷新后 token 从 localStorage 恢复，但连接不会
     // 自行建立——开盘推进依赖调度器只服务 WS 在线用户，必须补连）
     ensureWsConnected() {
       if (!this.token || (ws.client && ws.connected)) return
@@ -129,7 +110,7 @@ export const useUserStore = defineStore('user', {
       ws.connect(this.token)
     },
 
-    // 登出：清 token、断 WS、重置所有 store
+    // 离开当前存档：清 token、断 WS、重置所有 store
     logout() {
       setToken('')
       this.token = ''

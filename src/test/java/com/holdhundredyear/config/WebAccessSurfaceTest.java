@@ -48,7 +48,7 @@ class WebAccessSurfaceTest {
     @Test
     void frontendRoutesAndStaticAssetsAreNotBlocked() throws Exception {
         // 没有前端产物时这些请求会是 404，但绝不能是 401：401 意味着 jar 里的页面打不开
-        for (String path : new String[]{"/", "/login", "/market", "/stock/3", "/assets/", "/favicon.ico"}) {
+        for (String path : new String[]{"/", "/saves", "/market", "/stock/3", "/assets/", "/favicon.ico"}) {
             int status = mockMvc.perform(get(path)).andReturn().getResponse().getStatus();
             assertNotEquals(401, status, "GET " + path + " must not be blocked by security (got " + status + ")");
             assertNotEquals(403, status, "GET " + path + " must not be forbidden (got " + status + ")");
@@ -56,13 +56,11 @@ class WebAccessSurfaceTest {
     }
 
     @Test
-    void authEndpointsAreOpenWithoutToken() throws Exception {
-        // /api/auth/** 匿名可达：登录失败是业务错误，不是"未登录"这一档
-        JsonNode body = json(mockMvc.perform(post("/api/auth/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(MAPPER.writeValueAsString(java.util.Map.of("username", "nobody-here", "password", "x")))));
-        assertNotEquals(ErrorCode.UNAUTHORIZED.getCode(), body.path("code").asInt(),
-                "login must be reachable anonymously, body=" + body);
+    void saveRackIsOpenWithoutToken() throws Exception {
+        // 这一版没有账号系统：存档架就是入口，必须匿名可列
+        JsonNode body = json(mockMvc.perform(get("/api/saves")));
+        assertEquals(0, body.path("code").asInt(),
+                "the save rack must be reachable anonymously, body=" + body);
     }
 
     @Test

@@ -12,14 +12,14 @@ import './styles/tokens.css'
 
 import App from './App.vue'
 import router from './router'
-import { useUserStore } from './stores/user'
 
 const app = createApp(App)
 
 app.use(createPinia())
 app.use(router)
 
-// 刷新恢复：已有 token 时补连 WebSocket（调度器只推进 WS 在线用户的世界）
-useUserStore().ensureWsConnected()
-
 app.mount('#app')
+
+// 告诉 index.html 的启动兜底脚本：应用已经挂载，不要再自动刷新
+window.__hhyMounted = true
+sessionStorage.removeItem('hhy-boot-reloaded')

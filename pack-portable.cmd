@@ -19,7 +19,7 @@ rem  便携包只在"升版本号 + 明确要求打包"两个条件同时满足时才重新生成（见 AGENTS.
 rem  本文件与 game.cmd 一样必须存成 GBK(936)：cmd 读 UTF-8 中文批处理会按字节读错位。
 rem =========================================================================
 
-set "VER=0.0.2"
+set "VER=0.0.3"
 set "JAR=Hold-Hundred-Year-%VER%.jar"
 set "IN=target\package-in"
 set "OUT=target\package-out"
@@ -132,4 +132,5 @@ if errorlevel 1 (echo  压缩失败（需要 PowerShell 7 的 pwsh 在 PATH 里） & exit /
 for %%f in ("%ZIP%") do set "ZBYTES=%%~zf"
 set /a ZMB=ZBYTES/1048576
 echo  完成：%ZIP%  约 !ZMB! MB
+exit /b 0
 endlocal

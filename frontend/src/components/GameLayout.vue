@@ -37,9 +37,9 @@
           <TierBadge v-if="market.tier" :tier="market.tier" vertical />
           <span v-else class="muted-2 tier-empty">未开盘</span>
         </div>
-        <button class="btn btn-sm logout-btn" title="退出登录" @click="onLogout">
+        <button class="btn btn-sm logout-btn" title="返回存档架" @click="onLogout">
           <SvgIcon name="logout" class="nav-ic" />
-          <span v-if="!collapsed">退出</span>
+          <span v-if="!collapsed">存档架</span>
         </button>
       </div>
     </aside>
@@ -180,12 +180,15 @@ async function refreshStocks() {
 
 function onLogout() {
   user.logout()
-  router.push('/login')
+  router.push('/saves')
 }
 
 onMounted(() => {
   syncCollapsed()
   window.addEventListener('resize', syncCollapsed)
+  // 刷新 / 直接进游戏页时补连 WS（调度器只推进 WS 在线用户的世界）。
+  // 放在主布局而不是 main.js：入口存档架不该拿旧令牌去连，令牌失效会每 5 秒重试一次。
+  user.ensureWsConnected()
   // 侧栏要显示纪元/段位/交易日，进主布局时补一次状态
   if (!market.currentDay) market.fetchState()
   // 铃铛角标：连接建立之前落库的未读不会推送过来，这里补拉一次（不播报）

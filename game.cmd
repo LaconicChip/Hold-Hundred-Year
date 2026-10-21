@@ -14,7 +14,7 @@ rem  注意：本文件按 GBK(代码页936) 保存。cmd 读 UTF-8 中文批处理会按字节错位，
 rem  表现为某行注释被当成命令执行（"xxx 不是内部或外部命令"）。别把它改成 UTF-8。
 rem =========================================================================
 
-set "JAR=target\Hold-Hundred-Year-0.0.2.jar"
+set "JAR=target\Hold-Hundred-Year-0.0.3.jar"
 set "DB=hold_year"
 set "MYSQLBIN=C:\Program Files\MySQL\MySQL Server 8.0\bin"
 set "PORT=%HOLD_PORT%"
@@ -59,6 +59,9 @@ popd
 echo [2/3] 把前端塞进后端的资源目录 ...
 if exist "src\main\resources\static" rmdir /s /q "src\main\resources\static"
 xcopy /e /i /q "frontend\dist" "src\main\resources\static" >nul || (echo  拷贝前端产物失败 & exit /b 1)
+rem 清掉上一次构建留在 target 里的静态资源：Maven 只覆盖同名文件、不删旧文件，
+rem 否则已经删掉的页面（例如旧登录页）会跟着新包一起进 jar。
+if exist "target\classes\static" rmdir /s /q "target\classes\static"
 echo [3/3] 打包 jar（跳过测试；要跑测试请用 mvnw test）...
 call mvnw.cmd -q package -DskipTests
 if not errorlevel 1 goto packaged

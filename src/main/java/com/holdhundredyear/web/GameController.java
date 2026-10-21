@@ -18,7 +18,7 @@ import java.util.List;
 
 /**
  * 终局接口：查询双结局结果（只读）/ 重开新世界（清游戏数据、换 seed 重新播种，
- * 保留账号与密码）/ 列出可选的一局模式。业务拒绝经 BizException 统一转为 400 + R.fail(ErrorCode)。
+ * 保留当前存档这一行）/ 列出可选的一局模式。业务拒绝经 BizException 统一转为 400 + R.fail(ErrorCode)。
  */
 @RestController
 @RequestMapping("/api/game")

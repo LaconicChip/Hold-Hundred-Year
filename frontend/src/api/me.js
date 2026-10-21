@@ -1,6 +1,11 @@
 // 个人资产 / 持仓 / 流水 / 称号 接口（spec §11，含融资流水与打新记录）
 import http from './http'
 
+// 当前进入的存档：GET /api/me -> { userId, username }
+export function fetchMe() {
+  return http.get('/api/me')
+}
+
 // 资产四项 + 担保比例：GET /api/me/assets
 export function fetchAssets() {
   return http.get('/api/me/assets')

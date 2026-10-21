@@ -101,8 +101,8 @@ public class EraScheduler {
         for (int i = 0; i < spans.length; i++) {
             EraDefs.EraDef def = EraDefs.ALL.get(i);
             // EraDefs 的 mu/板块区间是"相对强度"档案，落到每跳漂移前统一乘标定系数
-            //（GameConstants.ERA_DRIFT_SCALE）：档案原值会让最热板块单日漂移 +27%，
-            // 涨跌停板拦不住，只能天天贴板。掷骰顺序不变，所以同种子仍是同一批纪元。
+            //（GameConstants.ERA_DRIFT_SCALE）：既要让主线压得住 5% 的日噪声（0.12 现值），
+            // 又不能回到"最热板块单日 +27%、天天贴板"的旧档。掷骰顺序不变，所以同种子仍是同一批纪元。
             double muMkt = uniform(r, def.muMin(), def.muMax()) * GameConstants.ERA_DRIFT_SCALE;
             Map<String, Double> sectorCoefs = new LinkedHashMap<>();
             for (Map.Entry<String, EraDefs.SectorRange> e : def.sectorRanges().entrySet()) {

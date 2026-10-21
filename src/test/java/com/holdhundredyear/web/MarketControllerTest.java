@@ -2,8 +2,10 @@ package com.holdhundredyear.web;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhundredyear.common.ErrorCode;
+import com.holdhundredyear.common.JwtUtil;
 import com.holdhundredyear.market.entity.UserGameState;
 import com.holdhundredyear.market.mapper.UserGameStateMapper;
+import com.holdhundredyear.world.WorldSeeder;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -42,6 +44,12 @@ class MarketControllerTest {
 
     @Autowired
     private UserGameStateMapper userGameStateMapper;
+
+    @Autowired
+    private WorldSeeder worldSeeder;
+
+    @Autowired
+    private JwtUtil jwtUtil;
 
     @Test
     void stateWithoutTokenReturnsUnauthorized() throws Exception {
@@ -105,13 +113,8 @@ class MarketControllerTest {
 
     @Test
     void skipAfterBankruptIsRejectedWithFinishedState() throws Exception {
-        String username = unique("mk_bank1");
-        long userId = json(register(username, "password123")
-                .andExpect(status().isOk()))
-                .path("data").path("userId").asLong();
-        String token = json(login(username, "password123")
-                .andExpect(status().isOk()))
-                .path("data").path("token").asString();
+        long userId = newSave("mk_bank1");
+        String token = tokenOf(userId);
 
         UserGameState gs = userGameStateMapper.selectOne(new LambdaQueryWrapper<UserGameState>()
                 .eq(UserGameState::getUserId, userId));
@@ -126,27 +129,21 @@ class MarketControllerTest {
                 "terminal state must reject skip, body=" + body);
     }
 
-    private String registerAndLogin(String suffix) throws Exception {
-        String username = unique(suffix);
-        json(register(username, "password123").andExpect(status().isOk()));
-        return json(login(username, "password123").andExpect(status().isOk()))
-                .path("data").path("token").asString();
+    private String registerAndLogin(String suffix) {
+        return tokenOf(newSave(suffix));
+    }
+
+    /** 直接播种一份存档（账号系统已删除，测试不再走注册/登录接口）。 */
+    private long newSave(String suffix) {
+        return worldSeeder.seedUser(unique(suffix), "$2a$10$bcrypthash");
+    }
+
+    private String tokenOf(long userId) {
+        return jwtUtil.generate(userId);
     }
 
     private static String unique(String suffix) {
         return "u" + System.nanoTime() + "_" + suffix;
-    }
-
-    private ResultActions register(String username, String password) throws Exception {
-        return mockMvc.perform(post("/api/auth/register")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(MAPPER.writeValueAsString(Map.of("username", username, "password", password))));
-    }
-
-    private ResultActions login(String username, String password) throws Exception {
-        return mockMvc.perform(post("/api/auth/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(MAPPER.writeValueAsString(Map.of("username", username, "password", password))));
     }
 
     private static JsonNode json(ResultActions actions) throws Exception {

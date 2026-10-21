@@ -3,13 +3,19 @@
 //   1. 所有 REST 接口前缀 /api，由 vite proxy 转发到后端 8080
 //   2. 统一响应体 R{code,msg,data}，成功 code===0
 //   3. 鉴权信息从 localStorage 的 'hold-year-token' 读取，注入 Bearer
-//   4. HTTP 401 -> 清 token 并跳 /login；HTTP 400 业务失败 -> reject(msg)
+//   4. HTTP 401 -> 清 token 并跳 /saves（存档架）；HTTP 400 业务失败 -> reject(msg)
 
 import axios from 'axios'
 import { ElMessage } from 'element-plus/es/components/message/index.mjs'
 import router from '@/router'
 
 const TOKEN_KEY = 'hold-year-token'
+const AUTH_TIP = '存档已失效，请重新选择'
+const AUTH_NOTICE_KEY = 'hhy-auth-notice'
+
+// 401 闸门：一次进页会并发好几个请求同时撞 401（删存档、换存档、令牌过期都会这样）。
+// 只处理第一次，后面的全部静默 reject；否则提示会一层层叠到"99+"。
+let handling401 = false
 
 // 读取本地令牌
 export function getToken() {
@@ -18,8 +24,12 @@ export function getToken() {
 
 // 写入 / 清除本地令牌
 export function setToken(token) {
-  if (token) localStorage.setItem(TOKEN_KEY, token)
-  else localStorage.removeItem(TOKEN_KEY)
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token)
+    handling401 = false // 拿到新令牌，下一次 401 重新允许处理一次
+  } else {
+    localStorage.removeItem(TOKEN_KEY)
+  }
 }
 
 const OFFLINE_TIP = '连不上营业部系统：后端（8080）没在跑，或网络断了'
@@ -61,15 +71,26 @@ http.interceptors.response.use(
     const status = error.response ? error.response.status : 0
     const body = error.response ? error.response.data : null
     if (status === 401) {
+      const hadToken = !!getToken()
       setToken('')
-      // grouping：一次进页会并发好几个请求同时撞 401（便携版换了存档就会这样），
-      // 不合并的话屏幕会被同一条"登录已过期"叠六七层，玩家以为出了大事。
-      ElMessage.error({ message: '登录已过期，请重新登录', grouping: true })
-      if (router.currentRoute.value.name !== 'login') {
-        router.push('/login')
+      if (hadToken && !handling401) {
+        handling401 = true
+        // 提示不在拦截器里弹：先记一句话，跳到存档架后由入口页播一次。
+        // 这样即使路由跳转把消息组件卸载了，玩家也看得到，而且只会看到一次。
+        sessionStorage.setItem(AUTH_NOTICE_KEY, AUTH_TIP)
+        if (router.currentRoute.value.name !== 'saves') {
+          router.replace('/saves').catch(() => {})
+        }
+        // 兜底：路由没跳成功（极端情况下页面卡在旧路由）就硬跳一次
+        setTimeout(() => {
+          if (router.currentRoute.value.name !== 'saves') {
+            window.location.assign('/saves')
+          }
+        }, 800)
       }
-      const err = new Error('未认证')
+      const err = new Error(hadToken ? AUTH_TIP : '未认证')
       err.code = 401
+      err.auth = true
       return Promise.reject(err)
     }
     if (status === 400 && body && body.msg) {

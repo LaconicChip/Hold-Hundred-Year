@@ -1,13 +1,16 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-// 路由表：8 个页面（spec §12.1 竖向菜单顺序）；无路由守卫，未登录由 http.js 的 401 拦截兜底跳 /login
+// 路由表（spec §12.1 竖向菜单顺序）：入口是存档架，其余 7 个游戏页面共享左侧菜单。
+// 无路由守卫：令牌失效由 http.js 的 401 拦截统一送回 /saves。
 const routes = [
-  { path: '/', redirect: '/login' },
+  { path: '/', redirect: '/saves' },
   {
-    path: '/login',
-    name: 'login',
-    component: () => import('../views/Login.vue')
+    path: '/saves',
+    name: 'saves',
+    component: () => import('../views/SaveList.vue')
   },
+  // 老书签兜底：这一版没有登录页，/login 直接回存档架
+  { path: '/login', redirect: '/saves' },
   // 游戏主布局（规格 §12.1 纵向菜单布局）：主页面共享左侧纵向导航
   {
     path: '/',

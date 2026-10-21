@@ -60,9 +60,12 @@ import java.util.concurrent.ThreadLocalRandom;
  * result 只读无锁：终局快照（game_day = endDay 的 user_daily_snapshot）为唯一数据源，
  * 排行榜 NPC 行解析自其 npc_assets_json，玩家行以终局净资产追加、按资产降序。
  * restart 采用与 MarginService.borrow 相同的世界锁 + TransactionTemplate 锁内提交
- * 协议：事务内校验终局、逐表清空用户游戏数据、重置账户与 game_state（含 null 字段
+ * 协议：事务内校验终局、逐表清空用户游戏数据、重置存档行与 game_state（含 null 字段
  * 须用 LambdaUpdateWrapper 显式 set，updateById 会跳过 null）、以新种子重播种世界；
  * 行情板缓存在事务提交后、锁内 evict，下次访问从重置后的落库行重建。
+ *
+ * <p>"再来一局"是<b>覆盖当前存档</b>（用户 2026-10-21 选定）：新开的一份请从存档架
+ * "新建存档"走 {@code SaveService.create}，两者不混用。
  */
 @Service
 public class GameEndService {
@@ -202,9 +205,9 @@ public class GameEndService {
     /**
      * 同上，但允许调用方指定"进行中也照开"。
      *
-     * <p>只有便携版的"创建新游戏"用得上：单机没有账号，存档就一份，玩家点新建时前端已经
-     * 弹过红色警告并让他二次确认，此时"本局还没结束"不该成为拒绝理由——拒绝只会让他以为
-     * 按钮坏了。多人在线版仍走两参重载，进行中重开照旧报 GAME_NOT_FINISHED。
+     * 只有存档架的"覆盖当前存档"路径用得上：玩家已经在前端确认过清空后果，此时
+     * "本局还没结束"不该成为拒绝理由——拒绝只会让他以为按钮坏了。常规的终局页
+     * "再来一局"仍走两参重载，进行中重开照旧报 GAME_NOT_FINISHED。
      */
     public void restart(long userId, GameMode mode, boolean allowInProgress) {
         quoteBoardRegistry.worldLock(userId).lock();
@@ -228,6 +231,65 @@ public class GameEndService {
         GameMode next = mode == null ? GameMode.of(gs.getGameMode()) : mode;
         long newSeed = ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE);
 
+        clearGameData(userId);
+
+        SysUser user = sysUserMapper.selectById(userId);
+        if (user == null) {
+            throw new BizException(ErrorCode.NOT_FOUND);
+        }
+        user.setBalance(BigDecimal.valueOf(GameConstants.INITIAL_BALANCE));
+        user.setDebt(BigDecimal.valueOf(0.00));
+        user.setSharkDebt(BigDecimal.ZERO);
+        sysUserMapper.updateById(user);
+
+        // MyBatis-Plus updateById 跳过 null 字段，endReason/endDay/prevTotalAsset 必须显式 set null
+        userGameStateMapper.update(null, new LambdaUpdateWrapper<UserGameState>()
+                .eq(UserGameState::getUserId, userId)
+                .set(UserGameState::getCurrentDay, 1)
+                .set(UserGameState::getMarketState, "NOT_STARTED")
+                .set(UserGameState::getTickIndex, 0)
+                .set(UserGameState::getWorldSeed, newSeed)
+                .set(UserGameState::getIndexValue, 1000.0)
+                .set(UserGameState::getPrevIndex, 1000.0)
+                .set(UserGameState::getGameMode, next.name())
+                .set(UserGameState::getPrevTotalAsset, null)
+                .set(UserGameState::getVolRegime, "NORMAL")
+                .set(UserGameState::getTier, "RETAIL")
+                .set(UserGameState::getEndReason, null)
+                .set(UserGameState::getEndDay, null));
+
+        worldSeeder.seedWorld(userId, newSeed);
+    }
+
+    /**
+     * 删除一份存档：世界锁 + 锁内事务清掉该 userId 的全部游戏数据与账户行。
+     *
+     * <p>与 restart 的区别只有最后一步：restart 清空后重新播种，delete 连 {@code sys_user}
+     * 一起删掉，存档架上不再有这一份。两者共用 {@link #clearGameData}，以后加"按用户"维度的
+     * 新表只要改那一处。
+     */
+    public void purgeSave(long userId) {
+        quoteBoardRegistry.worldLock(userId).lock();
+        try {
+            transactionTemplate.executeWithoutResult(status -> {
+                if (sysUserMapper.selectById(userId) == null) {
+                    throw new BizException(ErrorCode.NOT_FOUND);
+                }
+                clearGameData(userId);
+                // game_state 是 restart 要保留并原地重置的那一行，所以不放进 clearGameData；
+                // 删除存档时必须连它一起删，否则会留下一条指向已不存在账户的孤儿世界时钟。
+                userGameStateMapper.delete(new LambdaQueryWrapper<UserGameState>()
+                        .eq(UserGameState::getUserId, userId));
+                sysUserMapper.deleteById(userId);
+            });
+            quoteBoardRegistry.evict(userId);
+        } finally {
+            quoteBoardRegistry.worldLock(userId).unlock();
+        }
+    }
+
+    /** 清空该账户的全部游戏数据（不动 sys_user）。restart 与 deleteSave 共用这一份清单。 */
+    private void clearGameData(long userId) {
         userPositionMapper.delete(new LambdaQueryWrapper<UserPosition>()
                 .eq(UserPosition::getUserId, userId));
         userStockStateMapper.delete(new LambdaQueryWrapper<UserStockState>()
@@ -257,33 +319,6 @@ public class GameEndService {
         eventFactory.clearPending(userId);
         npcService.clearUserState(userId);
         corporateActionService.clearUserState(userId);
-
-        SysUser user = sysUserMapper.selectById(userId);
-        if (user == null) {
-            throw new BizException(ErrorCode.NOT_FOUND);
-        }
-        user.setBalance(BigDecimal.valueOf(GameConstants.INITIAL_BALANCE));
-        user.setDebt(BigDecimal.valueOf(0.00));
-        user.setSharkDebt(BigDecimal.ZERO);
-        sysUserMapper.updateById(user);
-
-        // MyBatis-Plus updateById 跳过 null 字段，endReason/endDay/prevTotalAsset 必须显式 set null
-        userGameStateMapper.update(null, new LambdaUpdateWrapper<UserGameState>()
-                .eq(UserGameState::getUserId, userId)
-                .set(UserGameState::getCurrentDay, 1)
-                .set(UserGameState::getMarketState, "NOT_STARTED")
-                .set(UserGameState::getTickIndex, 0)
-                .set(UserGameState::getWorldSeed, newSeed)
-                .set(UserGameState::getIndexValue, 1000.0)
-                .set(UserGameState::getPrevIndex, 1000.0)
-                .set(UserGameState::getGameMode, next.name())
-                .set(UserGameState::getPrevTotalAsset, null)
-                .set(UserGameState::getVolRegime, "NORMAL")
-                .set(UserGameState::getTier, "RETAIL")
-                .set(UserGameState::getEndReason, null)
-                .set(UserGameState::getEndDay, null));
-
-        worldSeeder.seedWorld(userId, newSeed);
     }
 
     /** 是否"注册后从未开过局"：NOT_STARTED、还在第 1 天、零成交零持仓。 */

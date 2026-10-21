@@ -8,7 +8,7 @@
 | # | 痛点 | 结论/约束 |
 | --- | --- | --- |
 | P1 | 节奏太慢 | 1 天 = 90 跳（上午 45 → 午休 → 下午 45）；跳数与波动标定不变，墙钟由"3 秒/跳 × 108 天 ≈ 9 小时"压到"1 秒/跳 × 72 天 ≈ 2 小时"（2026-09-29） |
-| P2 | 纯随机无叙事、纯剧本太公式 | 11 纪元顺序与全覆盖硬保证，边界 ±1~3 天抖动、强度区间随机，注册时掷点入库 |
+| P2 | 纯随机无叙事、纯剧本太公式 | 11 纪元顺序与全覆盖硬保证，边界 ±1~3 天抖动、强度区间随机，新建存档时掷点入库 |
 | P3 | 随机游走不像股市 | 三层因子（市场/板块/个股 β）+ GARCH-lite 波动聚集 + 肥尾跳跃 + 日内 U 型 + 涨跌停磁吸/封板/炸板 |
 | P4 | 多冲击源叠加成 if-else 地狱 | 统一 `PriceShock` 队列：冲击只入队，引擎每跳统一消费（衰减曲线决定反应模式） |
 | P5 | 快进与在线推进结果必须一致 | `WorldTickService.tickOne(userId)` 是唯一推进函数；调度器与 skip 快进共用；每账户一把 `ReentrantLock` 互斥 |
@@ -40,6 +40,7 @@
 9. **git 纪律**：`git add` 显式文件路径，**永不用 `-A`/`.`**；commit message 用 `type(scope): 中文说明`。
 10. **跳过只对当日**：收盘后不给"跳过下一交易日"（见规格 §4.5）；服务端 skip 仍接受 NOT\_STARTED/CLOSED，专供测试与未来"一键快进 N 天"。
 11. **验收习惯**：改后端先写失败测试并跑 `mvn test`；改前端跑 `npm run build` 并用浏览器走查关键页面，截图归档 `docs/design/shots/`。
+12. **入口是存档架，没有账号系统**：`/api/saves/**` 匿名可达；`sys_user` 一行 = 一份存档（自动名 + 随机 BCrypt 密码，没有登录接口），进入某份存档时才发 JWT（TTL 默认 8760 小时）。**新建不覆盖旧档**；删除必须走 `GameEndService.purgeSave`（清全部按 user\_id 分表的数据 + `user_game_state` + `sys_user`），只删 `sys_user` 会留下孤儿世界。终局页"再来一局"是**覆盖当前存档**，想保留旧局回存档架新建。
 
 ## 3. 关键机制速查（最易踩坑处）
 
@@ -53,13 +54,13 @@
 - **股吧弹幕层**（2026-10-19 起因，2026-10-20 抽成共享组件 `DanmuLayer.vue`）：飘屏逻辑已从 `KlineChart.vue` 里抽出来，`KlineChart.vue`（日K）与 `StockChart.vue`（分时）都渲染 `<DanmuLayer :posts="danmu" />`，两边都不传 props、走组件默认值（`lanes: 7` / `spawnMs: 400` / `flightMs: 8000` / `replay: 10`），即 **7 条同道、0.4 秒一条、约 8 秒飘过**、首帧最多回放最近 10 条；按 `seq` 只消费新增。图层 `pointer-events:none` 且只盖绘图区（left 56 / right 46 / top 14 / height 62%），不挡缩放、拖动和 tooltip。完整列表仍是「股吧」标签页——弹幕是提醒"这里有人聊"，不是阅读器。
 - **事件系统**：`EventFactory.maybeRoll` 单 salt 掷骰（`"event{day}.{tick}"`），PendingAction 入队时预填文案，flush 阶段零掷骰；消息三态 PENDING → CONFIRMED/DENIED。
 - **WS 四通道**：`/user/queue/{quotes,messages,notifications,danmu}`，握手 token 走 STOMP connectHeaders；**调度器只推进 WS 在线用户的世界**（刷新页面后必须补连，见 `user store ensureWsConnected`）。
-- **前后端口径陷阱**：① WS 推送的 `changePct` 是小数比率（0.0998），前端 store 统一 ×100 后再用（封板阈值 9.8、`fmtPct` 都依赖这点）；② `MarketSnapshot` 只有 `{tickIndex,indexValue,quotes:[{stockId,current,changePct}]}`，行情表的封板/停牌/ST/连板来自 REST 而非 WS，不要凭空造列；③ 统一响应 `R{code,msg,data}`，`code=0` 成功，401 清 token 跳登录；**一次进页会并发几个请求同时撞 401，提示必须带 `grouping: true`**，否则屏幕会叠六七层同样的"登录已过期"（便携版换档/删 `data\\` 后最常见）；④ NPC 头像由 `NpcAvatar` 用 `import.meta.glob` 按 code 小写取图，JUSHI/LAOQIAN/XINJIMIN/CHENGXUYUAN 无 PNG、走姓氏色块兜底属正常。
+- **前后端口径陷阱**：① WS 推送的 `changePct` 是小数比率（0.0998），前端 store 统一 ×100 后再用（封板阈值 9.8、`fmtPct` 都依赖这点）；② `MarketSnapshot` 只有 `{tickIndex,indexValue,quotes:[{stockId,current,changePct}]}`，行情表的封板/停牌/ST/连板来自 REST 而非 WS，不要凭空造列；③ 统一响应 `R{code,msg,data}`，`code=0` 成功，401 清 token 并回 `/saves`（存档架）。**401 必须走http.js 的模块级闸门**：一次进页/删存档/令牌失效会并发几个请求同时撞 401，旧版只靠 `ElMessage.grouping` 合并同文案，挡不住并发风暴把提示叠到"99+"、页面卡死在旧路由；现在只处理第一次——记一句 `sessionStorage` 提示、`router.replace('/saves')`，800ms 后还没跳成功就 `location.assign('/saves')` 硬跳，后续 401 全部静默 reject；④ NPC 头像由 `NpcAvatar` 用 `import.meta.glob` 按 code 小写取图，JUSHI/LAOQIAN/XINJIMIN/CHENGXUYUAN 无 PNG、走姓氏色块兜底属正常。
 - **文案三级池（反重复）**：弹幕按"个股专属 → 板块 → 全局"混抽——`stock-personas.txt`（24 股 × 绰号/股性/16 条专属弹幕/6 条专属事件文案）、`danmu.txt` 的 21 板块池（×12）与 10 个全局类别池。个股级触发先掷一个 double 决定层级（50/25/25），大盘级与横盘只走全局池。
 - **事件文案按股定制**：`EventFactory` 在 STOCK 级事件命中目标股后，45% 用该股 `persona.news` 模板替换通用正文（仍走 `{stock}` 槽位渲染）。掷骰固定在该位置消费，快进与逐跳等价。
 - **重要消息"当面"提醒（全实时，无轮询）**：后端每条消息落库的同一条路径都会 WS 推一份（见下条），前端 `stores/messages.js#pushMessage` 收到后按 `constants/messageMeta.js#channelOf` 分流——AUTHORITY 或标题含千股跌停/涨停/熔断/救市/崩盘/制裁/黑7月/强平/停牌核查 → **头条大弹幕**（`HeadlineDanmu.vue`，`pointer-events:none`，飘过即走）；SYSTEM/INSIDER 与传闻追报 → **右下角浮层**（`NoticePopup.vue`，6 秒自动收起，可点进消息中心）；其余只留在消息中心。首轮静默（`primed`），刷新页面不会把历史未读全弹一遍。
   **消息写入与推送的唯一出口**：`MessageService.publish(UserMessage)` —— insert 完立刻把同一份 `MessageDTO` 推给 `/user/queue/messages`（形状与 REST 列表一致，前端一套逻辑吃两边）。全仓 4 个写入方（`NotifyPublisher`/`EventFactory`×2/`MainScriptService`）一律走它，**不要**再直接 `userMessageMapper.insert`——绕过它就等于写了条玩家永远看不到的哑消息。
   前端只在进主布局时补拉一次未读（`syncUnread`，只登记不播报）用来兜住"连接建立之前"落库的历史与铃铛角标；调度器本就只推进 WS 在线用户的世界，掉线期间不产生消息，所以不需要轮询。实测：盘中 20 秒 + 快进结算，`/api/messages` 请求数 **0**，快进到浮层出现 **453ms**（旧轮询最多 5 秒）。
-- **票名重起过 9 轮**（最后一轮 2026-10-20 由需求方指定，整体走"谐音 + 梗"且**刻意与真名拉开距离**：`贵州茅王`/`寒武急`/`宁得时代`/`招笑银行`/`比养迪`/`毛豆传媒`/`永惠商超`/`宝矿控股`/`亩原农牧`/`顺风快配`/`三力智造`/`中星通讯`，外加"中国→瓷器"的 `瓷器平安`/`瓷器曙光`/`瓷器国航`/`瓷器神华` 四连；未改的 8 只：光茅绿能/恒瑞药堂/万柯置业/东财证券/明珠电器/獐岛水产/神飞军工/谷子互娱。上一轮是"影射本板块龙头/梗股"的化名：九坛老窖→茅王酒业、芯火半导体→寒武芯能、卧龙新能→宁王新能、后羿光能→光茅绿能、回春堂→恒瑞药堂、大通银号→葵花银行、牛途证券→东财证券、汪洋水产→獐岛水产、天算算力→曙光算力、千里信联→兴芯通讯 等；再往前是鸱夷酒业→九坛老窖、片爷科技→芯火半导体、极乐传媒→造梦传媒、智算无穷→天算算力、阡陌商社→万家商社、百丈钢铁→炉火钢铁、通天信联→千里信联）：股票档案只有后端一份 `StockDefs.java`（前端那份手抄表 `constants/stocks.js` 已删，板块名曾长期漂移），页面显示的名称/板块/发行价全部来自 `GET /api/stocks`（**读代码不读库**，所以改名立刻生效）；**股吧文案里用的是简称**（`茅王`/`宁得`/`招笑`/`瓷平安`/`比养迪`/`毛豆`/`瓷曙光`/`永惠`/`瓷国航`/`瓷神华`/`宝矿`/`亩原`/`顺风`/`三力`/`中星`），改名时必须一起改 `stock-personas.txt` / `sector-flavor.txt` / `NpcDefs.java` 里的简称引用，否则股吧里会出现"票名与闲聊对不上"；**库里的副本不用手工 UPDATE**——`WorldSeeder` 注册时会拿 `StockDefs` 自动对齐（2026-10-20 加的 `syncStockInfoWithDefs`）。
+- **票名重起过 9 轮**（最后一轮 2026-10-20 由需求方指定，整体走"谐音 + 梗"且**刻意与真名拉开距离**：`贵州茅王`/`寒武急`/`宁得时代`/`招笑银行`/`比养迪`/`毛豆传媒`/`永惠商超`/`宝矿控股`/`亩原农牧`/`顺风快配`/`三力智造`/`中星通讯`，外加"中国→瓷器"的 `瓷器平安`/`瓷器曙光`/`瓷器国航`/`瓷器神华` 四连；未改的 8 只：光茅绿能/恒瑞药堂/万柯置业/东财证券/明珠电器/獐岛水产/神飞军工/谷子互娱。上一轮是"影射本板块龙头/梗股"的化名：九坛老窖→茅王酒业、芯火半导体→寒武芯能、卧龙新能→宁王新能、后羿光能→光茅绿能、回春堂→恒瑞药堂、大通银号→葵花银行、牛途证券→东财证券、汪洋水产→獐岛水产、天算算力→曙光算力、千里信联→兴芯通讯 等；再往前是鸱夷酒业→九坛老窖、片爷科技→芯火半导体、极乐传媒→造梦传媒、智算无穷→天算算力、阡陌商社→万家商社、百丈钢铁→炉火钢铁、通天信联→千里信联）：股票档案只有后端一份 `StockDefs.java`（前端那份手抄表 `constants/stocks.js` 已删，板块名曾长期漂移），页面显示的名称/板块/发行价全部来自 `GET /api/stocks`（**读代码不读库**，所以改名立刻生效）；**股吧文案里用的是简称**（`茅王`/`宁得`/`招笑`/`瓷平安`/`比养迪`/`毛豆`/`瓷曙光`/`永惠`/`瓷国航`/`瓷神华`/`宝矿`/`亩原`/`顺风`/`三力`/`中星`），改名时必须一起改 `stock-personas.txt` / `sector-flavor.txt` / `NpcDefs.java` 里的简称引用，否则股吧里会出现"票名与闲聊对不上"；**库里的副本不用手工 UPDATE**——`WorldSeeder` 新建存档时会拿 `StockDefs` 自动对齐（2026-10-20 加的 `syncStockInfoWithDefs`）。
   **改名时的坑**：简称里的"中心"是常用词（"数据中心""智算中心""消息中心"），全局替换会误伤——改完必须逐条扫一遍命中上下文；"永惠/宝矿/三力/中星"同理。
 - **股吧弹幕（2026-10-16 改版，2026-10-19 移入标签页，2026-10-20 大改）**：玩家原话是"弹幕太少了太少了，现实中每只票尤其是热点票应该每时每刻都会有好多条弹幕"，而且"依旧无法正常显示在分时k线图中"。两个问题各有一根因，都已改：
   - **产出太少的根因是"节流按账户算 + 一次只有一条"**：原来任意两条弹幕至少隔 3 跳、同一类别隔 10 跳、且每跳最多产出一条——全市场一天只有三十来条，24 只票一分每票 1~2 条。现在改成**每只票各自成流**：按热度给每只票排"下次发言跳号"（冷门票基准 38%、涨得越多话越多、封板再加一档，上限 90%），类别按**该票自己的状态**选（封板→涨停/跌停、±5%→急拉/跳水、±3%→次级、其余→**闲聊**；票在动的时候也有 35% 的概率说闲话），节流也改成**按票计**（同票同类隔 2 跳）。**实测（2 个交易日）：每票每天约 32 条、热门票 40 条，闲聊占一半以上**（改前每票每天 1~2 条）。
@@ -80,7 +81,7 @@
   另外 `GET /api/loan/shark` 会把额度倍数、起止年化、升档步长、期限、告示文案一并下发，前端只渲染、不在页面里另抄一份规则。
 - **三条"排期尾巴"（2026-09-30 修）**：① 纪元 3 长度下限 4 天（`EraScheduler.CRASH_CHAIN_MIN_ERA_LEN`）——`ScriptDayScheduler` 要排"≥2 天千股跌停 → 救市 → 次日千股涨停"，快速模式年长 12 天、抖动会把纪元压到 2 天，股灾就演成一日游、涨停还会漏到下一个纪元的第一格；② 救市日最多排在纪元 3 倒数第二天，保证"救市次日"的涨停留在本纪元内；③ 申购日 ≤ 收官日 - 4（`IPO_LIFECYCLE_TAIL`），给 D+2/D+4 留路。三条都由 `EraSchedulerTest`/`ScriptDaySchedulerTest` 用 200~1000 个种子扫过。
 - **快速模式加密度、不砍名场面**（2026-10-10）：黑7月崩盘日的撒点窗口按档走，写在 `GameMode.crashWindowFullEra`（标准 false = 纪元 10 前半段、快速 true = 整个纪元）。500 seed 实测：改前快速模式 60% 的局只有 1 个崩盘日（纪元 10 只剩 2 天，前半段只剩 1 天，掷到 2~3 都被夹成 1），改后最少 2 个、掷到 3 就落 3；名场面日占比标准 16.8% / 快速 31.2%。唯一残留的夹逼在股灾链——快速模式纪元 3 恒为 4 天，"跌跌救涨"排满整段，第 3 个跌停日没有格子（再给纪元 3 加一天就有别的纪元跌破 `minEraLen`）。两条都写死成 `ScriptDaySchedulerTest` 的断言，标准模式的分布改前改后逐 seed 相同（不影响老存档）。
-- **一局一档案（GameMode）**：标准/快速两套节奏在 `game/model/enums/GameMode.java` 里各自带值（年长、跳毫秒、午休、涨跌停、最短纪元长度），建局时选定写进 `user_game_state.game_mode`，**一局一选、本局进行中不可改**：注册不绑模式，开局前（大盘页状态条的模式选择器）与终局后（"再来一局"旁的选择器）都走 `POST /api/game/restart {mode}`；restart 允许"终局后"与"从未开过局"两种时机，其余一律拒绝。**不要**再用 `GameConstants.TICK_MS/DAYS_PER_YEAR/TOTAL_DAYS` 做运行时判定——那些只是标准模式的默认值，运行时一律 `GameMode.of(gs.getGameMode())`。调度器改成 500ms 心跳（`SCHEDULER_HEARTBEAT_MS`）+ 每账户按本局 `tickMs` 门控（`QuoteBoard.lastTickAtNanos`）；快进与测试直接调 `tickOne`，不看墙钟，所以"快进=逐跳"等价与同种子可复现都不受影响。前端从 `/api/market/state` 读 `mode/tickMs/daySeconds/totalDays/limitPct`，模式清单（代码/名称/一句话说明/天数）由 `GET /api/game/modes` 下发给 `ModePicker`，注册不绑模式。
+- **一局一档案（GameMode）**：标准/快速两套节奏在 `game/model/enums/GameMode.java` 里各自带值（年长、跳毫秒、午休、涨跌停、最短纪元长度），建局时选定写进 `user_game_state.game_mode`，**一局一选、本局进行中不可改**：新建存档不绑模式，开局前（大盘页状态条的模式选择器）与终局后（"再来一局"旁的选择器）都走 `POST /api/game/restart {mode}`；restart 允许"终局后"与"从未开过局"两种时机，其余一律拒绝。**不要**再用 `GameConstants.TICK_MS/DAYS_PER_YEAR/TOTAL_DAYS` 做运行时判定——那些只是标准模式的默认值，运行时一律 `GameMode.of(gs.getGameMode())`。调度器改成 500ms 心跳（`SCHEDULER_HEARTBEAT_MS`）+ 每账户按本局 `tickMs` 门控（`QuoteBoard.lastTickAtNanos`）；快进与测试直接调 `tickOne`，不看墙钟，所以"快进=逐跳"等价与同种子可复现都不受影响。前端从 `/api/market/state` 读 `mode/tickMs/daySeconds/totalDays/limitPct`，模式清单（代码/名称/一句话说明/天数）由 `GET /api/game/modes` 下发给 `ModePicker`，新建存档不绑模式。
 - **提醒消息只有一个出口**：任何"要告诉玩家一句话"的通知（纪元切换、结算播报、除权、追保/强平、打新、剧本收官、称号解锁、NPC 台词）一律走 `event/NotifyPublisher`（`system(...)` / `npc(...)`，字段惯例 type=NOTIFY、未读、当日、created_at 现取）。别再在各服务里 `new UserMessage()` 抄一份——历史上抄了 7 份，字段还各有出入。行情事件（EVENT/三态传闻）仍走 `EventFactory`/`MainScriptService`，它们要写 sector/truth_status/followup_of，语义不同。
 - **消息分级只有一个口径**：重要性由服务端判——`event/NotifyPublisher.alert(...)` 落 `type=ALERT`（追保、强制平仓、爆仓、高利贷到期强卖与逾期、停牌潮：都是"钱已经出事或马上出事"），其余提醒仍走 `system(...)`/`npc(...)` 落 `type=NOTIFY`。前端 `constants/messageMeta.js#channelOf` 只认 `type === 'ALERT'` → **MODAL**（全屏模态 + 必须亲手点掉），不再按标题关键词猜重要性。收盘晚报的提醒栏同时收 NOTIFY 与 ALERT，别让最高一档反而从总结里消失。
 - **暂停闸门（MODAL 的配套）**：`QuoteBoard.paused` 是纯内存标记，只有 `MarketScheduler` 在推进前读它（连午休计时一起冻）；快进、结算、开盘管线与随机协议都不看它，所以 P5「快进=逐跳」与 P6「同 seed 同结果」不受影响，也不持久化（重启回到未暂停，避免世界被冻在无人看管的暂停态）。接口 `POST /api/market/pause|resume` 幂等；`GameLayout` 挂载时若没有待看弹窗会自动 resume 一次——这是防止"玩家刷新页面后世界永久卡住"的安全阀。
@@ -92,6 +93,7 @@
 - **测滚轮缩放别信自动化工具**：`agent-browser mouse wheel` 合成的事件根本进不了 DOM（在 canvas 上挂 capture 监听数出来是 0），所以"工具里滚轮没反应"不能当成 bug，也不能当成 fix 生效的证据；`mouse down/move/up` 是能送达的，滑块拖拽就是这么验通的（默认 40 根窗口下拖左：x 轴从 `第3日…第39日` 变成 `T-9…第30日`）。
 - **波动量级只看"有机行情"**（`VolatilityDistributionTest`，2026-10-16 重标定、2026-10-19 压平 U 型、**2026-10-20 引擎大改**）：跑完整局 72 天，按 `user_script_day` 把剧本日摘出去，只对剩下的股票天统计 σ / 贴板率 / ±6% 率。**混在一起量必然得到假结论**——千股涨停那几天 24 只票全钉板上，混进平均就是"贴板 11%"，看着像 bug，其实是有名场面。跨种子实测：有机 σ 3.0~3.2%、有机贴板约 4~5%、有机 ±6% 约 6.5~7.2%（含剧本的整体贴板约 10.3~11.7%）。
   **2026-10-20 引擎大改后**（用户反馈"波动太小"+"每只股都很相似"，选了"够刺激"档）：有机 σ **4.7~5.0%**、有机贴板 **9.5~12%**（每天约 2.3~2.9 只票上板）、有机 ±6% 约 22%。要调波动就调 `GameConstants` 里那组常量（SIGMA_STOCK/SIGMA_MKT/SIGMA_SEC、JUMP_PROB/JUMP_K、GARCH_CAP、OU_KAPPA、ERA_DRIFT_SCALE、MAGNET_TRIGGER/MAGNET_DRIFT、U_OPEN/U_OPEN_END/U_MID/U_CLOSE/U_PHASE_AMP、ST_VOL_FACTOR），**改完必须重跑这个测试看数字**，别只看单测绿。
+  **2026-10-21 主线标定**（用户反馈"不太跟随纪元主线/市场基调/领涨领跌板块，更像无理由随机波动"）：`ERA_DRIFT_SCALE` 0.055 → **0.18**。三个固定种子实测（剔除剧本日、只看有机股票日）：被点名领涨的板块平均每天 **+0.42%**、领跌 **-0.80%**、两组差 **+1.21%/天**；市场基调 **牛市 +1.84%/天、熊市 -1.01%/天**；同时有机 σ **4.92%**、贴板 **11.3%**、±6% 以上 **23.3%**，仍在波动闸门内。**改这个系数必须同时跑 `EraSignalVisibilityTest`（方向）与 `VolatilityDistributionTest`（量级/贴板率）**——只调大漂移会把贴板率顶上去，只压波动又会把主线压没。
   **三条别再踩的坑**（都是这次大改实测踩出来的）：
   ① **GARCH 的比率必须取平方、分母必须是"当前条件 σ"**。旧公式（线性比率 + 基准 σ 做分母）的不动点是 `k = 0.8k` 这类退化解，k 被压到 0.05~0.4，**个股波动倍数被整段抵消**——你把 `volMult` 调大，σ 纹丝不动。改法见 `VolatilityEngine.updateGarch` 的注释。
   ② **磁吸不能是"一过线就给恒定漂移"**。那等于"只要摸到触发线就必然收在涨停板上"，日 σ 抬到 5% 之后实测每天 4 只票上板。现在吸力随贴近度线性增强（触发线处 0、板上满档），`SealMachineTest` 钉住这个形状。
@@ -99,15 +101,15 @@
 - **个股差异三件套**（`StockDef.volMult` / `volPhase` / `policyBeta`，2026-10-20）：24 只票不再共用一条曲线。`volMult` 0.55~1.70（银行/煤炭死水、算力/券商疯）、`volPhase` 0~89 跳且 24 只互不相同（决定这只票一天里哪一段最活跃）、`policyBeta` 0.60~1.50（全市场政策消息落地时这只票反应多大）。实测个股日 σ 从 3.2% 到 7.4%（离散比 2.3 倍）。
 - **"齐动度"是独立于波动量级的指标，有自己的回归闸门**（`VolatilityCoMovementTest`，2026-10-20 新增）：量三件事——① 两只票日内轨迹的皮尔逊相关（跨全部票对取平均）；② 去掉市场代理后的残差相关；③ 每只票每天"最大一段 10 跳变动"发生在哪个时段、9 个时段里最挤的那个占多少。玩家说的"都在固定时间突然大涨或大跌一轮"就是这三项超标。改前：rawCorr 0.33、残差 0.12、最挤时段占 38%；改后：**0.12 / 0.00 / 15%（均匀分布）**。**这条闸门和"波动够不够大"是两回事**——σ 抬上去会把共性一起抬起来，必须一起看。
 - **全市场政策消息按个股分化落地**（2026-10-20）：`EventSkeletons` 里 6 条 MARKET 作用域事件（降准降息/印花税/国家队/美联储加息/美股暴跌…）幅度 2%~5%，用 `INSTANT` 衰减——旧版**一跳之内给全部 24 只票砸同一个数**，而有机背景只有 0.16%/跳，于是那天盘面上唯一看得见的就是"大家一起跳了一下"。现在 `WorldTickService` 把 `marketShock` 乘以该股的 `policyBeta`：降准那天券商涨得多、银行涨得少，保留"大盘带动"但不再是"集体暴动"。
-- **纪元档案的 μ 与板块系数是"相对强度"**：`EraDefs` 里的绝对值不是最终落地值，`EraScheduler` 掷完统一乘 `GameConstants.ERA_DRIFT_SCALE`（现值 0.055）才写进 `user_era.params_json`。所以 `EraSchedulerTest` 的区间断言也要乘这个系数——把它改回原值等于偷偷取消标定。
+- **纪元档案的 μ 与板块系数是"相对强度"**：`EraDefs` 里的绝对值不是最终落地值，`EraScheduler` 掷完统一乘 `GameConstants.ERA_DRIFT_SCALE`（现值 **0.18**）才写进 `user_era.params_json`。所以 `EraSchedulerTest` 的区间断言也要乘这个系数——把它改回原值等于偷偷取消标定。**测试里若要换世界种子，必须同步重掷 `user_era` / `user_script_day`**：引擎按 `world_seed` 重算纪元，只改 `game_state.world_seed` 会让库里的纪元与盘面正在走的纪元对不上（`EraSignalVisibilityTest` 的 `setWorldSeed` 是正确写法）。
 - **磁吸触发线只认常量**：`SealMachineTest` 里的用例价格必须落在 `MAGNET_TRIGGER` 之上（现值 9%，用例用 +9.5%/-9.5%）。上一版把 6.5% 和 ±7% 抄进测试，抬阈值时全靠改测试才发现漏了哪几处。**注意 ST 票永远够不到这条线**（ST 的板只有 ±5%），所以 ST 票不会进封板分支——这是既有行为，不是这次改出来的。
 - **开局前历史 K 是 20 根**（`PreHistoryDefs.BARS`，2026-10-16 从 10 加到 20）：日期 `game_day 0..-19`，走势档案（日均涨跌幅/波动）没改，拉长的是同一条曲线的长度而不是斜率。根数只有一个真源，`MarketQueryService.stockKline` 的上限、`WorldSeeder` 播种、各处断言全部读它——**前端 `fetchStockKline` 的 limit 要给足（现 200）而不是写死刚好够的数**，否则前史一改就悄悄截断最老那几根。
-- **令牌对应的用户没了要当没登录，不是 500**：`JwtAuthFilter` 对 `/api/**` 多查一次主键，用户不存在就当未认证（401 → 前端清 token 回入口页）；`QuoteBoardRegistry.getOrLoad` 拿不到 `user_game_state` 抛 `BizException(NOT_FOUND)` 而不是 NPE。便携版这是常规路径：换包 / 删 `data\\\\` / 恢复旧档之后，浏览器里还留着上一个用户的 JWT。前端 401 提示另用 `ElMessage({grouping:true})` 合并并发失败（实测一次进页从 6 条叠层变 1 条）。静态资源不查库（否则每个 js/css 多一次主键查询）。
+- **令牌对应的存档没了要当未认证，不是 500**：`JwtAuthFilter` 对 `/api/**` 多查一次主键，存档不存在就当未认证（401 → 前端清 token 回 `/saves`）；`QuoteBoardRegistry.getOrLoad` 拿不到 `user_game_state` 抛 `BizException(NOT_FOUND)` 而不是 NPE。换包 / 删 `data\\` / 删存档 / 恢复旧档之后，浏览器里还留着上一份存档的 JWT——这是常规路径。**401 的提示不能再靠 `grouping`**：`http.js` 用一个模块级 `handling401` 闸门只处理第一次（记提示 → 回存档架；800ms 未跳成功则硬跳），后续 401 静默 reject，否则并发请求会把提示叠到 99+。静态资源不查库（否则每个 js/css 多一次主键查询）。
 - **事件量与波动标定是耦合的**（2026-10-16 实测）：骨架从 92 涨到 160 时，有机行情日σ 从 3.09% 被顶到 3.78%——因为新增里多跳漂移型（SLOW_DRIFT / BUY_RUMOR）占比高，每条的累计冲击叠在同一个随机板上。**加事件必须同时看 `VolatilityDistributionTest` 的 σ**，超了就压新事件的幅度（本次把 29 条漂移型骨架幅度统一乘 0.6，σ 回到 3.10%）。另外：`AUTHORITY` 骨架不允许有 `>` 追报（只有传闻/内幕/报道有），写错会让 `EventSkeletons` 静态初始化直接抛异常，炸掉几十个测试。
 - **妖股三幕（剧本日）**：`HOT_STREAK`（崩盘前 3 天钉涨停）→ `HALT_SWARM`（崩盘当天集体停牌，**在千股跌停钉板之前**由 `MarketStateService` 前置阶段落地，所以它们不在跌停板上）→ `HUN_DAO`（救市后一字断魂刀）。掷骰走独立 salt `"hotstreak"`，不消费 `"script"` 那条流，所以既有名场面的日期一字不变；复牌补跌复用 `resumeHaltedStocks`，不另写一套停牌。
-- **便携版没有账号**（`world/LocalPlayerService` + `web/LocalGameController`，都带 `@Profile("portable")`）：入口页先 `GET /api/auth/local/status`，拿到 200 就渲染"继续游戏 / 创建新游戏"，404 才渲染登录注册。本地玩家是 `sys_user` 里用户名 `单机玩家` 的一行，密码是随机 BCrypt（谁都登不进去），进入只发免密 JWT。"创建新游戏"走 `GameEndService.restart(userId, null, true)`——第三个参数 `allowInProgress` 是便携版专用：玩家已经在警告框里确认过清空，这时"本局还没结束"不能成为拒绝理由。**默认档仍走两参重载**，进行中重开照旧报 `GAME_NOT_FINISHED`；`LocalEntryIsPortableOnlyTest` 用反射钉住这几个 Bean 必须带 `@Profile("portable")`，免得免密入口漏到线上。
-- **心跳与冷用户节流**：`MarketScheduler` 每 `SCHEDULER_HEARTBEAT_MS`(100ms) 扫一遍在线用户，但**先做内存预判**（`dueForBeat`）：有行情板的按本局 `tickMs` 判到点；没有板的（未开过局 / 刚重启 / 刚登出）按 1 秒节流放行一次。别去掉这个节流——每个停在"还没开盘"页面的在线账号都会变成每秒 10 次 `selectOne`。
-- **前端菜单/路由**：`GameLayout.vue` 竖排菜单；`/market /stock/:id /assets /messages /leaderboard /summary /result`；涨跌与金额格式化统一在 `frontend/src/utils/format.js`。
+- **存档架（2026-10-21，账号系统已删除）**：`world/SaveService` + `web/SaveController`，四个接口 `GET /api/saves`、`POST /api/saves`、`POST /api/saves/{id}/open`、`DELETE /api/saves/{id}`，`/api/saves/**` 在安全配置里匿名放行。`sys_user` 一行 = 一份存档（自动名"存档 N"、随机 BCrypt 密码、没有登录接口），进入某份存档时才发 JWT（`HOLD_JWT_TTL_HOURS` 默认 8760）。**新建不覆盖旧档**；删除走 `GameEndService.purgeSave`：世界锁 + 锁内事务，`clearGameData`（14 张按 user\_id 分表的数据）+ 删 `user_game_state` + 删 `sys_user`，提交后 evict 行情板。`clearGameData` 与 restart 共用，以后加"按用户"维度的新表只改那一处；**`user_game_state` 不能放进 `clearGameData`**（restart 要保留并原地重置它），只能在 purge 里单独删。终局页"再来一局"仍是覆盖当前存档（用户选定）。
+- **心跳与冷用户节流**：`MarketScheduler` 每 `SCHEDULER_HEARTBEAT_MS`(100ms) 扫一遍在线用户，但**先做内存预判**（`dueForBeat`）：有行情板的按本局 `tickMs` 判到点；没有板的（未开过局 / 刚重启 / 刚登出）按 1 秒节流放行一次。别去掉这个节流——每个停在"还没开盘"页面的在线存档都会变成每秒 10 次 `selectOne`。
+- **前端菜单/路由**：`GameLayout.vue` 竖排菜单；入口 `/saves`（存档架），游戏页 `/market /stock/:id /assets /messages /leaderboard /summary /result`；涨跌与金额格式化统一在 `frontend/src/utils/format.js`。401/主动离开都回 `/saves`。
 - **Element Plus 只用四个组件，且必须走深层路径**：全站只用 `el-dialog` + `el-input-number` + `ElMessage`/`ElMessageBox`，按「用到哪个 import 哪个」引 `element-plus/es/components/<x>/index.mjs`——从桶口 `element-plus` 取会把全量组件拖进来（实测只降到 808 kB）。样式在组件内引 `.../style/css`，两个命令式的在 `main.js` 统一引。新增 `el-*` 时记得同处补 `style/css`，否则功能正常但没样式。
 
 ## 4. 环境与运维
@@ -142,17 +144,22 @@
   - **验自带浏览器别在 `%LOCALAPPDATA%\*` 下跑**：本机实测把同一份 CfT 放 `%LOCALAPPDATA%\任意目录\chrome-win64` 一律 `CreateProcess error=14001`（并行配置不正确），放 `%TEMP%` 或桌面就正常起——**文件字节完全相同**（SHA-256 逐一对过），所以是这台机器的目录策略，不是包坏了。要复现玩家看到的窗口，请把包解压到桌面/文档这类普通目录再启动。
 **便携包不随代码更新**：`dist\\*.zip` 只在"升版本号 + 明确要求打包"两个条件同时满足时重新生成（AGENTS.md 落地约定）。日常提交只动源码与文档。
 
-**两种存储、一份 schema（2026-10-15）**：默认档连本机 MySQL（学习目标就是它的行锁/事务，测试基线也跑在它上面）；`--spring.profiles.active=portable` 切到内嵌 H2 文件库（`config/PortableDataSourceConfig` 在 DataSource 工厂方法里建表，保证任何 Mapper 拿到连接时表已就绪；存档就是 `./data/hold_year.mv.db` 一个文件）。建表脚本仍然只有 `db/schema.sql` 一份：H2 侧由 `common/MysqlSchemaForH2` 翻译三处方言差异（`ENGINE=...` 尾巴、行内 `INDEX` 拆成 `CREATE INDEX IF NOT EXISTS`、索引/约束名从"表内唯一"改成加表名前缀的全库唯一）。翻译器有条测试兜着：**别把行首 `--` 注释当成整段丢弃**——`schema.sql` 第一行注释和 `CREATE TABLE sys_user` 同属一段，整段跳过的后果是第一张表不存在。全量 461 条测试在 portable 档（H2）下也是全绿的，包括 100 线程并发买入与快进等价。
+**两种存储、一份 schema（2026-10-15）**：默认档连本机 MySQL（学习目标就是它的行锁/事务，测试基线也跑在它上面）；`--spring.profiles.active=portable` 切到内嵌 H2 文件库（`config/PortableDataSourceConfig` 在 DataSource 工厂方法里建表，保证任何 Mapper 拿到连接时表已就绪；存档就是 `./data/hold_year.mv.db` 一个文件）。建表脚本仍然只有 `db/schema.sql` 一份：H2 侧由 `common/MysqlSchemaForH2` 翻译三处方言差异（`ENGINE=...` 尾巴、行内 `INDEX` 拆成 `CREATE INDEX IF NOT EXISTS`、索引/约束名从"表内唯一"改成加表名前缀的全库唯一）。翻译器有条测试兜着：**别把行首 `--` 注释当成整段丢弃**——`schema.sql` 第一行注释和 `CREATE TABLE sys_user` 同属一段，整段跳过的后果是第一张表不存在。全量后端测试在 portable 档（H2）下也是全绿的，包括 100 线程并发买入与快进等价（条数以 §5 的当前基线为准）。
 
-**给别人玩的鉴权面（2026-10-15）**：`SecurityConfig` 改成只有 `/api/**`（除 `/api/auth/**`）需要登录，其余 `anyRequest().permitAll()`。原因：单个 jar 同时发前端页面和接口，浏览器直接访问或刷新 `/market`、`/stock/3` 这类 history 路由都得拿到 index.html（兜底在 `config/WebStaticConfig`，它必须让 `api/`、`ws/` 前缀原样落空，否则接口报错会被伪装成"首页能打开"）。以前写的是 `anyRequest().authenticated()`，jar 里嵌的前端会被整页挡成 401。别把这条改回去，也别放开 `/api/**`。配置全部支持环境变量覆盖（`HOLD_DB_URL` / `HOLD_DB_USER` / `HOLD_DB_PASSWORD` / `HOLD_PORT` / `HOLD_JWT_SECRET` / `HOLD_JWT_TTL_HOURS`），默认值就是本机开发那套；`game.cmd` 是配套的启动/打包/备份脚本。
+**给别人玩的鉴权面（2026-10-15，2026-10-21 随存档架调整）**：`SecurityConfig` 只有 `/api/saves/**` 匿名放行，其余 `/api/**` 都要 JWT，静态页面 `anyRequest().permitAll()`。原因：单个 jar 同时发前端页面和接口，浏览器直接访问或刷新 `/market`、`/stock/3` 这类 history 路由都得拿到 index.html（兜底在 `config/WebStaticConfig`，它必须让 `api/`、`ws/` 前缀原样落空，否则接口报错会被伪装成"首页能打开"）。以前写的是 `anyRequest().authenticated()`，jar 里嵌的前端会被整页挡成 401。别把这条改回去，也别放开 `/api/**`（存档架是唯一的例外）。配置全部支持环境变量覆盖（`HOLD_DB_URL` / `HOLD_DB_USER` / `HOLD_DB_PASSWORD` / `HOLD_PORT` / `HOLD_JWT_SECRET` / `HOLD_JWT_TTL_HOURS`），默认值就是本机开发那套；`game.cmd` 是配套的启动/打包/备份脚本。**JWT TTL 默认 8760 小时**：没有账号系统后，令牌只是"进某份存档"的会话票据，短 TTL 只会让玩到一半的人被踢回存档架。
+
+**便携包首次打开空白窗口（2026-10-21 修）**：两层兜底，缺一不可。① `PortableAppWindow` 在 `ApplicationReadyEvent` 之后先轮询 `http://localhost:<port>/api/saves`（最多 30 秒、200ms 一次）再开浏览器——首次解压启动时浏览器可能抢在 Tomcat 开始接请求之前打开，得到的就是白窗口，关掉重开又正常。② `frontend/index.html` 内置启动兜底页 + 8 秒看门狗：Vue 没挂载就先提示"服务还在启动"并自动刷新一次（`sessionStorage` 标记防死循环）；`main.js` 挂载成功后置 `window.__hhyMounted=true` 并清掉标记。**别把兜底页删成空白 `#app`**——玩家看到的就是"打开空白窗口什么都不显示"。
 
 **绿色包的日志是必需的，但 Logback 的滚动文件名必须带日期**：portable 档把日志写到 `data\\hold-year.log`（双击启动没有控制台，朋友那边出问题只能靠这个文件回传）。踩过的坑：给 `logging.logback.rollingpolicy.file-name-pattern` 写了个只有 `%i` 的模板，Logback 直接抛 `FileNamePattern [...] does not contain a valid DateToken` → 日志系统初始化失败 → 进程秒退 → **jpackage 启动器只弹一句 "Failed to launch JVM"**，完全看不出是配置问题。教训两条：① 只设 `max-file-size`/`max-history`，滚动模板交给 Spring Boot 默认（自带 `%d{yyyy-MM-dd}`）；② 绿色包改动必须真跑一次包里的 exe 验收，光测 jar 挡不住这一层。
 
 **坑⑥：只跑 `mvn package` 打出来的 jar 里嵌的是旧前端**。前端的落点是 `src/main/resources/static/`（已 gitignore），
 只有 `game.cmd build` 会做「npm build → 删 static → 拷 dist」这三步；直接 `mvn package` 会把上一次拷进去的旧包再打一遍，
-界面改了却看不出来（实测踩过一次：新加的便携版入口页在浏览器里仍是旧登录页，而接口 `/api/auth/local/status` 明明是 200）。
+界面改了却看不出来（实测踩过一次：新加的存档架在浏览器里仍是旧登录页，而接口 `/api/saves` 明明是 200）。
 手工等价命令：`Remove-Item src/main/resources/static -Recurse -Force; Copy-Item frontend/dist src/main/resources/static -Recurse`，
 之后再 package。
+**还有一层（2026-10-21 打 0.0.3 时实测）**：Maven 资源拷贝只覆盖同名文件、不删旧文件，`target/classes/static`
+里上一版删掉的页面（如旧 Login 的 hash 资源）会继续被打进 jar。`game.cmd build` 现在会在 package 前删掉
+`target/classes/static`；手工等价的 `mvn clean package` 同样可以。
 
 **坑⑦：绿色包里的中文文件名不能由 `.cmd` 用 `echo >` 生成**（2026-10-20 实测，翻车的就是这一条）。
 `pack-portable.cmd` 存的是 GBK，而 cmd.exe 解析批处理里的中文用的是**当前控制台代码页**：在开了
@@ -160,7 +167,7 @@
 UTF-8 序列，落盘的文件名直接变成替换符——实测 `怎么玩.txt` 落盘成 `\uFFFD\uFFFDô\uFFFD\uFFFD.txt`，
 zip 只是忠实记录了乱码名（解压后看到的就是这个）。因此那两个说明文件改由
 `scripts/write-portable-extras.ps1` 生成：**文件名走 Windows 的 Unicode API**（不经过任何代码页），
-**内容显式编码**（`怎么玩.txt` 用 UTF-8+BOM，记事本在任何系统上都显示中文）。
+**内容显式编码**（`怎么玩.txt` 用 UTF-8+BOM，记事本在任何系统上都显示中文）。2026-10-21 起说明文件的内容已改成**存档架口径**：双击 exe 进来是存档架（新建/继续/删除），关窗即退出；`停止游戏.bat` 明确写成"只是兜底，平时用不上"，并提醒 `data\hold_year.mv.db` 装着全部存档（复制=备份全部，删除=清空全部）。
 另一条同源的规矩：**批处理文件的内容一律只用 ASCII**——中文写进 `.bat` 后，cmd 在 UTF-8 代码页上会
 把它解成乱码并**当成命令去执行**（实测报 `is not recognized as an internal or external command`）；
 文件名用 Unicode 反而是安全的。同理本仓库的 `.cmd` 必须存 GBK、不能改 UTF-8（见 `AGENTS.md`）。
@@ -171,13 +178,14 @@ zip 只是忠实记录了乱码名（解压后看到的就是这个）。因此�
 
 ## 5. 当前验收基线
 
-- **后端 `test` = 461 tests / 0 Failures / 0 Errors**（需本机 `hold_year_test`；portable 档 H2 下同样全绿）。覆盖：同种子可复现、快进=逐跳、并发守恒、结算 12 步、追保/强平/爆仓、高利贷额度与递增计息与到期强卖、事件骨架 160 条与 `event-copy.txt` 一一对应、**有机σ 4.8% 的分布闸门**、**齐动度闸门（跨股相关 0.12、残差 0.00、爆发时段均匀）**、**股吧按票成流（热度曲线 + 闲聊兜底 + 按票冷却）**、文案文件全部登记且跨池零重复、剧本日撒点不死循环、`prev_index` 基准、三类流水查询、模式档案、提醒消息惯例（含 `ALERT` 档）、心跳节流、暂停闸门（暂停中一跳不推进、恢复后续走）、开局前历史 K（20 根、day 0 收盘=发行价、同 seed 同形状、单日不越涨跌停）、妖股三幕（连板钉涨停 / 停牌潮先于千股跌停钉板且名单一致 / 断魂刀落在救市后）、`restart` 空 body 沿用本局模式、终局两结局。
+- **后端 `test` = 455 tests / 0 Failures / 0 Errors**（需本机 `hold_year_test`；portable 档 H2 下同样全绿）。覆盖：同种子可复现、快进=逐跳、并发守恒、结算 12 步、追保/强平/爆仓、高利贷额度与递增计息与到期强卖、事件骨架 160 条与 `event-copy.txt` 一一对应、**有机σ 4.9% 的分布闸门**、**主线可见度闸门（领涨/领跌/市场基调）**、**齐动度闸门（跨股相关 0.12、残差 0.00、爆发时段均匀）**、**股吧按票成流（热度曲线 + 闲聊兜底 + 按票冷却）**、**存档架链路（新建不覆盖、进入发令牌、删除清世界、旧令牌 401）**、文案文件全部登记且跨池零重复、剧本日撒点不死循环、`prev_index` 基准、三类流水查询、模式档案、提醒消息惯例（含 `ALERT` 档）、心跳节流、暂停闸门（暂停中一跳不推进、恢复后续走）、开局前历史 K（20 根、day 0 收盘=发行价、同 seed 同形状、单日不越涨跌停）、妖股三幕（连板钉涨停 / 停牌潮先于千股跌停钉板且名单一致 / 断魂刀落在救市后）、`restart` 空 body 沿用本局模式、终局两结局。
 - **股吧产出（2026-10-20 大改后实测，3 个交易日）**：每票每天约 **32 条**、热门票 30~45 条、闲聊占一半以上（改前：全市场一天 30 条、每票 1~2 条）。文案库：日常闲聊池 370+ 条、每票专属弹幕 16 条。
-- **波动标定（2026-10-20 引擎大改后，固定世界种子三局平均）**：有机日 σ **4.83%**（闸门 4.2%~5.8%）、有机贴板 **10.4%**（闸门 < 12%，约每天 2.5 只票上板）、有机 ±6% **22.1%**（闸门 < 26%）、个股日 σ **3.2%~7.4%**（离散比 2.3 倍）、跨股日内轨迹相关 **0.12**（改前 0.33）、残差相关 **0.00**（改前 0.12）、日内最大一段变动的时段分布 **9 段各占 14%~16%**（改前 38% 挤在开盘）。
-- **前端 `npm run build` 通过**：入口主包 19.04 kB、`vendor-element` 86.65 kB（按需引入，勿回退）。
+- **波动标定（2026-10-21 主线标定后，固定世界种子三局平均）**：有机日 σ **4.92%**（闸门 4.2%~5.8%）、有机贴板 **11.3%**（闸门 < 12%，约每天 2.7 只票上板）、有机 ±6% **23.3%**（闸门 < 26%）、个股日 σ **3.2%~7.4%**（离散比 2.3 倍）、跨股日内轨迹相关 **0.12**、残差相关 **-0.03**、日内最大一段变动时段分布 **9 段各占 14%~15%**。
+- **主线可见度（2026-10-21，`EraSignalVisibilityTest`，三局固定种子、剔除剧本日）**：被点名领涨的板块平均每天跑赢指数 **+0.42%**、领跌 **-0.80%**、两组差 **+1.21%/天**；市场基调 **牛市 +1.84%/天、熊市 -1.01%/天**（含剧本日）。`ERA_DRIFT_SCALE` 0.055 → 0.18。
+- **前端 `npm run build` 通过**：入口 `index` 4.97 kB、`SaveList` 5.14 kB、`vendor-element` 86.65 kB（按需引入，勿回退）。
 - **除权除息与日K复权已实测**：`CorporateActionServiceTest` 断言 10转10/现金分红把昨收·开·高·低·现价·均价·分时缓冲**整体**折算并双写回 `user_stock_state`；`MarketQueryServiceTest` 用"第 1 日收 170 → 第 2 日除权收 84.15 → 第 3 日 +5%"的三日剧本断言日K连续（第 1 根复权到 85 口径、图内跳幅 == tooltip 涨跌幅、最新一根仍是真实成交价）。
-- **便携版入口已实机走查（2026-10-16，portable 档真跑 jar + 浏览器）**：新机器 status 报无存档 → 「继续游戏」置灰 → 「创建新游戏」直接进第 1 日（右上角显示`单机玩家`，模式仍在状态栏选）→ 退出后入口页显示「第 1 / 72 个交易日、净资产 ¥100,000.00、标准模式」→ 再点「创建新游戏」弹“存档将被清空”，点「取消」留在入口页不清档，点「继续游戏」回到 /market。
-- **实机走查基线**：注册 → 开盘 → 行情/弹幕/消息 → 买卖（T+1、涨跌停、佣金）→ 融资 → 高利贷 → 打新 → 排行 → 日报 → 双结局 → 再来一局，全程 console error 0、非预期接口错误 0。
+- **存档架入口已实机走查（2026-10-21，便携档真跑 jar + 浏览器）**：新机器存档架为空 → 「新建存档」直接进第 1 日（模式仍在状态栏选）→ 返回存档架显示「存档 1 / 第 1 / 72 个交易日 / 净资产 ¥100,000.00 / 标准模式」→ 再点「新建存档」得到「存档 2」，**存档 1 仍在** → 删除「存档 2」不影响存档 1 → 删除当前正在玩的存档后旧令牌当场 401、前端回到存档架且只播一条提示。
+- **实机走查基线**：新建存档 → 开盘 → 行情/弹幕/消息 → 买卖（T+1、涨跌停、佣金）→ 融资 → 高利贷 → 打新 → 排行 → 日报 → 双结局 → 再来一局，全程 console error 0、非预期接口错误 0。
 - **2026-10-13 游戏性批次已实机复核**（新号走查）：日K 开局即有前史（当时 10 根、现为 20 根，见上条；蜡烛等宽 + 底部滑块）；跨日后行情牌的今开/最高/最低/封板都是当日值（第 2 日涨停票挂"封板"、跌 6% 的票无残留涨停红底）；侧栏默认展开；票名已是新化名。
 - 截图只保留**当前版本**（`docs/design/shots/`）：界面改版后重截替换，不叠加历史截图。
 - **变更历史不在本文档里**：`git log` 与 tag `v0.0.1` 是唯一记录。

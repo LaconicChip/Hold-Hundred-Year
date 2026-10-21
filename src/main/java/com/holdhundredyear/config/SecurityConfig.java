@@ -16,12 +16,14 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * 安全配置：无状态 JWT。鉴权面只有一句话——**除 /api/auth/** 外的 /api/**** 要登录**。
+ * 安全配置：无状态 JWT。鉴权面只有一句话——**除存档架 /api/saves/** 外的 /api/** 要登录**。
  *
- * <p>其余请求一律放行，因为它们是前端页面与静态资源：整局游戏打包成单个 jar 后，
- * 浏览器直接访问 /market、/stock/3 这类 history 路由，或刷新页面，都会打到后端来
- * 要 index.html（见 {@link WebStaticConfig}）。以前写的是 anyRequest().authenticated()，
- * 结果首页和 js/css 全被挡成 401，jar 里嵌的前端根本打不开。
+ * <p>这一版没有账号系统：{@code /api/saves/**} 就是入口（列存档 / 新建 / 进入 / 删除），
+ * 必须匿名可达；进入某份存档后签发的 JWT 才是后续所有游戏接口的门票。其余请求一律放行，
+ * 因为它们是前端页面与静态资源：整局游戏打包成单个 jar 后，浏览器直接访问 /market、
+ * /stock/3 这类 history 路由，或刷新页面，都会打到后端来要 index.html（见
+ * {@link WebStaticConfig}）。以前写的是 anyRequest().authenticated()，结果首页和 js/css
+ * 全被挡成 401，jar 里嵌的前端根本打不开。
  *
  * <p>反过来，新增后端接口只要落在 /api/ 下就自动受保护，不需要回来改这张表；
  * 真正的鉴权细节（token 解析、越权）在业务层与 {@link JwtAuthFilter}。
@@ -45,7 +47,7 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/saves/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/**").authenticated()
