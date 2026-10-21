@@ -1,73 +1,34 @@
 # 你持有一百年看看
 
-A 股模拟炒股游戏：一局 72 个交易日（3 年 × 24 天），约 1 分 40 秒一个交易日、**整局约 2 小时**，11 个历史纪元剧本；
-开每一局时可选**快速模式**（36 个交易日、约 30 分钟、涨跌停 ±20%）——模式一局一选，存档不绑定，
-世界种子可复现，支持保证金交易与强平，另有**高利贷**（净资产 5 倍额度、日息按账龄递增、到期强制平仓还债，借满就是 6 倍仓位），双结局（爆仓天台 / 通关成绩单）。**单机多存档**：入口是存档架，新建不覆盖旧档、可逐份删除；局域网里的朋友看到同一张存档架。
+一款单机 A 股模拟炒股游戏：从 10 万本金开始，经历 11 个历史纪元、72 个交易日（快速模式 36 天），在涨停、跌停、停牌、除权、融资与高利贷之间活下来。
 
-- 后端：Spring Boot 4.1.1 / Java 17 / MySQL / MyBatis-Plus / WebSocket(STOMP)，**不使用 Redis 与 MQ**
-- 前端：Vue 3 + Vite + Element Plus + ECharts + Pinia
-- 视觉：散户营业部·漫画贴纸风（米纸底 + 墨色描边 + 硬阴影）、红涨绿跌、**全站禁 emoji**
-- 版本：**v0.0.3**（`pom.xml`、`frontend/package.json` 与 git tag 三处同号）
+游戏没有账号和登录。入口就是一张**存档架**：新建一份存档即开一局，旧存档不会被覆盖，也可以逐份删除。局域网里的朋友打开同一个地址，会看到同一张存档架。
 
-![登录页](docs/design/shots/01-login.png)
-![大盘](docs/design/shots/02-market.png)
-![个股页](docs/design/shots/03-stock.png)
+## 功能
 
-## 目录结构
+- **单机多存档**：每份存档一个独立世界，独立进度、行情、事件与主力剧本。
+- **两种节奏，一局一选**：标准模式 72 个交易日约 2 小时；快速模式 36 个交易日约 30 分钟。每天都是 90 跳，11 个纪元与全部玩法机制不减，快速模式只压缩时间轴、放大单日振幅。
+- **24 只虚构股票**：覆盖白酒、半导体、新能源、医药、银行、券商、军工、传媒等 21 个板块方向，名字与代码全部虚构。
+- **有主线的行情**：市场因子、板块因子、个股 β 三层驱动，叠加 GARCH-lite 波动聚集、肥尾跳跃、日内 U 型与涨跌停磁吸；每个纪元有明确的市场基调与领涨/领跌板块。
+- **历史名场面**：千股涨停、千股跌停、救市、黑 7 月崩盘、妖股三幕等剧本日保证发生，具体时点每局不同。
+- **完整交易规则**：T+1、涨停只可卖不可买、ST 5%/10% 涨跌停、佣金与印花税、停牌核查、除权除息、打新。
+- **杠杆与风险**：融资年化 8%，担保比例低于 140% 追保、低于 120% 强平；另有高利贷，额度为净资产 5 倍，到期强制卖出还债。
+- **实时推送与离线暂停**：WebSocket 推送行情、消息、通知与股吧弹幕；没有客户端在线时，世界不推进。
+- **双结局**：资不抵债进入爆仓结局；坚持到收官日获得通关成绩单。
 
-```text
-src/main/java/com/holdhundredyear/
-  world/     世界种子与排期（WorldRandom 是唯一随机入口、WorldSeeder、EraScheduler、ScriptDayScheduler）
-  market/    行情状态机与推进（MarketStateService 开盘管线、WorldTickService 单跳、SettlementService 结算、
-             FastForwardService 快进、MarketQueryService 查询聚合、QuoteBoardRegistry 世界锁）
-    engine/  引擎四件套（VolatilityEngine、SealMachine、ShockQueue、IndexCalculator）
-    quote/   内存行情板（Quote 分时缓冲 90 点、QuoteBoard）
-  trade/     交易与特色机制（TradeService、MarginService、SharkService 高利贷、IpoService、
-             CorporateActionService、MeQueryService）
-  event/     事件与内容（EventFactory、MessageService、DanmuService、NpcService、MainScriptService、
-             HaltService、ProgressService）
-  ws/        实时推送四通道 /user/queue/{quotes,messages,notifications,danmu}
-  web/       REST 控制器（Save/Stock/Trade/Loan/Ipo/Market/Message/Me/Game）
-  game/      constants（引擎标定 GameConstants、静态档案 StockDefs/EraDefs/NpcDefs/Titles、事件骨架结构 EventSkeletons）
-             content（全部游戏文案的读取入口：ContentCatalog + DanmuTexts/StockPersonas/SectorFlavor/
-             NpcLines/EventCopy/EraNarratives/SharkLines 七个薄壳）
-             model/dto（接口出参）、model/enums（状态机、纪元、一局模式 GameMode 等枚举）
-  market/entity/ + market/mapper/  MyBatis-Plus 实体与 Mapper（16 张表）
-  config/ + common/  安全与 JWT、WebSocket、统一响应 R / PageResult / BizException
+## 技术栈
 
-src/main/resources/db/
-  schema.sql                        表结构的唯一权威：新库执行它；改表就重建库（本项目不维护增量迁移脚本）
-
-src/main/resources/content/
-  danmu.txt / stock-personas.txt / sector-flavor.txt / npc-lines.txt / event-copy.txt /
-  era-narratives.txt / shark-lines.txt
-  全部游戏文案（弹幕、24 股人设、板块与大盘消息、NPC 台词、160 条事件骨架的标题正文与追报、11 条纪元叙事、高利贷台词）
-  —— 改文案只改这七个 txt，不动 Java；格式与校验见 docs/implementation-notes.md §7
-
-frontend/src/
-  views/        8 个页面（Login/Market/StockDetail/Assets/Messages/Leaderboard/DailySummary/GameResult）
-  components/   21 个组件（GameLayout 竖向菜单、StockChart 分时、KlineChart 日K、DanmuLayer 股吧弹幕层、ModePicker 开局选模式、QuoteTable 等）
-  api/          axios 接口层 + ws.js（STOMP 四通道，握手带 JWT）
-  stores/       Pinia（user/market/quotes/messages）
-  utils/        通用格式化（涨跌配色与金额/百分比展示，跨页面共用）
-  constants/    messageMeta.js（消息来源/三态/呈现通道的展示元数据）——股票档案与节奏都不在前端镜像
-  styles/       tokens.css（全部设计令牌）+ theme.js（ECharts 令牌镜像，唯一允许出现色值的文件）
-  assets/       icons.svg（贴纸风图标 sprite）+ img/*.png（吉祥物与 NPC 头像）
-
-docs/
-  spec.md                  设计规格（最高权威：架构/数值/API/视觉）
-  implementation-notes.md  实现备忘（冻结决策、机制速查、运维手册、验收基线）
-  design/                  style-tile.html 视觉基准、mascot-*.jpg 吉祥物定稿、shots/ 验收截图
-```
+- 后端：Spring Boot 4.1.1、Java 17、MyBatis-Plus、MySQL 8、Spring WebSocket（STOMP）、Spring Security + JWT
+- 前端：Vue 3、Vite、Pinia、Vue Router、Element Plus（按需引入）、ECharts、@stomp/stompjs
+- 便携版：jpackage app-image、内嵌 H2（MySQL 兼容模式）、Chrome for Testing
+- 不使用 Redis 与消息队列；状态以内存为权威，MySQL 做 Checkpoint
 
 ## 快速开始
 
-前置：PowerShell 7、JDK 17、Node.js 20+（Vite 6 的最低要求）、MySQL 8（开发库 `hold_year`、测试库
-`hold_year_test`，账号与密码见 `src/main/resources/application.properties`，本机开发默认值是 `root` / `123456`）。
+前置：PowerShell 7、JDK 17、Node.js 20+、MySQL 8。
 
 ```powershell
-# 1. 首次或换机：建库并建表（两个库都要）
-#    下面用 -p 交互输入密码，不要把密码直接写在命令行里
+# 1. 建库并建表（开发库与测试库都要）
 mysql -uroot -p -e "CREATE DATABASE IF NOT EXISTS hold_year DEFAULT CHARACTER SET utf8mb4; CREATE DATABASE IF NOT EXISTS hold_year_test DEFAULT CHARACTER SET utf8mb4;"
 mysql -uroot -p hold_year      -e "source src/main/resources/db/schema.sql"
 mysql -uroot -p hold_year_test -e "source src/main/resources/db/schema.sql"
@@ -76,199 +37,124 @@ mysql -uroot -p hold_year_test -e "source src/main/resources/db/schema.sql"
 .\mvnw.cmd spring-boot:run
 
 # 3. 前端（5173，/api 与 /ws 代理到 8080）
-cd frontend; npm ci; npm run dev
+cd frontend
+npm ci
+npm run dev
+```
 
-# 4. 全量后端测试（需 MySQL 的 hold_year_test 库）
+打开 `http://localhost:5173` 或打包后的 `http://localhost:8080`，点「新建存档」即可开局。
+
+默认数据库账号写在 `src/main/resources/application.properties`（本机开发默认 `root` / `123456`），可以用环境变量覆盖：
+
+```powershell
+$env:HOLD_DB_URL = 'jdbc:mysql://localhost:3306/hold_year?...'
+$env:HOLD_DB_USER = 'root'
+$env:HOLD_DB_PASSWORD = '你的密码'
+```
+
+## 存档与局域网
+
+- 存档架的接口是 `/api/saves`：列出、新建、进入、删除。`sys_user` 一行就是一份存档，没有账号与密码。
+- 进入某份存档时签发 JWT；令牌只是这份存档的会话票据，默认有效期一年。
+- 删除存档会连同该存档的持仓、成交、消息、日 K、快照等全部数据一起清掉，不可恢复。
+- 标准模式使用本机 MySQL；便携版使用内嵌 H2，存档是程序目录下的 `data\hold_year.mv.db` 一个文件。
+
+局域网共享：
+
+```powershell
+.\game.cmd          # 启动
+.\game.cmd lan      # 打印局域网地址
+```
+
+朋友在同一个局域网里打开 `http://192.168.x.x:8080` 就能进入同一张存档架。存档架没有密码，谁都能进入或删除任意存档，这是熟人环境的设计取舍。朋友连不上时，先确认你在同一网络，再检查 Windows 防火墙是否放行了 8080 端口。
+
+## 便携版
+
+GitHub Releases 提供自带 Java 与浏览器的便携包：
+
+```text
+https://github.com/LaconicChip/Hold-Hundred-Year/releases
+```
+
+使用方式：解压 → 双击 `hold-hundred-year.exe` → 在独立游戏窗口中游玩。关掉窗口即退出；`停止游戏.bat` 只是窗口关不掉时的兜底。便携包约 281 MB，不需要安装 Java、Node、MySQL 或浏览器。
+
+便携版的存档全部在 `data\hold_year.mv.db`：复制这个文件等于备份全部存档，删除它等于清空全部存档。想自己打包：
+
+```powershell
+.\pack-portable.cmd
+```
+
+产物在 `dist\hold-hundred-year-portable-<版本号>.zip`，脚本会启动包内 exe 做一次冒烟测试，失败则不产出压缩包。
+
+## 配置
+
+| 环境变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `HOLD_DB_URL` | 本机 `hold_year` | 数据库连接串 |
+| `HOLD_DB_USER` / `HOLD_DB_PASSWORD` | `root` / `123456` | 数据库账号 |
+| `HOLD_PORT` | `8080` | 服务端口 |
+| `HOLD_JWT_SECRET` | 开发默认值 | JWT 签名密钥；公开部署务必替换 |
+| `HOLD_JWT_TTL_HOURS` | `8760` | 存档会话令牌有效期 |
+| `HOLD_H2_PATH` | `./data/hold_year` | 便携版 H2 存档路径 |
+| `HOLD_LOG_FILE` | `./data/hold-year.log` | 便携版日志路径 |
+| `HOLD_BROWSER_PATH` | 空 | 便携版指定浏览器路径 |
+| `HOLD_QUIT_WITH_WINDOW` | `true` | 便携版关窗是否退出服务 |
+
+## 目录结构
+
+```text
+src/main/java/com/holdhundredyear/
+  world/     世界种子、纪元与剧本日排期、存档服务
+  market/    市场状态机、逐跳推进、结算、快进、查询、行情板与世界锁
+    engine/  波动引擎、封板状态机、价格冲击队列、指数计算
+    quote/   内存行情板与分时缓冲
+  trade/     交易、融资、高利贷、打新、除权除息
+  event/     事件工厂、消息、股吧弹幕、NPC、主力剧本
+  ws/        WebSocket 四通道推送
+  web/       REST 控制器
+  game/      常量、游戏文案入口、DTO 与枚举
+  config/    安全、WebSocket、静态资源、便携版数据源与窗口
+  common/    统一响应、异常、JWT、H2 方言翻译
+
+src/main/resources/
+  db/schema.sql              表结构的唯一权威；改表就重建库，不维护增量迁移脚本
+  content/*.txt              全部游戏文案（弹幕、个股人设、板块与大盘消息、NPC 台词、事件、纪元叙事）
+
+frontend/src/
+  views/        存档架、大盘、个股、资产、消息、排行榜、收盘总结、终局
+  components/   布局、行情表、分时与日 K、弹幕层、模式选择器等
+  api/          REST 与 WebSocket 接口层
+  stores/       Pinia 状态
+  styles/       设计令牌与主题
+  assets/       图标 sprite 与吉祥物、NPC 头像
+
+scripts/        便携包说明文件生成脚本
+```
+
+## 测试与构建
+
+```powershell
+# 后端全量测试（需要 hold_year_test 库）
 .\mvnw.cmd test
 
-# 5. 前端生产构建
-cd frontend; npm run build
+# 前端生产构建
+cd frontend
+npm run build
 ```
 
-打开 `http://localhost:8080` 就是**存档架**：新建一份存档即开局，已有存档点「继续」。
-没有注册和登录，也没有密码。
+当前基线：后端 455 个测试全部通过；前端生产构建通过。
 
-## 给朋友玩（没有云服务器）
+## 常见问题
 
-**结论：这游戏就跑在你现在这台机器上，不需要服务器。** 打包成一个 jar，前端页面也塞在同一个
-jar 里，双击 `game.cmd` 就起来；朋友用浏览器访问你电脑的局域网地址即可，他们什么都不用装。
-MySQL 仍然用你本机那个 `MySQL80` 服务（存档就在里面）。
+- `mvnw.cmd` 在部分机器上报 `Cannot index into a null array`：改用 Maven Wrapper 已下载的 Maven，先设置 `JAVA_HOME` 指向 JDK 17，再执行 `& "$env:USERPROFILE\.m2\wrapper\dists\apache-maven-<版本>\*\apache-maven-<版本>\bin\mvn.cmd" test`。
+- 测试报 `Unknown database 'hold_year_test'`：按快速开始第一步建库、执行 `schema.sql`。
+- 前端页面打不开或按钮无反应：先确认后端 8080 已启动，再按 `Ctrl+F5` 硬刷新。
+- 改了表结构：直接按 `schema.sql` 重建 `hold_year` 与 `hold_year_test`，本项目不提供增量迁移脚本。
 
-### 一次性打包
+## 授权与声明
 
-```powershell
-.\game.cmd build      # 前端构建 -> 拷进后端资源目录 -> 打成 target\Hold-Hundred-Year-0.0.3.jar
-```
-
-### 每次开一局之前
-
-```powershell
-.\game.cmd            # 启动；你自己开 http://localhost:8080
-.\game.cmd lan        # 打印要发给朋友的地址（另开一个窗口看）
-```
-
-朋友在**同一个 WiFi/局域网**里，浏览器打开 `http://192.168.x.x:8080`（`game.cmd lan` 给的就是
-它），页面里就是同一张**存档架**：各自「新建存档」，各玩各的世界，进度互不影响。
-
-**存档架是共享的**：局域网内谁都能看到、进入或删除任意一份存档（没有密码、没有账号隔离）。
-这是熟人环境的设计取舍；不想要这个口子就只让自己访问本机。
-
-**你电脑关机或关掉窗口，朋友就进不来了** —— 这是没有服务器的代价。每份存档一个独立世界，
-但入口不设防。
-
-### 朋友连不上，按顺序查这三条
-
-1. 你的游戏窗口还开着吗？你自己 `http://localhost:8080` 能打开吗。
-2. 你们在同一个网络吗？公司/校园网常做设备隔离（互相连不通），这种网络换手机热点最省事。
-3. Windows 防火墙拦了入站。用**管理员身份**的命令提示符放行一次：
-
-   ```powershell
-   netsh advfirewall firewall add rule name="Hold Hundred Year" dir=in action=allow protocol=TCP localport=8080
-   ```
-
-### 想直接发个压缩包（对方电脑零依赖）
-
-上面那种方式要求**你的电脑开着**。如果只想把游戏丢给朋友自己玩，打一个绿色包：
-
-```powershell
-.\pack-portable.cmd        # 产物 dist\hold-hundred-year-portable-<版本号>.zip（自带浏览器，约 282 MB）
-```
-脚本最后一步会**自己把包里的 exe 启动一次做冒烟测试**（起不来就直接失败退出，不把打不开的包发出去），
-测完自动清掉冒烟产生的临时存档。
-
-把 zip 发给朋友：解压 → 双击 `hold-hundred-year.exe` → 弹出一个**独立游戏窗口**（没有地址栏的
-应用窗口，不碰他自己的书签和登录态）→ 窗口里就是存档架，点「新建存档」就能玩。对方不需要装
-Java、Node、MySQL（JRE 已经捆在包里）。退出：**关掉游戏窗口就是退出**；`停止游戏.bat` 只是
-兜底（窗口关不掉/后台进程没退干净时用，平时用不上）。
-
-> **"关窗即退出"靠的是自带浏览器。** `pack-portable.cmd` 默认把 **Chrome for Testing** 一起打进包，
-> 实测成品 **282 MB**（不带浏览器是 82.6 MB）。浏览器进程由我们创建并持有，玩家关掉窗口 → 进程结束
-> → 本地服务正常退出，这条链在包里的 exe 上实测跑通过。不带浏览器（`$env:BUNDLE_BROWSER='0'`）
-> 也能玩，但系统 Edge 的"启动加速"会把新窗口交给它后台已有的进程，我们启动的那个 0 秒就退出，
-> 此时只能靠 `停止游戏.bat` 退出。
-> 顺带一条踩过的坑：**别用 Playwright 自带的 Chromium 分发**——它是自编译构建，要求目标机器装过
-> VC++ 运行库，实测在未装的机器上 `CreateProcess error=14001` 起不来；Chrome for Testing 静态链接
-> CRT，才是给"随应用分发"准备的。
-
-第一次运行 Windows 可能提示"已保护你的电脑"（因为我们没买代码签名证书），点「更多信息 → 仍然要
-运行」。窗口行为可用环境变量调：`HOLD_QUIT_WITH_WINDOW=false` 让关窗后服务继续跑，
-`HOLD_BROWSER_PATH` 指定浏览器位置（装在非标准路径时用）。
-
-> 便携包**不随代码改动自动更新**：只有"升版本号 + 让我打包"两件事都明确说了，才会重新生成
-> `dist\` 里的包（见 AGENTS.md 落地约定）。
-
-区别只有一处：绿色包用内嵌的 H2 文件库（存档是同一个目录下的 `data\hold_year.mv.db`，
-复制它=备份，删掉它=重开一局），你自己这台机器仍然跑真 MySQL。表结构还是只有
-`src/main/resources/db/schema.sql` 一份权威，H2 那边由 `MysqlSchemaForH2` 在启动时翻译，
-不存在第二份建表脚本。
-
-### 朋友不在同一个网络
-
-没有服务器就借一条免费隧道（Cloudflare Quick Tunnel：装个 `cloudflared` 就行，不用注册、
-不用公网 IP）：
-
-```powershell
-cloudflared tunnel --url http://localhost:8080
-```
-
-它会吐一个 `https://随便-几个-词.trycloudflare.com` 的地址，发给朋友就能玩，HTTPS/WSS 它顺手
-做掉了。三个代价要知道：**每次重启网址会变**；拿到网址的人都能进（没有邀请码）；隧道断了页面
-会卡住（本机数据不受影响）。想固定域名、长期在线，就得先有服务器——那时候再谈 Docker、证书、
-进程守护、自动备份这一整套（`docs/spec.md` §15 现在把它们列为明确不做）。
-
-### 存档与备份
-
-存档全在 MySQL 的 `hold_year` 库里。
-
-```powershell
-$env:HOLD_DB_PASSWORD = '你的MySQL密码'                  # 只在备份/还原时用
-.\game.cmd backup                                    # 导出到 backups\hold_year-日期时间.sql
-.\game.cmd restore backups\hold_year-xxx.sql         # 还原（先停游戏）
-```
-
-改了表结构不用写迁移脚本：按 `src/main/resources/db/schema.sql` 重建库即可（见下面"已知环境坑"
-第 3 条）。
-
-### 给别人玩之前，三件建议顺手做的事
-
-1. **换掉 MySQL 密码**（默认值 `123456` 就写在 `application.properties` 里，等于公开的）：
-
-   ```powershell
-   $env:HOLD_DB_PASSWORD = '你的MySQL密码'   # 再启动游戏
-   ```
-
-2. **换掉 JWT 密钥**（默认值同样写在 `application.properties` 里，公开密钥等于别人能伪造令牌、直接进入任意存档）：
-
-   ```powershell
-   $env:HOLD_JWT_SECRET = '随便敲一大串，越长越好'    # 再启动游戏；换密钥会让所有人回到存档架
-   ```
-
-3. **别把 MySQL 暴露出去**：`3306` 只监听本机就好，对外只开 8080。数据库地址/账号/密码/端口
-   都能用 `HOLD_DB_URL` / `HOLD_DB_USER` / `HOLD_DB_PASSWORD` / `HOLD_PORT` 覆盖，不用改代码。
-
-> 绿色包（`portable` 档）不用管第 1、2 条：它用内嵌 H2，**会话密钥默认每次启动随机生成**，
-> 读过源码的人伪造不了令牌。
-
-## 已知环境坑
-
-1. **`mvnw.cmd` 在某些机器上会直接失败**（报 `Cannot index into a null array` / `Cannot start maven from wrapper`）：
-   它内部固定调用 Windows PowerShell 5.1 解析 `~/.m2`。绕法＝直接用 wrapper 已下载好的 Maven：
-   `& "$env:USERPROFILE\.m2\wrapper\dists\apache-maven-<ver>\*\apache-maven-<ver>\bin\mvn.cmd" test`（需先设 `$env:JAVA_HOME` 指向 JDK 17）。
-2. **测试没有 H2 兜底**：`hold_year_test` 不存在会直接大面积 `Unknown database` 报错，按上面第 1 步建库即可。
-3. **表结构只有一份权威：`src/main/resources/db/schema.sql`**。本项目是单机本地游戏、没有线上库，所以不维护增量迁移脚本——改表后直接重建两个库：`DROP DATABASE hold_year; CREATE DATABASE hold_year ...` 再 `source schema.sql`（`hold_year_test` 同理）。存档可以不要，但绝不会出现"库里少一列"这种错。
-4. 前端页面依赖后端 8080，**先起后端再起前端**。后端没跑时前端会统一弹「连不上营业部系统」（8 秒内只弹一次）——
-   但如果标签页是后端重启前就开着的，它里面的 WS 与 store 都是旧的，按钮点了没反应，**先 Ctrl+F5 硬刷新**。
-5. **在 IDEA 里改过 Java 包名（或 `git mv` 挪过源码目录）之后，必须先 Maven 面板 → Reload All Maven Projects，
-   再 Build → Rebuild Project**。IDEA 的 Rebuild 会先清空输出目录、再按它自己的增量缓存编译；缓存还认旧包路径时
-   就会留下一个空的 `target/classes`，此时 Run 报 `ClassNotFoundException: 主类`（不是代码问题，是 IDE 缓存）。
-   实在不清爽就 File → Invalidate Caches… 勾 Clear file system cache and Local History 重启。
-6. 判断服务在不在，**别用 `Get-NetTCPConnection -LocalPort 8080`**（沙箱/权限环境下会假报"无监听"），
-   直接发一次 HTTP：`Invoke-WebRequest http://localhost:8080/api/game/modes`（未登录返回 401 就说明活着）。
-7. **别让 IDEA 的自动构建和命令行 `mvnw` 同时写 `target/classes`**：两边都会清空/覆写输出目录，撞上就会出现
-   莫名其妙的 `NoSuchBeanDefinitionException`（某个 `@Service` 的 class 恰好被删掉）或"主类找不到"。
-   命令行跑测试前，要么关掉 IDEA 的 Build project automatically，要么只用一种方式构建。
-   遇到这种"上一秒还全绿"的失败，先 `mvnw clean test` 重跑一次再怀疑代码。
-8. **`game.cmd` 必须存成 GBK（代码页 936），不能改成 UTF-8**：cmd 读带中文的 UTF-8 批处理会按字节错位，
-   表现是某行中文注释被当成命令执行（`"xxx 不是内部或外部命令"`）甚至跳行。IDEA 里改这个文件时
-   右下角编码要选 GBK；README/源码仍是 UTF-8，只有这一个 `.cmd` 例外。
-
-## 素材、授权与免责声明
-
-- **美术素材**：界面里的吉祥物与 NPC 头像（`frontend/src/assets/img/*.png`）由 AI 图像生成工具产出，
-  仅用于本项目；`docs/design/mascot-*.jpg` 是它们的定稿截图。
-- **字体**：站酷快乐体通过 CDN 引入（`frontend/index.html`），仅用于标题装饰，正文使用系统字体。
-- **第三方内容**：`.trae/skills/humanizer-zh/` 是外部 MIT 协议的去 AI 味文案 skill 副本
-  （原作者 歸藏 / op7418），已随仓库保留其 LICENSE 与来源说明。
-- **股票与公司全部虚构**：24 只票的名字、代码、发行价、人设都是编的，只玩梗、不使用任何真实
-  股票代码，也不影射任何真实公司。
-- **不构成投资建议**：这是一个模拟游戏，行情、事件、消息全部是程序生成的虚构内容。
-
-## License
-
-[MIT](LICENSE) © 2026 路痴。字体、图标与文案等第三方内容的授权见上文。
-
-## 权威文档与优先级
-
-规则冲突时：**设计规格 > 实现计划 > 其他**。
-
-| 文档 | 路径 |
-| --- | --- |
-| 设计规格 | `docs/spec.md` |
-| 实现备忘 | `docs/implementation-notes.md` |
-| 视觉基准 | `docs/design/style-tile.html` |
-| 表结构 | `src/main/resources/db/schema.sql`（16 张表；改表就重建库，无增量迁移） |
-| 游戏文案 | `src/main/resources/content/`（7 个 .txt，改文案不用改代码） |
-| 验收截图 | `docs/design/shots/` |
-
-## 改动前必读的硬约束
-
-完整清单见 `docs/implementation-notes.md`（§1 痛点结论 P1-P15、§2 硬约束、§3 机制速查）。要点：
-
-- 入口是存档架（`/api/saves/**`，匿名可达）：`sys_user` 一行就是一份存档，**没有账号/登录/密码**；进入某份存档后签发的 JWT 才是游戏接口的门票。
-- 引擎/结算路径禁用 `new Random()` / `Math.random()`，一律 `WorldRandom.of(seed, salt)`；同 seed 必同结果，快进与正常推进等价。
-- 并发：`QuoteBoardRegistry.worldLock(userId)` 覆盖调度/快进/交易；`sys_user`、`user_position` 悲观锁；`user_stock_state.version` 乐观锁。
-- 开盘管线在所有价格变动完成后**必须统一重算开盘指数**（`e6fbc19` 修复，不得回退）。
-- 交易规则：T+1、涨停只可卖不可买、涨跌停按本局模式（标准 ±10%/ST ±5%，快速 ±20%/ST ±10%）、佣金万 3 最低 5 元、印花税千 1（卖出）、追保 140% / 强平 120%、年化 8%；高利贷不进担保比例但进净资产与爆仓判定。
-- 视觉：色值只走 `tokens.css` 令牌（仅 `styles/theme.js` 例外）、全站禁 emoji、图标走 SVG sprite。
-- 任何触及开盘管线/结算/引擎的改动，必跑 `VolatilityEngineTest`、`FastForwardServiceTest`、`TradeConcurrencyTest`、`WorldTickServiceTest`。
-- 改波动常量或纪元漂移，必须同时跑 `VolatilityDistributionTest`（量级/贴板率）与 `EraSignalVisibilityTest`（主线方向）、`VolatilityCoMovementTest`（齐动度）。
+- 代码以 MIT 协议开源，见 [LICENSE](LICENSE)。
+- 界面中的吉祥物与 NPC 头像由 AI 图像生成工具产出，仅用于本项目。
+- 标题字体站酷快乐体通过 CDN 引入，正文使用系统字体。
+- 24 只股票的名称、代码、发行价与人设全部虚构，只玩梗，不使用真实股票代码。
+- 本游戏为模拟游戏，行情、事件与消息均由程序生成，不构成任何投资建议。
