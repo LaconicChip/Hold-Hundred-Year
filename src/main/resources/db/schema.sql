@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS trade_record (
     commission DECIMAL(12,2) NOT NULL,
     tax DECIMAL(12,2) NOT NULL,
     game_day INT NOT NULL,
+    tick_index INT NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_user_day (user_id, game_day)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

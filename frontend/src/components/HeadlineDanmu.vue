@@ -79,6 +79,18 @@ function onEnd() {
   from { transform: translateX(104vw); }
   to { transform: translateX(-105%); }
 }
+/* 手机端把头条压成顶部细条：15% 的位置会正好盖住买卖面板/状态条，虽然不挡点击但很难看 */
+@media (max-width: 720px) {
+  .headline {
+    top: 6px;
+    max-width: 100vw;
+    padding: 4px 10px;
+    gap: var(--sp-2);
+    font-size: var(--fs-md);
+    border-radius: var(--radius-sm);
+  }
+  .headline-text { font-size: var(--fs-sm); }
+}
 /* 尊重减少动效偏好：不飘，原地停留 6 秒后同样出队 */
 @media (prefers-reduced-motion: reduce) {
   .headline {

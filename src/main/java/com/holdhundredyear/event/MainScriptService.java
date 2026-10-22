@@ -1,11 +1,16 @@
 package com.holdhundredyear.event;
 
+import com.holdhundredyear.game.constants.EventSkeletons;
+import com.holdhundredyear.game.constants.GameConstants;
 import com.holdhundredyear.game.constants.StockDefs;
+import com.holdhundredyear.game.model.enums.SealState;
 import com.holdhundredyear.market.engine.PriceShock;
 import com.holdhundredyear.market.entity.GameEvent;
 import com.holdhundredyear.market.entity.UserGameState;
 import com.holdhundredyear.market.entity.UserMessage;
 import com.holdhundredyear.market.mapper.GameEventMapper;
+import com.holdhundredyear.market.mapper.UserMessageMapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.holdhundredyear.market.quote.Quote;
 import com.holdhundredyear.market.quote.QuoteBoard;
 import org.springframework.stereotype.Service;
@@ -47,22 +52,22 @@ public class MainScriptService {
     /** 兜底轮数上限（防极端钳制下不收敛；+5%×50 轮足破一切参考价，正常路径远用不完）。 */
     private static final int MAX_TOPUP = 50;
 
-    private final NotifyPublisher notifyPublisher;
     private final MessageService messageService;
     private final GameEventMapper gameEventMapper;
+    private final UserMessageMapper userMessageMapper;
 
     /** 每用户当前剧本状态（key=userId）。 */
     private final Map<Long, MainScriptState> scripts = new ConcurrentHashMap<>();
 
-    public MainScriptService(MessageService messageService, NotifyPublisher notifyPublisher,
-                             GameEventMapper gameEventMapper) {
+    public MainScriptService(MessageService messageService,
+                             GameEventMapper gameEventMapper, UserMessageMapper userMessageMapper) {
         this.messageService = messageService;
-        this.notifyPublisher = notifyPublisher;
         this.gameEventMapper = gameEventMapper;
+        this.userMessageMapper = userMessageMapper;
     }
 
-    /** 剧本类型（权重：洗盘 0.45 / 出货 0.40 / 天地板 0.15）。 */
-    enum ScriptKind { SHAKEOUT, PUMP_DUMP, SKY_EARTH }
+    /** 剧本类型（权重：洗盘 0.40 / 出货 0.35 / 天地板 0.15 / 尾盘偷袭 0.10）。 */
+    enum ScriptKind { SHAKEOUT, PUMP_DUMP, SKY_EARTH, TAIL_WHIP }
 
     /** 剧本阶段。SHAKEOUT/PUMP_DUMP 共用三阶段推进 + 完成不足时的 TOPUP 兜底；SKY_EARTH 单跳即了。 */
     private enum Stage { P1, P2, P3, TOPUP }
@@ -80,6 +85,12 @@ public class MainScriptService {
         final boolean positive;   // SHAKEOUT true（完成需 up）/ PUMP_DUMP false（完成需 down）
         int topUpRounds;
         boolean done;
+        /** 剧本配套消息（启动时一次选定，tick 零掷骰）：开盘传闻 + 收官追报。 */
+        Long openingMessageId;
+        String openingTitle;
+        String openingContent;
+        String followupContent;
+        String truthValue;
 
         MainScriptState(ScriptKind type, long stockId, Stage stage, int n1, int n2, int n3,
                         double mag1, double mag3, double launchPrice, double priorPeak,
@@ -124,6 +135,11 @@ public class MainScriptService {
         }
         long stockId = candidates.get(rng.nextInt(candidates.size()));
         ScriptKind kind = rollKind(rng);
+        // 尾盘偷袭只允许下午最后约 12 跳启动；不满足就退回普通剧本（多消费一次掷骰，仍确定性）
+        if (kind == ScriptKind.TAIL_WHIP
+                && board.getTickIndex() < GameConstants.TOTAL_TICKS - 12) {
+            kind = rng.nextBoolean() ? ScriptKind.SHAKEOUT : ScriptKind.PUMP_DUMP;
+        }
         return startFor(userId, gs, board, rng, kind, stockId);
     }
 
@@ -132,9 +148,22 @@ public class MainScriptService {
                      ScriptKind kind, long stockId) {
         MainScriptState st = buildState(kind, stockId, board, rng);
         scripts.put(userId, st);
+        prepareOpeningNews(st, rng);
         writeOpening(userId, gs, st);
         if (kind == ScriptKind.SKY_EARTH) {
-            board.getShocks().enqueue(new PriceShock(stockId, false, -0.99, 1, PriceShock.Decay.ONCE));
+            // 真正的天地板/地天板：先顶到一端并解除旧封板，再在下一跳用 ±99% 砸/拉到另一端
+            Quote quote = board.quote(stockId);
+            quote.setSealed(SealState.NONE);
+            quote.setSealTicksLeft(0);
+            if (st.positive) {
+                quote.setCurrent(quote.limitDownPrice());
+                quote.setLow(Math.min(quote.getLow(), quote.limitDownPrice()));
+                board.getShocks().enqueue(new PriceShock(stockId, false, 0.99, 1, PriceShock.Decay.ONCE));
+            } else {
+                quote.setCurrent(quote.limitUpPrice());
+                quote.setHigh(Math.max(quote.getHigh(), quote.limitUpPrice()));
+                board.getShocks().enqueue(new PriceShock(stockId, false, -0.99, 1, PriceShock.Decay.ONCE));
+            }
             st.done = true;
         } else {
             board.getShocks().enqueue(new PriceShock(stockId, false, st.mag1, st.n1, PriceShock.Decay.LINEAR));
@@ -149,7 +178,7 @@ public class MainScriptService {
             return;
         }
         if (board.quote(st.stockId).isHalted()) {
-            st.done = true; // 目标停牌价格冻结不再演变，终止剧本（防兜底死循环）
+            finish(userId, gs, st); // 目标停牌：终止剧本，但要把 PENDING 传闻收尾，不能留悬案
             return;
         }
         st.stageTicksLeft--;
@@ -157,7 +186,14 @@ public class MainScriptService {
             return;
         }
         switch (st.stage) {
-            case P1 -> { st.stage = Stage.P2; st.stageTicksLeft = st.n2; }
+            case P1 -> {
+                if (st.type == ScriptKind.TAIL_WHIP) {
+                    st.done = true; // 尾盘偷袭只做一波，无后续阶段、无消息
+                } else {
+                    st.stage = Stage.P2;
+                    st.stageTicksLeft = st.n2;
+                }
+            }
             case P2 -> { st.stage = Stage.P3; st.stageTicksLeft = st.n3;
                 board.getShocks().enqueue(new PriceShock(st.stockId, false, st.mag3, st.n3,
                         PriceShock.Decay.LINEAR)); }
@@ -174,7 +210,7 @@ public class MainScriptService {
                 } else if (st.topUpRounds < MAX_TOPUP) {
                     enterTopUp(st, board);
                 } else {
-                    st.done = true;
+                    finish(userId, gs, st);
                 }
             }
         }
@@ -196,27 +232,28 @@ public class MainScriptService {
                 TOPUP_TICKS, PriceShock.Decay.LINEAR));
     }
 
-    /** 剧本收官：置 done 并写一条完成消息。 */
+    /** 剧本收官：洗盘/出货用权威辟谣收尾（原传闻翻成 DENIED）；尾盘偷袭与天地板不额外发消息。 */
     private void finish(long userId, UserGameState gs, MainScriptState st) {
         st.done = true;
-        String name = StockDefs.byId(st.stockId).name();
-        String title;
-        String content;
-        switch (st.type) {
-            case SHAKEOUT -> {
-                title = "洗盘完成";
-                content = name + "洗盘完成，主力拉抬创出新高。";
-            }
-            case PUMP_DUMP -> {
-                title = "拉高出货";
-                content = name + "拉高出货完成，股价已破位下挫。";
-            }
-            default -> {
-                title = "天地板";
-                content = name + "单日天地板，从涨停直落跌停。";
-            }
+        if (st.type == ScriptKind.TAIL_WHIP || st.openingMessageId == null) {
+            return;
         }
-        notifyPublisher.system(userId, gs.getCurrentDay(), title, content, st.stockId);
+        userMessageMapper.update(null, new LambdaUpdateWrapper<UserMessage>()
+                .eq(UserMessage::getId, st.openingMessageId)
+                .set(UserMessage::getTruthStatus, st.truthValue));
+        UserMessage followup = new UserMessage();
+        followup.setUserId(userId);
+        followup.setSource("AUTHORITY");
+        followup.setTruthStatus("CONFIRMED");
+        followup.setType("EVENT");
+        followup.setTitle("【辟谣】" + st.openingTitle);
+        followup.setContent(st.followupContent == null ? "相关传闻已有定论。" : st.followupContent);
+        followup.setStockId(st.stockId);
+        followup.setFollowupOf(st.openingMessageId);
+        followup.setIsRead(false);
+        followup.setGameDay(gs.getCurrentDay());
+        followup.setCreatedAt(LocalDateTime.now());
+        messageService.publish(followup);
     }
 
     /** 重开/登出时移除该用户剧本状态（内存态，不持久化）。 */
@@ -253,40 +290,65 @@ public class MainScriptService {
                 return new MainScriptState(kind, stockId, Stage.P1, n1, n2, n3,
                         mag1, mag3, launch, 0.0, false, false);
             }
+            case TAIL_WHIP -> {
+                int remaining = Math.max(1, GameConstants.TOTAL_TICKS - board.getTickIndex());
+                int n1 = Math.min(rng.nextInt(3, 6), remaining);
+                double mag = 0.05 + 0.05 * rng.nextDouble();
+                if (rng.nextBoolean()) {
+                    mag = -mag;
+                }
+                return new MainScriptState(kind, stockId, Stage.P1, n1, 0, 0,
+                        mag, 0.0, 0.0, 0.0, mag > 0, false);
+            }
             default -> {
+                boolean up = rng.nextBoolean(); // 天地板 / 地天板各半
                 return new MainScriptState(kind, stockId, Stage.P1, 1, 1, 1,
-                        -0.99, 0.0, 0.0, 0.0, false, false);
+                        up ? 0.99 : -0.99, 0.0, 0.0, 0.0, up, false);
             }
         }
     }
 
-    /** 剧本开启落库：game_event（scriptType=类型）+ 用户消息（MEDIA/EVENT，标题含"主力"字样）。 */
-    private void writeOpening(long userId, UserGameState gs, MainScriptState st) {
-        String name = StockDefs.byId(st.stockId).name();
-        String title;
-        String content;
-        String eventType;
-        double impactPct;
-        switch (st.type) {
-            case SHAKEOUT -> {
-                title = "主力洗盘开始";
-                content = name + "出现恐慌性抛售，疑似主力洗盘吸筹。";
-                eventType = "BAD";
-                impactPct = Math.abs(st.mag1);
-            }
-            case PUMP_DUMP -> {
-                title = "主力拉抬炒作";
-                content = name + "放量拉升，主力资金正拉高出货。";
-                eventType = "GOOD";
-                impactPct = Math.abs(st.mag1);
-            }
-            default -> {
-                title = "天地板来袭";
-                content = name + "疑似主力对倒，天地板一触即发。";
-                eventType = "BAD";
-                impactPct = 0.99;
-            }
+    /**
+     * 启动时选定剧本配套传闻与追报（tick 阶段零掷骰）。文案取 event-copy.txt 的
+     * rumor-short-report / rumor-restructure / rumor-halt-check，不再出现"主力洗盘开始"这类
+     * 直接剧透的元消息——玩家应该先看到一条像样的传闻，再自己判断真假。
+     */
+    private void prepareOpeningNews(MainScriptState st, Random rng) {
+        if (st.type == ScriptKind.TAIL_WHIP) {
+            return;
         }
+        String code = switch (st.type) {
+            case SHAKEOUT -> "rumor-short-report";
+            case PUMP_DUMP -> "rumor-restructure";
+            default -> "rumor-halt-check";
+        };
+        EventSkeleton skeleton = EventSkeletons.ALL.stream()
+                .filter(s -> code.equals(s.code()))
+                .findFirst()
+                .orElse(null);
+        String name = StockDefs.byId(st.stockId).name();
+        if (skeleton == null) {
+            st.openingTitle = "传" + name + "有重大事项待公布";
+            st.openingContent = "股吧有人称" + name + "将有重大事项，公司尚未回应。";
+            st.followupContent = "相关传闻已有定论。";
+        } else {
+            EventSkeleton.Variant variant = skeleton.variants().get(rng.nextInt(skeleton.variants().size()));
+            st.openingTitle = EventFactory.fillSlots(variant.title(), name, rng);
+            st.openingContent = EventFactory.fillSlots(variant.text(), name, rng);
+            st.followupContent = skeleton.followupTexts().isEmpty() ? "相关传闻已有定论。"
+                    : EventFactory.fillSlots(skeleton.followupTexts()
+                    .get(rng.nextInt(skeleton.followupTexts().size())), name, rng);
+        }
+        st.truthValue = "DENIED";
+    }
+
+    /** 剧本开启落库：game_event（scriptType=类型）+ 一条 RUMOR/PENDING 传闻（不剧透主力）。 */
+    private void writeOpening(long userId, UserGameState gs, MainScriptState st) {
+        if (st.type == ScriptKind.TAIL_WHIP || st.openingTitle == null) {
+            return;
+        }
+        String eventType = st.type == ScriptKind.PUMP_DUMP ? "GOOD" : "BAD";
+        double impactPct = st.type == ScriptKind.SKY_EARTH ? 0.99 : Math.abs(st.mag1);
         LocalDateTime now = LocalDateTime.now();
         GameEvent event = new GameEvent();
         event.setUserId(userId);
@@ -295,8 +357,8 @@ public class MainScriptService {
         event.setScriptType(st.type.name());
         event.setEventType(eventType);
         event.setImpactPattern("NONE");
-        event.setTitle(title);
-        event.setContent(content);
+        event.setTitle(st.openingTitle);
+        event.setContent(st.openingContent);
         event.setImpactPct(impactPct);
         event.setGameDay(gs.getCurrentDay());
         event.setCreatedAt(now);
@@ -304,26 +366,32 @@ public class MainScriptService {
 
         UserMessage message = new UserMessage();
         message.setUserId(userId);
-        message.setSource("MEDIA");
+        message.setSource("RUMOR");
+        // 天地板是单跳事件，没有机会走"传闻→辟谣"生命周期；不给三态，避免永远停在未证实
+        message.setTruthStatus(st.type == ScriptKind.SKY_EARTH ? null : "PENDING");
         message.setType("EVENT");
-        message.setTitle(title);
-        message.setContent(content);
+        message.setTitle(st.openingTitle);
+        message.setContent(st.openingContent);
         message.setStockId(st.stockId);
         message.setIsRead(false);
         message.setGameDay(gs.getCurrentDay());
         message.setCreatedAt(now);
         messageService.publish(message);
+        st.openingMessageId = message.getId();
     }
 
-    /** 权重轮盘：SHAKEOUT 0.45 / PUMP_DUMP 0.40 / SKY_EARTH 0.15。 */
+    /** 权重轮盘：SHAKEOUT 0.40 / PUMP_DUMP 0.35 / SKY_EARTH 0.15 / TAIL_WHIP 0.10。 */
     private static ScriptKind rollKind(Random rng) {
         double r = rng.nextDouble();
-        if (r < 0.45) {
+        if (r < 0.40) {
             return ScriptKind.SHAKEOUT;
         }
-        if (r < 0.85) {
+        if (r < 0.75) {
             return ScriptKind.PUMP_DUMP;
         }
-        return ScriptKind.SKY_EARTH;
+        if (r < 0.90) {
+            return ScriptKind.SKY_EARTH;
+        }
+        return ScriptKind.TAIL_WHIP;
     }
 }

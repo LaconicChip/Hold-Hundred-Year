@@ -70,9 +70,20 @@
       :limit-down="limitDownPrice"
       :closed="isClosed"
       :danmu="forumPosts"
+      :trades="todayTrades"
     />
-    <KlineChart v-else-if="tab === 'kline'" :kline="kline" :danmu="forumPosts" />
+    <KlineChart v-else-if="tab === 'kline'" :kline="kline" :danmu="forumPosts" :trades="trades" />
     <StockForum v-else :stock-id="stock.id" :stock-name="stock.name" />
+
+    <!-- 成交点小条：弹幕飘过时可能盖住图上的 B/S，这里再给一份一眼能读的清单 -->
+    <div v-if="tab !== 'forum' && visibleTradeMarks.length" class="trade-marks card">
+      <span class="tm-title">成交点</span>
+      <span v-for="t in visibleTradeMarks" :key="t.id" class="tm-item">
+        <b class="tm-bs" :class="t.side === 'BUY' ? 'tm-b' : 'tm-s'">{{ t.side === 'BUY' ? 'B' : 'S' }}</b>
+        <span class="num">{{ t.price.toFixed(2) }}</span>
+        <span class="tm-shares">×{{ t.shares }}</span>
+      </span>
+    </div>
 
     <!-- 买卖面板卡片 -->
     <StockTradePanel
@@ -145,7 +156,7 @@ import { useQuotesStore } from '@/stores/quotes'
 import { useMarketStore } from '@/stores/market'
 import { useUserStore } from '@/stores/user'
 import { useMessagesStore } from '@/stores/messages'
-import { fetchStockList, fetchStockQuotes, fetchStockKline, fetchStockDanmu } from '@/api/stocks'
+import { fetchStockList, fetchStockQuotes, fetchStockKline, fetchStockDanmu, fetchStockTrades } from '@/api/stocks'
 import StockChart from '@/components/StockChart.vue'
 import KlineChart from '@/components/KlineChart.vue'
 import StockForum from '@/components/StockForum.vue'
@@ -222,6 +233,21 @@ function loadPosition() {
 
 // 分时数据（固定 90 槽，一跳一拉：轮询间隔取本局模式的 tickMs）
 const stockPoints = ref([])
+// 本票成交标记：日K按 gameDay、分时按 tickIndex 画 B/S
+const trades = ref([])
+// 分时图只画今天的成交；日K图画全部历史成交
+const todayTrades = computed(() => trades.value.filter((t) => t.gameDay === market.currentDay))
+// 图上标记之外再列最近几笔，弹幕盖住时也能确认 B/S
+const visibleTradeMarks = computed(() =>
+  (tab.value === 'intraday' ? todayTrades.value : trades.value).slice(-8)
+)
+async function loadTrades() {
+  try {
+    trades.value = await fetchStockTrades(stockId.value)
+  } catch {
+    trades.value = []
+  }
+}
 async function loadChartData() {
   try {
     stockPoints.value = await fetchStockQuotes(stockId.value)
@@ -248,9 +274,10 @@ function switchToKline() {
 }
 
 function onTraded() {
-  // 成交后刷新持仓与资产（持仓同一份缓存，行情表高亮随动）
+  // 成交后刷新持仓、资产与 B/S 标记
   user.fetchPositions()
   user.fetchAssets().catch(() => {})
+  loadTrades()
 }
 
 function goBack() {
@@ -309,6 +336,7 @@ onMounted(async () => {
       .catch(() => {})
   }, 2000)
   await loadChartData()
+  await loadTrades()
   intradayPoll = setInterval(() => {
     loadChartData()
   }, market.tickMs)
@@ -327,7 +355,9 @@ onUnmounted(() => {
 watch(stockId, async () => {
   stockPoints.value = []
   kline.value = []
+  trades.value = []
   await loadChartData()
+  await loadTrades()
   await loadPosition()
   await loadMessages()
   await loadForum()
@@ -475,6 +505,35 @@ watch(stockId, async () => {
 .pos-ic { width: 1em; height: 1em; color: var(--brand); }
 .pos-empty { padding: var(--sp-6) var(--sp-4); }
 .pos-mascot { width: 44px; height: 44px; opacity: 0.8; }
+
+.trade-marks {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+}
+.tm-title {
+  font-family: var(--font-fun);
+  color: var(--ink-2);
+}
+.tm-item { display: inline-flex; align-items: center; gap: 3px; }
+.tm-bs {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.2px solid var(--ink);
+  color: var(--on-brand);
+  font-size: 9px;
+  opacity: 0.8;
+}
+.tm-b { background: var(--up); }
+.tm-s { background: var(--down); }
+.tm-shares { color: var(--ink-2); font-size: var(--fs-xs); }
 
 @media (max-width: 760px) {
   .page-head { flex-wrap: wrap; }

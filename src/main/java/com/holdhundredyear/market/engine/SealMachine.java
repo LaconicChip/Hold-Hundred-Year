@@ -92,6 +92,30 @@ public class SealMachine {
                 1, PriceShock.Decay.ONCE));
     }
 
+    /** 午间消息造成的下午开盘跳空：以上午收盘价为基准，只改现价并顺带抬高/压低当日高低，
+     *  <b>不重置今开</b>；若直接贴到涨/跌停，按一字板锁定 5~30 跳（与开盘跳空同口径）。
+     *  上午已封板的票先解除封板，让午间消息真的能把板砸开/顶开。 */
+    public void applyAfternoonGap(Quote q, double gapPct, Random rng) {
+        if (q.getSealed() != SealState.NONE) {
+            q.setSealed(SealState.NONE);
+            q.setSealTicksLeft(0);
+        }
+        double newPrice = Math.max(q.limitDownPrice(),
+                Math.min(q.limitUpPrice(), Quote.round2(q.getCurrent() * (1 + gapPct))));
+        q.setCurrent(newPrice);
+        q.setHigh(Math.max(q.getHigh(), newPrice));
+        q.setLow(Math.min(q.getLow(), newPrice));
+        if (newPrice >= q.limitUpPrice()) {
+            q.setSealed(SealState.UP);
+            q.setSealTicksLeft(GameConstants.SEAL_MIN_TICKS
+                    + rng.nextInt(GameConstants.SEAL_MAX_TICKS - GameConstants.SEAL_MIN_TICKS + 1));
+        } else if (newPrice <= q.limitDownPrice()) {
+            q.setSealed(SealState.DOWN);
+            q.setSealTicksLeft(GameConstants.SEAL_MIN_TICKS
+                    + rng.nextInt(GameConstants.SEAL_MAX_TICKS - GameConstants.SEAL_MIN_TICKS + 1));
+        }
+    }
+
     /** 开盘跳空落地：newPrice = clamp(round2(prevClose×(1+gapPct)), limitDown, limitUp)；open=high=low=current=newPrice；
      *  |gapPct|>=ONE_WORD_GAP(0.10) → 直接 sealed=UP/DOWN、sealTicksLeft = SEAL_MIN_TICKS + nextInt(26)（一字板首跳锁定）。 */
     public void applyOpenGap(Quote q, double gapPct, Random rng) {

@@ -12,9 +12,11 @@ import com.holdhundredyear.market.entity.GameEvent;
 import com.holdhundredyear.market.entity.UserGameState;
 import com.holdhundredyear.market.entity.UserMessage;
 import com.holdhundredyear.market.entity.UserPosition;
+import com.holdhundredyear.market.entity.UserStockState;
 import com.holdhundredyear.market.mapper.GameEventMapper;
 import com.holdhundredyear.market.mapper.UserMessageMapper;
 import com.holdhundredyear.market.mapper.UserPositionMapper;
+import com.holdhundredyear.market.mapper.UserStockStateMapper;
 import com.holdhundredyear.market.quote.QuoteBoard;
 import com.holdhundredyear.trade.CorporateActionService;
 import com.holdhundredyear.world.WorldRandom;
@@ -27,7 +29,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -74,6 +78,12 @@ public class EventFactory {
     /** 板块级消息改用板块专属文案的概率（其余保留事件骨架原文）。 */
     private static final double SECTOR_FLAVOR_PROB = 0.55;
 
+    /** 午间/盘后消息落成跳空时的缩放与上限：事件骨架的幅度是"盘中冲击"，直接当隔夜
+     *  跳空会把有机贴板率顶出 12% 的验收闸门。0.5 倍 + 单票累计 ±6% 既保留"消息能跳空"
+     *  的体感，又不让每天都变成一字板。 */
+    private static final double NEWS_GAP_SCALE = 0.5;
+    private static final double NEWS_GAP_MAX = 0.06;
+
     /** 槽位解析：白名单 {stock}/{amount}/{user}。 */
     private static final Pattern SLOT_PATTERN = Pattern.compile("\\{(stock|amount|user)\\}");
 
@@ -84,6 +94,7 @@ public class EventFactory {
     private final MessageService messageService;
     private final GameEventMapper gameEventMapper;
     private final UserPositionMapper userPositionMapper;
+    private final UserStockStateMapper userStockStateMapper;
     private final MainScriptService mainScriptService;
     private final CorporateActionService corporateActionService;
 
@@ -94,12 +105,14 @@ public class EventFactory {
                         MessageService messageService,
                         GameEventMapper gameEventMapper,
                         UserPositionMapper userPositionMapper,
+                        UserStockStateMapper userStockStateMapper,
                         MainScriptService mainScriptService,
                         CorporateActionService corporateActionService) {
         this.userMessageMapper = userMessageMapper;
         this.messageService = messageService;
         this.gameEventMapper = gameEventMapper;
         this.userPositionMapper = userPositionMapper;
+        this.userStockStateMapper = userStockStateMapper;
         this.mainScriptService = mainScriptService;
         this.corporateActionService = corporateActionService;
     }
@@ -127,29 +140,27 @@ public class EventFactory {
         }
 
         EraCode era = board.getCurrentEra() != null ? board.getCurrentEra().code() : null;
-        Set<EraCode> allowed = era != null ? EnumSet.of(era) : EnumSet.noneOf(EraCode.class);
         Set<Long> holdings = holdingStockIds(userId);
-        List<EventSkeleton> pool = new ArrayList<>();
-        for (EventSkeleton skeleton : EventSkeletons.ALL) {
-            if (!ROLLABLE_SOURCES.contains(skeleton.source())) {
-                continue;
-            }
-            if (skeleton.source() == EventSkeleton.Source.INSIDER && holdings.isEmpty()) {
-                continue;
-            }
-            if (!skeleton.eras().isEmpty() && (era == null || !skeleton.eras().contains(era))) {
-                continue;
-            }
-            pool.add(skeleton);
-        }
+        List<EventSkeleton> pool = rollablePool(era, holdings);
         if (pool.isEmpty()) {
             return;
         }
+        Set<EraCode> allowed = era != null ? EnumSet.of(era) : EnumSet.noneOf(EraCode.class);
         EventSkeleton skeleton = pickSkeleton(pool, allowed, rng);
 
         EventSkeleton.Variant variant = skeleton.variants().get(rng.nextInt(skeleton.variants().size()));
         boolean marketWide = skeleton.scope() == EventSkeleton.Scope.MARKET;
         List<StockDef> candidates = marketWide ? List.of() : candidatesFor(variant.sector(), board);
+        // 内幕消息（spec §7.2）：70% 送达，且只可能点名自己持仓的票——没持仓时根本不该收到
+        if (skeleton.source() == EventSkeleton.Source.INSIDER) {
+            if (rng.nextDouble() >= 0.70) {
+                return;
+            }
+            candidates = candidates.stream().filter(c -> holdings.contains(c.id())).toList();
+            if (candidates.isEmpty()) {
+                return;
+            }
+        }
         Long targetStockId = null;
         if (skeleton.scope() == EventSkeleton.Scope.STOCK) {
             if (candidates.isEmpty()) {
@@ -344,6 +355,190 @@ public class EventFactory {
     /** 重开/登出时清除该 userId 所有待办（防 followup 指向被删除消息）。 */
     public void clearPending(long userId) {
         pendingActions.remove(userId);
+    }
+
+    /**
+     * 午间消息（spec §7.4）：午休期间抽 0~2 条，冲击不入当跳，而是记成下午开盘跳空，
+     * 由 {@code MarketStateService.resumeAfternoon} 统一落地。快进走同一入口，所以等价性不变。
+     */
+    public int publishLunchNews(long userId, UserGameState gs, QuoteBoard board) {
+        return publishLunchNews(userId, gs, board,
+                WorldRandom.of(gs.getWorldSeed(), "lunch" + gs.getCurrentDay()));
+    }
+
+    /** 测试可注入随机流的重载：第一条 nextInt(3) 决定 0~2 条消息。 */
+    int publishLunchNews(long userId, UserGameState gs, QuoteBoard board, Random rng) {
+        return publishGapNews(userId, gs, board, rng, rng.nextInt(3), true);
+    }
+
+    /**
+     * 盘后消息（spec §7.4）：收盘结算时抽 0~2 条，冲击写进 {@code user_stock_state.gap_pct}，
+     * 次日开盘由 {@code MarketStateService.applyOvernightGaps} 落地，形成隔夜跳空/一字板。
+     */
+    public int publishAfterHoursNews(long userId, UserGameState gs, QuoteBoard board) {
+        return publishAfterHoursNews(userId, gs, board,
+                WorldRandom.of(gs.getWorldSeed(), "afterhours" + gs.getCurrentDay()));
+    }
+
+    /** 测试可注入随机流的重载。 */
+    int publishAfterHoursNews(long userId, UserGameState gs, QuoteBoard board, Random rng) {
+        return publishGapNews(userId, gs, board, rng, rng.nextInt(3), false);
+    }
+
+    /** 午间/盘后消息共用的落库与 gap 记账；消息文案仍取 skeleton × variant（event-copy.txt）。 */
+    private int publishGapNews(long userId, UserGameState gs, QuoteBoard board, Random rng,
+                               int count, boolean lunch) {
+        if (count <= 0) {
+            return 0;
+        }
+        EraCode era = board.getCurrentEra() != null ? board.getCurrentEra().code() : null;
+        Set<Long> holdings = holdingStockIds(userId);
+        List<EventSkeleton> pool = rollablePool(era, holdings);
+        if (pool.isEmpty()) {
+            return 0;
+        }
+        Set<EraCode> allowed = era != null ? EnumSet.of(era) : EnumSet.noneOf(EraCode.class);
+        long absTick = (long) gs.getCurrentDay() * GameConstants.TOTAL_TICKS + board.getTickIndex();
+        Map<Long, Double> gaps = new LinkedHashMap<>();
+        int delivered = 0;
+        for (int i = 0; i < count; i++) {
+            EventSkeleton skeleton = pickSkeleton(pool, allowed, rng);
+            EventSkeleton.Variant variant = skeleton.variants().get(rng.nextInt(skeleton.variants().size()));
+            boolean marketWide = skeleton.scope() == EventSkeleton.Scope.MARKET;
+            List<StockDef> candidates = marketWide ? List.of() : candidatesFor(variant.sector(), board);
+            if (skeleton.source() == EventSkeleton.Source.INSIDER) {
+                if (rng.nextDouble() >= 0.70) {
+                    continue;
+                }
+                candidates = candidates.stream().filter(c -> holdings.contains(c.id())).toList();
+                if (candidates.isEmpty()) {
+                    continue;
+                }
+            }
+            Long targetStockId = null;
+            if (skeleton.scope() == EventSkeleton.Scope.STOCK) {
+                if (candidates.isEmpty()) {
+                    continue;
+                }
+                targetStockId = pickTargetStock(skeleton, variant, candidates, holdings, rng);
+            } else if (skeleton.scope() == EventSkeleton.Scope.SECTOR && candidates.isEmpty()) {
+                continue;
+            }
+
+            double lo = skeleton.impactRange()[0];
+            double hi = skeleton.impactRange()[1];
+            double mag = lo + (hi - lo) * rng.nextDouble();
+            String stockName = targetStockId != null ? StockDefs.byId(targetStockId).name() : null;
+            String title = fillSlots(variant.title(), stockName, rng);
+            String content = fillSlots(variant.text(), stockName, rng);
+
+            // 板块级/全市场消息 55% 换成该板块（或大盘）专属文案，标题正文成对替换
+            if (targetStockId == null) {
+                SectorFlavor.Channel channel = sectorChannelOf(skeleton.source());
+                if (channel != null && rng.nextDouble() < SECTOR_FLAVOR_PROB) {
+                    String flavorSector = skeleton.scope() == EventSkeleton.Scope.SECTOR && variant.sector() != null
+                            ? variant.sector() : SectorFlavor.MARKET;
+                    List<SectorFlavor.Entry> flavorPool = SectorFlavor.pool(flavorSector, channel);
+                    if (!flavorPool.isEmpty()) {
+                        SectorFlavor.Entry entry = flavorPool.get(rng.nextInt(flavorPool.size()));
+                        title = fillSlots(entry.title(), stockName, rng);
+                        content = fillSlots(entry.text(), stockName, rng);
+                    }
+                }
+            }
+
+            UserMessage message = new UserMessage();
+            message.setUserId(userId);
+            message.setSource(skeleton.source().name());
+            message.setTruthStatus(truthStatusOf(skeleton.source()));
+            message.setType("EVENT");
+            message.setTitle(title);
+            message.setContent(content);
+            message.setStockId(targetStockId);
+            if (targetStockId == null && skeleton.scope() == EventSkeleton.Scope.SECTOR) {
+                message.setSector(variant.sector());
+            }
+            message.setIsRead(false);
+            message.setGameDay(gs.getCurrentDay());
+            message.setCreatedAt(LocalDateTime.now());
+            messageService.publish(message);
+
+            GameEvent event = new GameEvent();
+            event.setUserId(userId);
+            event.setStockId(targetStockId);
+            event.setScope(skeleton.scope().name());
+            event.setScriptType("NONE");
+            event.setEventType(mag > 0 ? "GOOD" : "BAD");
+            event.setImpactPattern(skeleton.pattern().name());
+            event.setTitle(title);
+            event.setContent(content);
+            event.setImpactPct(mag);
+            event.setGameDay(gs.getCurrentDay());
+            event.setCreatedAt(LocalDateTime.now());
+            gameEventMapper.insert(event);
+
+            // 传闻/报道/内幕照常走三态：午间消息的追报在下午或次日到达
+            if (PENDING_SOURCES.contains(skeleton.source()) && !skeleton.followupTexts().isEmpty()) {
+                String followup = fillSlots(skeleton.followupTexts()
+                        .get(rng.nextInt(skeleton.followupTexts().size())), stockName, rng);
+                boolean confirmed = rollTruth(skeleton, rng);
+                List<PendingAction> pendings = pendingActions.computeIfAbsent(userId,
+                        key -> Collections.synchronizedList(new ArrayList<>()));
+                pendings.add(new PendingAction(PendingKind.TRUTH_REVEAL,
+                        absTick + rng.nextInt(30, 121), message.getId(), 0L, false, 0.0,
+                        title, followup, confirmed ? "CONFIRMED" : "DENIED"));
+            }
+
+            double gapMag = mag * NEWS_GAP_SCALE;
+            if (marketWide) {
+                for (StockDef def : StockDefs.ALL) {
+                    if (!board.quote(def.id()).isHalted()) {
+                        gaps.merge(def.id(), gapMag * def.policyBeta(), Double::sum);
+                    }
+                }
+            } else if (skeleton.scope() == EventSkeleton.Scope.SECTOR) {
+                for (StockDef def : candidates) {
+                    gaps.merge(def.id(), gapMag, Double::sum);
+                }
+            } else if (targetStockId != null) {
+                gaps.merge(targetStockId, gapMag, Double::sum);
+            }
+            delivered++;
+        }
+
+        if (lunch) {
+            gaps.forEach((stockId, gap) -> board.addAfternoonGap(stockId, clampGap(gap)));
+        } else {
+            for (Map.Entry<Long, Double> entry : gaps.entrySet()) {
+                userStockStateMapper.update(null, new LambdaUpdateWrapper<UserStockState>()
+                        .eq(UserStockState::getUserId, userId)
+                        .eq(UserStockState::getStockId, entry.getKey())
+                        .set(UserStockState::getGapPct, clampGap(entry.getValue())));
+            }
+        }
+        return delivered;
+    }
+
+    private static double clampGap(double gap) {
+        return Math.max(-NEWS_GAP_MAX, Math.min(NEWS_GAP_MAX, gap));
+    }
+
+    /** 可随机掷出的骨架池：来源白名单 + 内幕必须有持仓 + 纪元过滤。 */
+    private List<EventSkeleton> rollablePool(EraCode era, Set<Long> holdings) {
+        List<EventSkeleton> pool = new ArrayList<>();
+        for (EventSkeleton skeleton : EventSkeletons.ALL) {
+            if (!ROLLABLE_SOURCES.contains(skeleton.source())) {
+                continue;
+            }
+            if (skeleton.source() == EventSkeleton.Source.INSIDER && holdings.isEmpty()) {
+                continue;
+            }
+            if (!skeleton.eras().isEmpty() && (era == null || !skeleton.eras().contains(era))) {
+                continue;
+            }
+            pool.add(skeleton);
+        }
+        return pool;
     }
 
     // ---- 静态纯函数（供统计测试）----

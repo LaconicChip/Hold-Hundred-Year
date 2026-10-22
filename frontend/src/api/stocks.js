@@ -20,3 +20,8 @@ export function fetchStockKline(stockId, limit = 60) {
 export function fetchStockDanmu(stockId, limit = 30) {
   return http.get(`/api/stocks/${stockId}/danmu`, { params: { limit } })
 }
+
+// 单股成交标记：GET /api/stocks/{id}/trades -> [{ gameDay, tickIndex, side, price, shares }]
+export function fetchStockTrades(stockId) {
+  return http.get(`/api/stocks/${stockId}/trades`)
+}

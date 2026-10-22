@@ -9,6 +9,10 @@
           <i class="lg-line" :style="{ background: m.color }"></i>{{ m.name }}
         </span>
       </span>
+      <span class="chart-legend">
+        <span class="lg"><i class="lg-bs bs-b">B</i>买入</span>
+        <span class="lg"><i class="lg-bs bs-s">S</i>卖出</span>
+      </span>
       <span class="chart-sub muted-2 push">红涨绿跌 · 滚轮缩放 · 底部滑块拖看历史 · 股吧弹幕飘过</span>
     </div>
 
@@ -53,7 +57,9 @@ const props = defineProps({
   // 日K序列（game_day 升序）：[{ gameDay, open, high, low, close, changePct }]
   kline: { type: Array, default: () => [] },
   // 股吧帖子（按 seq 稳定）：本票专属 + 大盘闲聊，由个股页传入
-  danmu: { type: Array, default: () => [] }
+  danmu: { type: Array, default: () => [] },
+  // 本票成交标记：[{ gameDay, side:'BUY'|'SELL', price }]
+  trades: { type: Array, default: () => [] }
 })
 
 // ---- 股吧弹幕：飘屏逻辑已抽到 DanmuLayer.vue（2026-10-20），分时图与日K图共用 ----
@@ -174,6 +180,7 @@ const option = computed(() => {
   const cInk2 = token('--ink-2')
   const cCard = token('--card')
   const cDash = token('--dash')
+  const cOnBrand = token('--on-brand')
 
   // 开局前播种的历史 K 线（game_day <= 0）标成 T-N，与局内"第 N 日"区分开
   const nBars = props.kline.length
@@ -211,6 +218,49 @@ const option = computed(() => {
   ]
   // 最新价高亮：最后一根蜡烛的收盘价标注
   const lastBar = props.kline[props.kline.length - 1]
+
+  // B/S 成交标记：按 gameDay 对齐到对应蜡烛，价格用成交价。
+  // 和历史 K 一样，前复权后旧成交价可能落在蜡烛区间外；ECharts 会照实画在 y 值上。
+  const markData = []
+  if (lastBar) {
+    markData.push({
+      coord: [days.length - 1, lastBar.close],
+      symbolSize: 0.1,
+      itemStyle: { color: 'transparent' },
+      label: {
+        show: true,
+        position: 'right',
+        fontSize: 11,
+        fontWeight: 700,
+        color: lastBar.close >= lastBar.open ? cUp : cDown,
+        formatter: lastBar.close.toFixed(2)
+      }
+    })
+  }
+  for (const trade of props.trades) {
+    const idx = props.kline.findIndex((b) => b.gameDay === trade.gameDay)
+    if (idx < 0) continue
+    const buy = trade.side === 'BUY'
+    markData.push({
+      coord: [days[pad + idx], trade.price],
+      symbol: 'circle',
+      symbolSize: 12,
+      itemStyle: {
+        color: buy ? cUp : cDown,
+        borderColor: cInk,
+        borderWidth: 1.2,
+        opacity: 0.78
+      },
+      label: {
+        show: true,
+        position: 'inside',
+        fontSize: 9,
+        fontWeight: 700,
+        color: cOnBrand,
+        formatter: buy ? 'B' : 'S'
+      }
+    })
+  }
 
   const maLines = MA_DEFS.map((m) => ({
     name: m.name,
@@ -353,17 +403,8 @@ const option = computed(() => {
         },
         markPoint: {
           silent: true,
-          symbol: 'roundRect',
-          symbolSize: [1, 1],
-          label: {
-            show: true,
-            position: 'right',
-            fontSize: 11,
-            fontWeight: 700,
-            color: lastBar && lastBar.close >= lastBar.open ? cUp : cDown,
-            formatter: () => (lastBar ? lastBar.close.toFixed(2) : '')
-          },
-          data: lastBar ? [{ coord: [days.length - 1, lastBar.close] }] : []
+          symbol: 'circle',
+          data: markData
         }
       },
       ...maLines,
@@ -416,6 +457,22 @@ const option = computed(() => {
 }
 .lg { display: inline-flex; align-items: center; gap: 5px; }
 .lg-line { width: 16px; height: 3px; border-radius: 2px; display: inline-block; }
+.lg-bs {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.2px solid var(--ink);
+  color: var(--on-brand);
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 700;
+  opacity: 0.78;
+}
+.bs-b { background: var(--up); }
+.bs-s { background: var(--down); }
 .chart { width: 100%; height: 400px; position: relative; overflow: hidden; }
 .chart-empty { height: 320px; }
 .chart-mascot { width: 56px; height: 56px; opacity: 0.8; }

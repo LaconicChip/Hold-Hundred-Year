@@ -7,6 +7,8 @@
       <span class="chart-legend">
         <span class="lg"><i class="lg-line lg-price"></i>价格</span>
         <span class="lg"><i class="lg-line lg-avg"></i>均价</span>
+        <span class="lg"><i class="lg-bs bs-b">B</i>买</span>
+        <span class="lg"><i class="lg-bs bs-s">S</i>卖</span>
       </span>
       <span v-if="closed" class="sticker st-halt closed-badge">已收盘</span>
       <span class="chart-sub muted-2 push">左轴价格 · 右轴涨跌幅%</span>
@@ -63,7 +65,9 @@ const props = defineProps({
   // 股吧帖子流（分时图里飘的弹幕）：本票专属 + 不点名的大盘闲聊
   danmu: { type: Array, default: () => [] },
   // 本局每跳秒数（空态提示语用，来自后端模式档案）
-  tickSeconds: { type: Number, default: 1 }
+  tickSeconds: { type: Number, default: 1 },
+  // 今日成交标记：[{ tickIndex, side:'BUY'|'SELL', price }]
+  trades: { type: Array, default: () => [] }
 })
 
 const hasData = computed(() => props.points.some((p) => p.price != null))
@@ -93,6 +97,7 @@ const option = computed(() => {
   const cDash = token('--dash')
   const cUp = token('--up')
   const cDown = token('--down')
+  const cOnBrand = token('--on-brand')
 
   const times = props.points.map((p) => p.time)
   const prices = props.points.map((p) => p.price)
@@ -141,6 +146,49 @@ const option = computed(() => {
 
   const last = lastPoint.value
   const lastPct = last ? ((last.price - base) / base) * 100 : 0
+
+  // 最新点 + 今日 B/S 成交标记合并进同一个 markPoint（独立系列会把数组值带进 tooltip）
+  const markData = []
+  if (last) {
+    markData.push({
+      coord: [times[last.index], last.price],
+      symbol: 'circle',
+      symbolSize: 8,
+      itemStyle: { color: lastPct >= 0 ? cUp : cDown, borderColor: cInk, borderWidth: 1.5 },
+      label: {
+        show: true,
+        position: lastPct >= 0 ? 'top' : 'bottom',
+        fontSize: 11,
+        fontWeight: 700,
+        color: lastPct >= 0 ? cUp : cDown,
+        formatter: last.price.toFixed(2)
+      }
+    })
+  }
+  for (const trade of props.trades) {
+    const idx = Math.max(0, Math.min(times.length - 1, Number(trade.tickIndex) || 0))
+    if (prices[idx] == null) continue
+    const buy = trade.side === 'BUY'
+    markData.push({
+      coord: [times[idx], trade.price],
+      symbol: 'circle',
+      symbolSize: 12,
+      itemStyle: {
+        color: buy ? cUp : cDown,
+        borderColor: cInk,
+        borderWidth: 1.2,
+        opacity: 0.78
+      },
+      label: {
+        show: true,
+        position: 'inside',
+        fontSize: 9,
+        fontWeight: 700,
+        color: cOnBrand,
+        formatter: buy ? 'B' : 'S'
+      }
+    })
+  }
 
   // 只吃数字：ECharts 会把散布点/特殊系列的 value 传成数组，直接算术会抛异常并卡死 tooltip
   const tooltipFormatter = (params) => {
@@ -218,27 +266,13 @@ const option = computed(() => {
         showSymbol: false,
         lineStyle: { width: 1.8, color: cBlue },
         areaStyle: { color: cBlue, opacity: 0.08 },
-        // 最新点高亮 + 价格标注：用 markPoint 而非独立系列——独立系列会把数组值带进
+        // 最新点高亮 + B/S 成交标记：用 markPoint 而非独立系列——独立系列会把数组值带进
         // tooltip params（曾导致 formatter 抛异常、ECharts 主流程卡死、曲线停更）
-        ...(last
-          ? {
-              markPoint: {
-                silent: true,
-                symbol: 'circle',
-                symbolSize: 8,
-                itemStyle: { color: lastPct >= 0 ? cUp : cDown, borderColor: cInk, borderWidth: 1.5 },
-                label: {
-                  show: true,
-                  position: lastPct >= 0 ? 'top' : 'bottom',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: lastPct >= 0 ? cUp : cDown,
-                  formatter: () => last.price.toFixed(2)
-                },
-                data: [{ coord: [times[last.index], last.price] }]
-              }
-            }
-          : {}),
+        markPoint: {
+          silent: true,
+          symbol: 'circle',
+          data: markData
+        },
         markLine: {
           silent: true,
           symbol: 'none',
@@ -298,6 +332,22 @@ const option = computed(() => {
 .lg-line { width: 16px; height: 3px; border-radius: 2px; display: inline-block; }
 .lg-price { background: var(--blue); }
 .lg-avg { background: var(--yellow); }
+.lg-bs {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.2px solid var(--ink);
+  color: var(--on-brand);
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 700;
+  opacity: 0.78;
+}
+.bs-b { background: var(--up); }
+.bs-s { background: var(--down); }
 .closed-badge { margin-left: 4px; }
 .chart { width: 100%; height: 320px; }
 .chart-wrap { position: relative; width: 100%; }

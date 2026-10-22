@@ -64,6 +64,16 @@ class WebAccessSurfaceTest {
     }
 
     @Test
+    void runtimeInfoIsOpenWithoutToken() throws Exception {
+        // 存档架上的"手机一起玩"要能在进游戏前拿到内网地址
+        JsonNode body = json(mockMvc.perform(get("/api/runtime/info")));
+        assertEquals(0, body.path("code").asInt(),
+                "runtime info must be reachable anonymously, body=" + body);
+        assertNotEquals(0, body.path("data").path("port").asInt(),
+                "runtime info must expose the actual port");
+    }
+
+    @Test
     void spaFallbackNeverSwallowsBackendPaths() throws Exception {
         Resource location = new ClassPathResource("static");
         WebStaticConfig.SpaResourceResolver resolver = new WebStaticConfig.SpaResourceResolver();

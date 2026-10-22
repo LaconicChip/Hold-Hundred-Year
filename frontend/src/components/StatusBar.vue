@@ -44,6 +44,11 @@
       <div class="ops">
         <!-- 开局前选模式：注册不绑模式，每一局自己挑 -->
         <ModePicker v-if="showModePicker" v-model="pickedMode" compact />
+        <!-- 正常收盘不会自动跳晚报，这里给一个显眼的入口，避免玩家错过当日结算 -->
+        <button v-if="showSummary" class="btn btn-sm" @click="onSummary">
+          <SvgIcon name="newspaper" />
+          看今日晚报
+        </button>
         <button
           v-if="showStart"
           class="btn btn-primary btn-sm"
@@ -151,6 +156,8 @@ const unread = computed(() => messages.unreadCount)
 
 // 开始按钮（未开盘 / 已收盘）
 const showStart = computed(() => market.marketState === 'NOT_STARTED' || market.marketState === 'CLOSED')
+// 收盘后当日晚报已生成，但正常结算不会自动跳转；给一个比"开始下一交易日"更靠前的入口
+const showSummary = computed(() => market.marketState === 'CLOSED')
 // 跳过只对"今天还没收盘"的日子开放。收盘后再给一个"跳过下一交易日"，等于把玩家从没看过的
 // 一整天凭空过掉（25 号收盘 → 直接 26 号已收盘 → 27 号开始），这一天毫无参与感。
 // 要连续快进：先"开始下一交易日"，再在盘中"跳过当日"——每一天都被明确地跳过一次。
@@ -238,6 +245,10 @@ async function onSkip() {
   } catch (e) {
     ElMessage.error({ message: e?.message || '跳过失败', grouping: true })
   }
+}
+
+function onSummary() {
+  router.push('/summary')
 }
 
 function onBell() {
@@ -362,5 +373,16 @@ function onViewResult() {
   .statusbar { grid-template-columns: 1fr auto; }
   .sb-index { justify-self: start; }
   .sb-right { grid-column: 1 / -1; justify-content: space-between; }
+}
+
+@media (max-width: 700px) {
+  .statusbar { grid-template-columns: 1fr; gap: var(--sp-2); }
+  .sb-left,
+  .sb-right { justify-content: space-between; }
+  .sb-index { justify-self: stretch; text-align: left; }
+  .phase-block { align-items: flex-start; }
+  .ops { flex-wrap: wrap; justify-content: flex-end; padding-right: 8px; }
+  .day-num { font-size: 26px; }
+  .sb-index .val { font-size: 22px; }
 }
 </style>

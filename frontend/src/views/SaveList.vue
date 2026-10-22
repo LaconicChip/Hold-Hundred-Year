@@ -62,18 +62,37 @@
       </button>
 
       <p class="rack-note">新建不会覆盖旧存档；删除会连同这一局的全部数据一起清掉。</p>
-      <p class="rack-note">局域网里的朋友打开同一个地址，看到的是同一张存档架。</p>
+
+      <!-- 手机一起玩：地址由后端按本机内网网卡算出来，便携版与 mvnw 版共用 -->
+      <div v-if="lanUrls.length" class="lan-card">
+        <div class="lan-head">
+          <SvgIcon name="info" class="lan-ic" />手机一起玩
+        </div>
+        <p class="lan-desc">手机和电脑连同一个 Wi-Fi，在手机浏览器里输入：</p>
+        <div class="lan-urls">
+          <button
+            v-for="url in lanUrls"
+            :key="url"
+            type="button"
+            class="lan-url"
+            title="点一下复制"
+            @click="copyLanUrl(url)"
+          >{{ url }}</button>
+        </div>
+        <p class="lan-hint">打开后看到的是同一张存档架。打不开时，先确认 Windows 防火墙放行了 {{ runtimeInfo?.port || 8080 }} 端口。</p>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus/es/components/message/index.mjs'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index.mjs'
 import { useUserStore } from '@/stores/user'
 import { fetchSaves, deleteSave } from '@/api/saves'
+import { fetchRuntimeInfo } from '@/api/runtime'
 import { fmtMoney } from '@/utils/format'
 import SvgIcon from '@/components/SvgIcon.vue'
 import bankDoor from '@/assets/img/bank-door.png'
@@ -88,6 +107,8 @@ const loading = ref(true)
 const errText = ref('')
 const busy = ref(false)
 const busyAction = ref('')
+const runtimeInfo = ref(null)
+const lanUrls = computed(() => (runtimeInfo.value?.lanUrls || []).slice(0, 3))
 
 // 左右吉祥物仅宽屏展示
 const showMascots = ref(false)
@@ -99,8 +120,27 @@ onMounted(async () => {
   syncMascots()
   window.addEventListener('resize', syncMascots)
   showCarriedNotice()
+  loadRuntimeInfo()
   await load()
 })
+
+// 拿不到就安静不显示：存档架本身不依赖这条提示
+async function loadRuntimeInfo() {
+  try {
+    runtimeInfo.value = await fetchRuntimeInfo()
+  } catch {
+    runtimeInfo.value = null
+  }
+}
+
+async function copyLanUrl(url) {
+  try {
+    await navigator.clipboard.writeText(url)
+    ElMessage.success({ message: '地址已复制，发到手机浏览器打开', grouping: true })
+  } catch {
+    ElMessage.info({ message: '请手动输入上面的地址', grouping: true })
+  }
+}
 onUnmounted(() => window.removeEventListener('resize', syncMascots))
 
 // 令牌失效时 http.js 会留一句话再跳过来；这里只播一次，不叠加。
@@ -376,6 +416,45 @@ function reportError(e) {
   font-size: var(--fs-xs);
   margin: 6px 0 0;
 }
+
+/* 手机一起玩：像贴在存档架上的一张便签 */
+.lan-card {
+  margin-top: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  border: var(--border);
+  border-radius: var(--radius-md);
+  background: var(--yellow-soft);
+  box-shadow: var(--shadow-sm);
+}
+.lan-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-fun);
+  font-size: var(--fs-lg);
+}
+.lan-ic { width: 1.1em; height: 1.1em; color: var(--orange); }
+.lan-desc { margin-top: 2px; font-size: var(--fs-sm); color: var(--ink-2); }
+.lan-urls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: var(--sp-2);
+}
+.lan-url {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: var(--fs-sm);
+  padding: 3px 10px;
+  border: var(--border-thin);
+  border-radius: var(--radius-pill);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+}
+.lan-url:hover { background: var(--hover); }
+.lan-hint { margin-top: var(--sp-2); font-size: var(--fs-xs); color: var(--ink-2); line-height: 1.5; }
 
 .err-text {
   display: flex;

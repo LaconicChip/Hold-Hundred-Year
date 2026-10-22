@@ -6,7 +6,9 @@ import com.holdhundredyear.event.DanmuService.DanmuPost;
 import com.holdhundredyear.game.model.dto.IntradayPointDTO;
 import com.holdhundredyear.game.model.dto.KlinePointDTO;
 import com.holdhundredyear.game.model.dto.StockQuoteDTO;
+import com.holdhundredyear.game.model.dto.StockTradeMarkDTO;
 import com.holdhundredyear.market.MarketQueryService;
+import com.holdhundredyear.trade.MeQueryService;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,10 +28,13 @@ public class StockController {
 
     private final MarketQueryService marketQueryService;
     private final DanmuService danmuService;
+    private final MeQueryService meQueryService;
 
-    public StockController(MarketQueryService marketQueryService, DanmuService danmuService) {
+    public StockController(MarketQueryService marketQueryService, DanmuService danmuService,
+                           MeQueryService meQueryService) {
         this.marketQueryService = marketQueryService;
         this.danmuService = danmuService;
+        this.meQueryService = meQueryService;
     }
 
     /** 24 只股票静态信息 + 本账户最新行情（StockDefs 档案序）。 */
@@ -65,5 +70,12 @@ public class StockController {
                                     @PathVariable("id") long stockId,
                                     @RequestParam(defaultValue = "80") int limit) {
         return R.ok(danmuService.recentFor(userId, stockId, limit));
+    }
+
+    /** 本账户在这只票上的全部成交标记：日K用 gameDay，分时用 tickIndex 定位 B/S。 */
+    @GetMapping("/{id}/trades")
+    public R<List<StockTradeMarkDTO>> trades(@AuthenticationPrincipal Long userId,
+                                             @PathVariable("id") long stockId) {
+        return R.ok(meQueryService.stockTrades(userId, stockId));
     }
 }

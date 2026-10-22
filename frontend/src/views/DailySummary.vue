@@ -242,6 +242,8 @@ onMounted(load)
   box-shadow: var(--shadow);
   padding: var(--sp-6) var(--sp-7);
   position: relative;
+  /* 右上角印章旋转后会探出纸面 4~6px，手机端就会多出一条横向滚动 */
+  overflow: hidden;
 }
 .newspaper h3 {
   font-family: var(--font-fun);

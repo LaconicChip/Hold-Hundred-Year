@@ -50,6 +50,7 @@ class TradeServiceTest {
     @Autowired private UserGameStateMapper userGameStateMapper;
     @Autowired private UserPositionMapper userPositionMapper;
     @Autowired private TradeRecordMapper tradeRecordMapper;
+    @Autowired private MeQueryService meQueryService;
 
     @Test
     void buyDeductsBalanceAndFreezesAllBoughtShares() {
@@ -81,6 +82,14 @@ class TradeServiceTest {
         assertEquals(0, BigDecimal.ZERO.compareTo(record.getTax()),
                 "buy must not be charged stamp tax");
         assertEquals(1, record.getGameDay(), "record must carry the current game day");
+        assertEquals(0, record.getTickIndex(),
+                "a trade before the first tick maps to intraday slot 0");
+        var marks = meQueryService.stockTrades(userId, 1L);
+        assertEquals(1, marks.size(), "the B/S marker endpoint must expose the trade");
+        assertEquals("BUY", marks.get(0).getSide());
+        assertEquals(1, marks.get(0).getGameDay());
+        assertEquals(0, marks.get(0).getTickIndex());
+        assertEquals(168.0, marks.get(0).getPrice(), 1e-9);
     }
 
     @Test

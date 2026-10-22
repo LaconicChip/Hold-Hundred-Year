@@ -10,6 +10,7 @@ import com.holdhundredyear.game.model.dto.IpoRecordItemDTO;
 import com.holdhundredyear.game.model.dto.LoanRecordItemDTO;
 import com.holdhundredyear.game.model.dto.PositionDTO;
 import com.holdhundredyear.game.model.dto.TitleDTO;
+import com.holdhundredyear.game.model.dto.StockTradeMarkDTO;
 import com.holdhundredyear.game.model.dto.TradeItemDTO;
 import com.holdhundredyear.market.QuoteBoardRegistry;
 import com.holdhundredyear.market.entity.LoanRecord;
@@ -138,6 +139,18 @@ public class MeQueryService {
         return new PageResult<>(rows, rows.size());
     }
 
+    /** 某只票的全部成交标记（按 gameDay,tickIndex 升序），供日K/分时图渲染 B/S。 */
+    public List<StockTradeMarkDTO> stockTrades(long userId, long stockId) {
+        requireUser(userId);
+        return tradeRecordMapper.selectList(new LambdaQueryWrapper<TradeRecord>()
+                        .eq(TradeRecord::getUserId, userId)
+                        .eq(TradeRecord::getStockId, stockId)
+                        .orderByAsc(TradeRecord::getGameDay)
+                        .orderByAsc(TradeRecord::getTickIndex)
+                        .orderByAsc(TradeRecord::getId))
+                .stream().map(this::toTradeMark).toList();
+    }
+
     /** 融资流水：最近 FLOW_PAGE_SIZE 条，新在前（借款/还款/结息/强平还款同表）。 */
     public PageResult<LoanRecordItemDTO> loanRecords(long userId) {
         requireUser(userId);
@@ -229,6 +242,20 @@ public class MeQueryService {
         row.setAmount(record.getAmount().doubleValue());
         row.setCommission(record.getCommission().doubleValue());
         row.setTax(record.getTax() != null ? record.getTax().doubleValue() : 0.0);
+        row.setGameDay(record.getGameDay() != null ? record.getGameDay() : 0);
+        row.setTickIndex(record.getTickIndex() != null ? record.getTickIndex() : 0);
+        return row;
+    }
+
+    /** B/S 标记行：只保留图上需要的定位与成交信息。 */
+    private StockTradeMarkDTO toTradeMark(TradeRecord record) {
+        StockTradeMarkDTO row = new StockTradeMarkDTO();
+        row.setId(record.getId());
+        row.setGameDay(record.getGameDay() != null ? record.getGameDay() : 0);
+        row.setTickIndex(record.getTickIndex() != null ? record.getTickIndex() : 0);
+        row.setSide(record.getTradeType());
+        row.setPrice(record.getPrice().doubleValue());
+        row.setShares(record.getShares());
         return row;
     }
 

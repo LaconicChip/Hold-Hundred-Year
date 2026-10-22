@@ -21,13 +21,13 @@
           :class="{ active: isActive(item) }"
           :title="item.label"
         >
-          <SvgIcon :name="item.icon" class="nav-ic" />
-          <span v-if="!collapsed" class="nav-label">{{ item.label }}</span>
+          <SvgIcon :name="item.icon" class="nav-ic" :size="isMobile ? 22 : '1.25em'" />
+          <span v-if="!collapsed || isMobile" class="nav-label">{{ item.label }}</span>
           <span
             v-if="item.key === 'messages' && unread > 0"
             class="nav-badge"
-            :class="{ 'is-dot': collapsed }"
-          >{{ collapsed ? '' : unread > 99 ? '99+' : unread }}</span>
+            :class="{ 'is-dot': collapsed && !isMobile }"
+          >{{ collapsed && !isMobile ? '' : unread > 99 ? '99+' : unread }}</span>
         </router-link>
       </nav>
 
@@ -42,16 +42,16 @@
           <span v-if="!collapsed">存档架</span>
         </button>
       </div>
-    </aside>
 
-    <!-- 折叠开关 -->
-    <button
-      class="collapse-btn"
-      :title="collapsed ? '展开菜单' : '收起菜单'"
-      @click="toggleCollapsed"
-    >
-      <SvgIcon :name="collapsed ? 'chevron-right' : 'chevron-left'" />
-    </button>
+      <!-- 折叠开关：放进 sticky 侧栏内部，随侧栏固定，不随页面滚动 -->
+      <button
+        class="collapse-btn"
+        :title="collapsed ? '展开菜单' : '收起菜单'"
+        @click="toggleCollapsed"
+      >
+        <SvgIcon :name="collapsed ? 'chevron-right' : 'chevron-left'" />
+      </button>
+    </aside>
 
     <main class="main">
       <router-view />
@@ -92,9 +92,19 @@ const quotes = useQuotesStore()
 const MENU_KEY = 'hold-year-menu-collapsed'
 const COLLAPSE_AT = 900
 const collapsed = ref(localStorage.getItem(MENU_KEY) === '1')
+// 手机端底部标签栏必须始终显示文字：collapsed 在窄屏会自动为 true，
+// 但那是桌面侧栏的"收成图标"，不能把底部导航也变成一排无字图标。
+const isMobile = ref(false)
 function syncCollapsed() {
-  if (localStorage.getItem(MENU_KEY) !== null) return
-  collapsed.value = window.innerWidth < COLLAPSE_AT
+  isMobile.value = window.innerWidth <= 720
+  // 中宽度（<=900）CSS 会把侧栏压成 68px，此时必须同步进入"手动折叠"状态；
+  // 只按 localStorage 的记忆恢复会出现"侧栏窄了但文字还在"的溢出（实拍踩过）。
+  if (window.innerWidth <= COLLAPSE_AT) {
+    collapsed.value = true
+    return
+  }
+  const saved = localStorage.getItem(MENU_KEY)
+  if (saved !== null) collapsed.value = saved === '1'
 }
 function toggleCollapsed() {
   collapsed.value = !collapsed.value
@@ -360,9 +370,11 @@ onUnmounted(() => {
 
 /* ---------- 折叠开关 ---------- */
 .collapse-btn {
+  /* 挂在 sticky 侧栏内部：随侧栏一起固定，不再相对整页绝对定位 */
   position: absolute;
-  top: calc(var(--sp-6) + 30px);
-  left: calc(var(--sp-5) + var(--sidebar-w) - 14px);
+  top: 30px;
+  right: -14px;
+  left: auto;
   z-index: 5;
   width: 28px;
   height: 28px;
@@ -379,9 +391,6 @@ onUnmounted(() => {
 }
 .collapse-btn:hover { color: var(--brand); transform: translate(-1px, -1px); box-shadow: var(--shadow); }
 .collapse-btn :deep(svg) { width: 15px; height: 15px; }
-.shell.is-mini .collapse-btn {
-  left: calc(var(--sp-5) + var(--sidebar-w-mini) - 14px);
-}
 
 @media (max-width: 900px) {
   .shell { padding: var(--sp-4) var(--sp-3) var(--sp-8); }
@@ -391,5 +400,83 @@ onUnmounted(() => {
   .shell.is-mini .nav-item { justify-content: center; padding: 9px 0; }
   .collapse-btn { display: none; }
   .brand { justify-content: center; padding-bottom: var(--sp-2); }
+}
+/* 中宽度兜底：即使 JS 状态没跟上，也不许文字从 68px 侧栏里爆出去 */
+@media (min-width: 721px) and (max-width: 900px) {
+  .nav-label,
+  .brand-text { display: none; }
+}
+
+/* 手机端：侧栏改成底部标签栏，内容区独占整行；7 个入口平分宽度 */
+@media (max-width: 720px) {
+  .shell {
+    flex-direction: column;
+    padding: var(--sp-3) var(--sp-2) 96px;
+  }
+  .side,
+  .shell.is-mini .side {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    width: 100%;
+    z-index: 30;
+    flex-direction: row;
+    padding: 6px 2px calc(6px + env(safe-area-inset-bottom));
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 0;
+    border-radius: 0;
+    box-shadow: 0 -3px 0 var(--ink);
+  }
+  .brand,
+  .side-foot { display: none; }
+  .nav {
+    flex-direction: row;
+    width: 100%;
+    justify-content: space-around;
+    gap: 0;
+  }
+  .nav-item,
+  .shell.is-mini .nav-item {
+    flex: 1;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: 7px 0;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    box-shadow: none;
+    font-size: 12px;
+    line-height: 1.1;
+  }
+  .nav-item:hover { transform: none; box-shadow: none; background: var(--hover); }
+  /* 手机端 collapsed 恒为 true，单靠 .nav-item.active 会被 .shell.is-mini .nav-item
+     的透明底盖掉，白字落在米白底上就像整项消失；这里用同权重+后置规则把红底钉住 */
+  .nav-item.active,
+  .shell.is-mini .nav-item.active {
+    transform: none;
+    box-shadow: none;
+    background: var(--brand);
+    color: var(--on-brand);
+  }
+  .nav-ic { width: 22px; height: 22px; }
+  .nav-label { font-size: 12px; white-space: nowrap; }
+  .nav-badge,
+  .shell.is-mini .nav-badge.is-dot {
+    position: absolute;
+    top: 0;
+    right: calc(50% - 22px);
+    margin: 0;
+    min-width: 16px;
+    height: 14px;
+    padding: 0 2px;
+    font-size: 8px;
+    line-height: 14px;
+    border-width: 1px;
+  }
+  .main { width: 100%; }
 }
 </style>

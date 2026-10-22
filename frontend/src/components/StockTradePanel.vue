@@ -366,5 +366,21 @@ async function submit(side) {
 
 @media (max-width: 760px) {
   .trade-cols { grid-template-columns: 1fr; }
+  /* 手机端：标题独占一行，四个资金小块两列；标签在上、数字在下，
+     否则「可用资金 83,194.96」会把卡片顶出 375px 视口 */
+  .trade-head {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-2);
+    align-items: stretch;
+  }
+  .trade-title { grid-column: 1 / -1; }
+  .trade-cash {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+    min-width: 0;
+  }
+  .trade-cash .val { font-size: var(--fs-base); }
 }
 </style>

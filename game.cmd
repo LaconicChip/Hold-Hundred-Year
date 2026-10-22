@@ -14,7 +14,7 @@ rem  注意：本文件按 GBK(代码页936) 保存。cmd 读 UTF-8 中文批处理会按字节错位，
 rem  表现为某行注释被当成命令执行（"xxx 不是内部或外部命令"）。别把它改成 UTF-8。
 rem =========================================================================
 
-set "JAR=target\Hold-Hundred-Year-0.0.3.jar"
+set "JAR=target\Hold-Hundred-Year-0.0.5.jar"
 set "DB=hold_year"
 set "MYSQLBIN=C:\Program Files\MySQL\MySQL Server 8.0\bin"
 set "PORT=%HOLD_PORT%"
@@ -23,7 +23,7 @@ if "%PORT%"=="" set "PORT=8080"
 set "JAVA="
 if defined JAVA_HOME if exist "%JAVA_HOME%\bin\java.exe" set "JAVA=%JAVA_HOME%\bin\java.exe"
 if not defined JAVA for /f "delims=" %%i in ('where java 2^>nul') do if not defined JAVA set "JAVA=%%i"
-if not defined JAVA if exist "%USERPROFILE%\.jdks\ms-17.0.20.1\bin\java.exe" set "JAVA=%USERPROFILE%\.jdks\ms-17.0.20.1\bin\java.exe"
+if not defined JAVA for /d %%d in ("%ProgramFiles%\Microsoft\jdk-*") do if not defined JAVA if exist "%%d\bin\java.exe" set "JAVA=%%d\bin\java.exe"
 
 if "%~1"=="" goto start
 if /i "%~1"=="start" goto start

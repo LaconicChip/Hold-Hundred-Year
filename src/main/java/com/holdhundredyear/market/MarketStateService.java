@@ -2,6 +2,7 @@ package com.holdhundredyear.market;
 
 import com.holdhundredyear.common.BizException;
 import com.holdhundredyear.common.ErrorCode;
+import com.holdhundredyear.event.EventFactory;
 import com.holdhundredyear.event.HaltService;
 import com.holdhundredyear.event.NotifyPublisher;
 import com.holdhundredyear.game.constants.GameConstants;
@@ -100,6 +101,7 @@ public class MarketStateService {
     private final QuoteBoardRegistry quoteBoardRegistry;
     private final HaltService haltService;
     private final IpoService ipoService;
+    private final EventFactory eventFactory;
     private final SealMachine sealMachine = new SealMachine();
     private final IndexCalculator indexCalculator = new IndexCalculator();
     private final TransactionTemplate transactionTemplate;
@@ -112,6 +114,7 @@ public class MarketStateService {
                               QuoteBoardRegistry quoteBoardRegistry,
                               HaltService haltService,
                               IpoService ipoService,
+                              EventFactory eventFactory,
                               PlatformTransactionManager transactionManager) {
         this.userGameStateMapper = userGameStateMapper;
         this.userStockStateMapper = userStockStateMapper;
@@ -121,6 +124,7 @@ public class MarketStateService {
         this.quoteBoardRegistry = quoteBoardRegistry;
         this.haltService = haltService;
         this.ipoService = ipoService;
+        this.eventFactory = eventFactory;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
@@ -164,17 +168,31 @@ public class MarketStateService {
         }
     }
 
-    /** 上午收盘：MORNING_OPEN → LUNCH_BREAK 持久化（tickOne 走满 45 跳自动调用）。
-     *  其他源状态抛 MARKET_CLOSED。 */
+    /** 上午收盘：MORNING_OPEN → LUNCH_BREAK 持久化（tickOne 走满 45 跳自动调用），
+     *  同时抽 0~2 条午间消息（spec §7.4），冲击记成下午开盘跳空。其他源状态抛 MARKET_CLOSED。 */
     @Transactional(rollbackFor = Exception.class)
     public void toLunchBreak(long userId) {
+        UserGameState gameState = requireGameState(userId);
+        eventFactory.publishLunchNews(userId, gameState, quoteBoardRegistry.getOrLoad(userId));
         transitionState(userId, MarketState.MORNING_OPEN, MarketState.LUNCH_BREAK);
     }
 
-    /** 下午开盘：LUNCH_BREAK → AFTERNOON_OPEN 持久化（午休结束消息跳空 Phase 8 接入，
-     *  现在直转）。其他源状态抛 MARKET_CLOSED。 */
+    /** 下午开盘：LUNCH_BREAK → AFTERNOON_OPEN，先把午间消息的跳空落地（spec §7.4），
+     *  再转状态。其他源状态抛 MARKET_CLOSED。 */
     @Transactional(rollbackFor = Exception.class)
     public void resumeAfternoon(long userId) {
+        UserGameState gameState = requireGameState(userId);
+        QuoteBoard board = quoteBoardRegistry.getOrLoad(userId);
+        Map<Long, Double> gaps = board.takeAfternoonGaps();
+        if (!gaps.isEmpty()) {
+            Random rng = WorldRandom.of(gameState.getWorldSeed(), "afternoongap" + gameState.getCurrentDay());
+            for (Map.Entry<Long, Double> entry : gaps.entrySet()) {
+                Quote quote = board.quote(entry.getKey());
+                if (!quote.isHalted()) {
+                    sealMachine.applyAfternoonGap(quote, entry.getValue(), rng);
+                }
+            }
+        }
         transitionState(userId, MarketState.LUNCH_BREAK, MarketState.AFTERNOON_OPEN);
     }
 

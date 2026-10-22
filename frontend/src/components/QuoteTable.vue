@@ -8,6 +8,7 @@
       <span v-if="isClosed" class="sticker st-halt closed-badge">已收盘</span>
       <span class="quote-tip muted-2">点一行看个股</span>
     </div>
+    <p class="scroll-hint muted-2">左右滑动看今开/最高/最低/连板</p>
 
     <div class="scroll-x">
       <table class="tbl zebra quotes">
@@ -187,6 +188,11 @@ watch(
   font-size: var(--fs-lg);
 }
 .quote-tip { font-size: var(--fs-xs); }
+/* 手机端行情表是横向滑动的，给一句提示，免得玩家以为只有三列 */
+.scroll-hint { display: none; }
+@media (max-width: 700px) {
+  .scroll-hint { display: block; font-size: var(--fs-xs); margin: 0 0 4px; }
+}
 
 .quotes { font-size: 13.5px; }
 .qrow { cursor: pointer; }

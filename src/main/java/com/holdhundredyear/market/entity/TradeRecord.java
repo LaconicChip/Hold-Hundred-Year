@@ -33,5 +33,8 @@ public class TradeRecord {
 
     private Integer gameDay;
 
+    /** 成交时对应的分时槽位（0..89），供分时图精确画 B/S；旧数据默认 0。 */
+    private Integer tickIndex;
+
     private LocalDateTime createdAt;
 }

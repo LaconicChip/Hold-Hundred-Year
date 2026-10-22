@@ -2,10 +2,13 @@ package com.holdhundredyear.event;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhundredyear.event.MainScriptService.ScriptKind;
+import com.holdhundredyear.game.constants.GameConstants;
+import com.holdhundredyear.game.model.enums.SealState;
 import com.holdhundredyear.market.FastForwardService;
 import com.holdhundredyear.market.MarketStateService;
 import com.holdhundredyear.market.QuoteBoardRegistry;
 import com.holdhundredyear.market.WorldTickService;
+import com.holdhundredyear.market.entity.GameEvent;
 import com.holdhundredyear.market.entity.UserDailySnapshot;
 import com.holdhundredyear.market.entity.UserEra;
 import com.holdhundredyear.market.entity.UserGameState;
@@ -13,6 +16,7 @@ import com.holdhundredyear.market.entity.UserMessage;
 import com.holdhundredyear.market.entity.UserScriptDay;
 import com.holdhundredyear.market.entity.StockDailyBar;
 import com.holdhundredyear.market.entity.UserStockState;
+import com.holdhundredyear.market.mapper.GameEventMapper;
 import com.holdhundredyear.market.mapper.UserDailySnapshotMapper;
 import com.holdhundredyear.market.mapper.UserEraMapper;
 import com.holdhundredyear.market.mapper.UserGameStateMapper;
@@ -34,6 +38,7 @@ import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -54,6 +59,7 @@ class MainScriptServiceTest {
     @Autowired private QuoteBoardRegistry quoteBoardRegistry;
     @Autowired private UserGameStateMapper userGameStateMapper;
     @Autowired private UserMessageMapper userMessageMapper;
+    @Autowired private GameEventMapper gameEventMapper;
     @Autowired private UserStockStateMapper userStockStateMapper;
     @Autowired private UserEraMapper userEraMapper;
     @Autowired private UserScriptDayMapper userScriptDayMapper;
@@ -113,7 +119,7 @@ class MainScriptServiceTest {
     }
 
     @Test
-    void skyEarthDropsFromLimitUpToLimitDownInOneTick() {
+    void skyEarthSwingsFromOneLimitToTheOtherInOneTick() {
         long userId = worldSeeder.seedUser("ms_sky1", "$2a$10$bcrypthash");
         setWorldSeed(userId, 2718281828L);
         marketStateService.startDay(userId);
@@ -121,10 +127,14 @@ class MainScriptServiceTest {
         long stockId = 1L;
         Quote q = board.quote(stockId);
         q.setCurrent(q.limitUpPrice());
+        // 单跳剧本测试期间禁止自然事件闸再开一条新剧本，否则同跳可能立刻重启另一个剧本
+        board.setNextRollAbsTick(10_000L);
 
         boolean started = mainScriptService.startFor(userId, gameState(userId), board,
                 new Random(7), ScriptKind.SKY_EARTH, stockId);
         assertTrue(started, "SKY_EARTH must start on request");
+        assertEquals(SealState.NONE, q.getSealed(), "sky-earth must clear any old seal before the swing");
+        boolean up = mainScriptService.getState(userId).positive;
         assertTrue(mainScriptService.getState(userId).isDone(),
                 "SKY_EARTH is a single-jump script and must be done immediately after start");
 
@@ -132,8 +142,34 @@ class MainScriptServiceTest {
         handleBoundary(userId);
 
         Quote after = quoteBoardRegistry.getOrLoad(userId).quote(stockId);
-        assertEquals(after.limitDownPrice(), after.getCurrent(), 0.0,
-                "SKY_EARTH must drop to limit-down in a single tick");
+        assertEquals(up ? after.limitUpPrice() : after.limitDownPrice(), after.getCurrent(), 0.0,
+                "SKY_EARTH must swing from one limit to the other in a single tick");
+    }
+
+    @Test
+    void tailWhipMovesPriceAndFinishesWithinTheLastTicks() {
+        long userId = worldSeeder.seedUser("ms_tail1", "$2a$10$bcrypthash");
+        setWorldSeed(userId, 20261022L);
+        marketStateService.startDay(userId);
+        marketStateService.toLunchBreak(userId);
+        marketStateService.resumeAfternoon(userId);
+        QuoteBoard board = quoteBoardRegistry.getOrLoad(userId);
+        board.setTickIndex(GameConstants.TOTAL_TICKS - 3);
+        board.setNextRollAbsTick(10_000L);
+        double before = board.quote(1L).getCurrent();
+
+        assertTrue(mainScriptService.startFor(userId, gameState(userId), board,
+                new Random(11), ScriptKind.TAIL_WHIP, 1L), "TAIL_WHIP must start near the close");
+        int ticks = mainScriptService.getState(userId).n1;
+        assertTrue(ticks >= 1 && ticks <= 3, "tail whip duration must fit the remaining ticks");
+
+        for (int i = 0; i < ticks; i++) {
+            worldTickService.tickOne(userId);
+        }
+        assertTrue(mainScriptService.getState(userId).isDone(),
+                "tail whip must finish before the close");
+        assertNotEquals(before, quoteBoardRegistry.getOrLoad(userId).quote(1L).getCurrent(),
+                "tail whip must actually move the closing price");
     }
 
     @Test
@@ -203,10 +239,10 @@ class MainScriptServiceTest {
     // ---- 辅助 ----
 
     private void assertScriptMessagePresent(long userId) {
-        boolean found = userMessageMapper.selectList(new LambdaQueryWrapper<UserMessage>()
-                        .eq(UserMessage::getUserId, userId))
-                .stream().anyMatch(m -> m.getContent() != null && m.getContent().contains("主力"));
-        assertTrue(found, "a main-force opening message must be present for user " + userId);
+        boolean found = gameEventMapper.selectList(new LambdaQueryWrapper<GameEvent>()
+                        .eq(GameEvent::getUserId, userId))
+                .stream().anyMatch(e -> e.getScriptType() != null && !"NONE".equals(e.getScriptType()));
+        assertTrue(found, "a script-tagged game_event must be present for user " + userId);
     }
 
     private UserGameState gameState(long userId) {

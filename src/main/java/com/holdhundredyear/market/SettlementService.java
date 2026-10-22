@@ -2,6 +2,7 @@ package com.holdhundredyear.market;
 
 import com.holdhundredyear.common.BizException;
 import com.holdhundredyear.common.ErrorCode;
+import com.holdhundredyear.event.EventFactory;
 import com.holdhundredyear.event.NotifyPublisher;
 import com.holdhundredyear.event.NpcService;
 import com.holdhundredyear.event.ProgressService;
@@ -42,9 +43,8 @@ import java.util.Map;
  * 落地范围：prev_close 双写、T+1 解冻、连板统计与三连板停牌核查、融资计息、
  * 日收益评价与每日快照、段位评定、新手引导与成就徽章、OHL 重置、状态落位。
  * <p>边界：步骤①当前价快照由 WorldTickService.persistSnapshot 完成；追保/强平/爆仓
- * 委托 MarginService 执行（settleCheck，爆仓时快照留痕后短路）；5 日 4 板与异动公告
- * （Phase 8）、打新/除权（Phase 9）均不做；步骤⑩不掷盘后消息，
- * gap_pct 保持 0——无消息则次日无跳空是正确行为。
+ * 委托 MarginService 执行（settleCheck，爆仓时快照留痕后短路）；步骤⑩盘后消息由
+ * {@link EventFactory#publishAfterHoursNews} 抽取并写入 gap_pct，次日开盘落地为隔夜跳空。
  */
 @Service
 public class SettlementService {
@@ -69,6 +69,7 @@ public class SettlementService {
     private final SharkService sharkService;
     private final NpcService npcService;
     private final ProgressService progressService;
+    private final EventFactory eventFactory;
 
     public SettlementService(UserGameStateMapper userGameStateMapper,
                              UserStockStateMapper userStockStateMapper,
@@ -82,7 +83,8 @@ public class SettlementService {
                              MarginService marginService,
                              SharkService sharkService,
                              NpcService npcService,
-                             ProgressService progressService) {
+                             ProgressService progressService,
+                             EventFactory eventFactory) {
         this.userGameStateMapper = userGameStateMapper;
         this.userStockStateMapper = userStockStateMapper;
         this.stockDailyBarMapper = stockDailyBarMapper;
@@ -96,6 +98,7 @@ public class SettlementService {
         this.sharkService = sharkService;
         this.npcService = npcService;
         this.progressService = progressService;
+        this.eventFactory = eventFactory;
     }
 
     /**
@@ -160,6 +163,8 @@ public class SettlementService {
         progressService.onSettle(userId, day, gs, board);
         // 步骤⑧：每日快照
         insertSnapshot(userId, day, gs, cash, marketValue, debt, sharkDebt, netAsset, dayReturnPct, indexDayPct, npcJson);
+        // 步骤⑩：盘后消息（0~2 条），冲击写入 gap_pct，次日开盘落地为隔夜跳空
+        eventFactory.publishAfterHoursNews(userId, gs, board);
         // 步骤⑫：状态落位
         closeOutDay(userId, day, gs, netAsset, dayReturnPct);
 

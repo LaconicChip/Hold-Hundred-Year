@@ -222,8 +222,8 @@ class SettlementServiceTest {
         assertEquals(26.92667, snapshot.getDayReturnPct(), 1e-6);
         assertEquals(1050.0, snapshot.getIndexValue(), 1e-9);
         assertEquals(5.0, snapshot.getIndexDayPct(), 1e-6, "昨收指数取前日快照（day-0 播种 1000）");
-        assertEquals(0.0, stockState(userId, 1L).getGapPct(), 1e-9,
-                "结算不掷盘后消息，gap_pct 必须保持 0");
+        assertTrue(Math.abs(stockState(userId, 1L).getGapPct()) <= 0.2,
+                "盘后消息写入的 gap_pct 必须落在涨跌停幅度内");
         assertNotNull(snapshot.getNpcAssetsJson(), "Task 8.4 fills the NPC assets json at settlement");
         assertEquals(0, gameState(userId).getPrevTotalAsset().compareTo(new BigDecimal("126926.67")),
                 "结算尾部 prevTotalAsset 回写本次净资产");

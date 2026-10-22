@@ -320,6 +320,35 @@ class SealMachineTest {
     }
 
     @Test
+    void afternoonGapMovesCurrentWithoutResettingTodaysOpen() {
+        Quote q = quote(100.0);
+        machine.applyAfternoonGap(q, 0.05, noDice());
+        assertEquals(SealState.NONE, q.getSealed(), "午间 +5% 不封板");
+        assertEquals(105.0, q.getCurrent(), 1e-9);
+        assertEquals(100.0, q.getOpen(), 1e-9, "下午开盘跳空不能把今开改成跳空价");
+        assertEquals(105.0, q.getHigh(), 1e-9);
+        assertEquals(100.0, q.getLow(), 1e-9);
+
+        Quote sealed = quote(100.0);
+        sealed.setSealed(SealState.UP);
+        sealed.setSealTicksLeft(10);
+        machine.applyAfternoonGap(sealed, -0.05, new Random(1));
+        assertEquals(SealState.NONE, sealed.getSealed(), "午间利空必须能把上午的涨停板砸开");
+        assertEquals(95.0, sealed.getCurrent(), 1e-9);
+        assertEquals(100.0, sealed.getOpen(), 1e-9);
+        assertEquals(95.0, sealed.getLow(), 1e-9);
+
+        Quote crashed = quote(100.0);
+        crashed.setSealed(SealState.UP);
+        crashed.setSealTicksLeft(10);
+        machine.applyAfternoonGap(crashed, -0.10, new Random(1));
+        assertEquals(SealState.DOWN, crashed.getSealed(), "午间 -10% 直接封跌停");
+        assertEquals(90.0, crashed.getCurrent(), 1e-9, "跌停价夹逼");
+        assertEquals(100.0, crashed.getOpen(), 1e-9);
+        assertEquals(90.0, crashed.getLow(), 1e-9);
+    }
+
+    @Test
     void openGapFivePercentStaysUnsealedAtClampedPrice() {
         Quote q = quote(100.0);
         machine.applyOpenGap(q, 0.05, noDice());

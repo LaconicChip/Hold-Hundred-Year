@@ -86,6 +86,12 @@ public class QuoteBoard {
     @ToString.Exclude
     private Deque<Double> indexIntraday = new ArrayDeque<>();
 
+    /** 午间消息造成的下午开盘跳空（stockId → 幅度，同票多消息累加）。纯内存：
+     *  午休期间刷新/重启会丢（消息本身已落库），属可接受取舍；正常调度与快进都会在
+     *  resumeAfternoon 消费它。 */
+    @ToString.Exclude
+    private Map<Long, Double> afternoonGaps = new LinkedHashMap<>();
+
     /** 午休开始打点（System.nanoTime()，0=未打点）：调度器在首个 LUNCH_BREAK 轮懒打点，
      *  用于本局 GameMode#getLunchMs() 的午休恢复判定。重启后从零重计（可接受）；
      *  纯挂钟计时，绝不进入随机数协议、不影响确定性。volatile 兜底跨线程读，
@@ -164,6 +170,18 @@ public class QuoteBoard {
     /** 清零午休打点（下午开盘后由恢复方调用），保证下一次午休重新计时。 */
     public void clearLunchTiming() {
         lunchStartedNanos = 0L;
+    }
+
+    /** 记一笔午间冲击，下午开盘时合并落地；同票多笔累加。 */
+    public void addAfternoonGap(long stockId, double gapPct) {
+        afternoonGaps.merge(stockId, gapPct, Double::sum);
+    }
+
+    /** 取走并清空午间跳空表：只有 resumeAfternoon 调，保证同一笔只落地一次。 */
+    public Map<Long, Double> takeAfternoonGaps() {
+        Map<Long, Double> taken = new LinkedHashMap<>(afternoonGaps);
+        afternoonGaps.clear();
+        return taken;
     }
 
     /** schema 中 open/high/low 可空：缺失时退化为当前价（无日内历史可恢复）。 */

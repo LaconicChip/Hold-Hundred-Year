@@ -248,6 +248,15 @@ function goMessages() {
 .tone-down .popup-title { color: var(--down); }
 .tone-ink .popup-title { color: var(--ink); }
 
+/* 手机端：轻提示要抬到固定底栏上方，否则会压在导航上 */
+@media (max-width: 720px) {
+  .popup-stack {
+    right: 10px;
+    bottom: 78px;
+    width: min(300px, calc(100vw - 20px));
+  }
+}
+
 .hold-enter-active, .hold-leave-active,
 .popup-enter-active, .popup-leave-active {
   transition: transform 0.22s ease, opacity 0.22s ease;

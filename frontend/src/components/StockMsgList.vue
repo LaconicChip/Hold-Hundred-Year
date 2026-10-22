@@ -23,7 +23,9 @@
           <!-- 来源徽章：7 类来源各自配色，复用 style-tile 第七节气质 -->
           <span class="src" :class="srcCls(m.source)">{{ srcLabel(m.source) }}</span>
           <b class="msg-name">{{ m.name || m.author || '市场' }}</b>
-          <span class="time">{{ m.time || '' }}</span>
+          <!-- 跨日历史消息必须标出交易日，否则只看时间分不清是哪天的旧闻 -->
+          <span v-if="m.gameDay" class="day">第 {{ m.gameDay }} 交易日</span>
+          <span class="time">{{ hhmm(m.createdAt) }}</span>
           <!-- 板块级消息：不是点名这只票，而是它所在的板块 -->
           <span v-if="!m.stockId && m.sector" class="tag">{{ m.sector }}板块</span>
           <!-- 三态文字徽章：未证实/已证实/已辟谣 -->
@@ -71,6 +73,15 @@ function avStyle(source) {
   const a = SRC_AVATAR[source] || { bg: 'var(--ink)', fg: 'var(--on-brand)' }
   return { background: a.bg, color: a.fg }
 }
+// 消息 DTO 只有 createdAt，没有 time 字段；这里与消息中心统一取 HH:mm
+function hhmm(ts) {
+  if (!ts) return ''
+  const d = new Date(ts)
+  if (isNaN(d.getTime())) return ''
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  return `${hh}:${mm}`
+}
 </script>
 
 <style scoped>
@@ -117,6 +128,16 @@ function avStyle(source) {
   margin-top: var(--sp-1);
   font-size: var(--fs-base);
   line-height: 1.6;
+}
+.day {
+  margin-left: var(--sp-1);
+  padding: 0 6px;
+  border: var(--border-thin);
+  border-color: var(--ink-3);
+  border-radius: 999px;
+  color: var(--ink-2);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
 }
 .time {
   color: var(--ink-3);

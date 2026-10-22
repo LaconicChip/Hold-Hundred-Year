@@ -144,7 +144,7 @@ public class TradeService {
                 userPositionMapper.updateById(position);
             }
             insertRecord(userId, dto.getStockId(), "BUY", price, dto.getShares(),
-                    amount, commission, ZERO_TAX, gs.getCurrentDay());
+                    amount, commission, ZERO_TAX, gs.getCurrentDay(), chartTickIndex(board));
             return result(price, dto.getShares(), amount, commission, ZERO_TAX, user.getBalance());
         } finally {
             lock.unlock();
@@ -185,7 +185,7 @@ public class TradeService {
                 userPositionMapper.updateById(position);
             }
             insertRecord(userId, dto.getStockId(), "SELL", price, dto.getShares(),
-                    amount, commission, tax, gs.getCurrentDay());
+                    amount, commission, tax, gs.getCurrentDay(), chartTickIndex(board));
             return result(price, dto.getShares(), amount, commission, tax, user.getBalance());
         } finally {
             lock.unlock();
@@ -266,8 +266,14 @@ public class TradeService {
         return commission.max(COMMISSION_MIN);
     }
 
+    /** 成交时价格对应的是"最后一条已画出的分时点"，所以 tickIndex 要减 1；首跳前成交落在 0。 */
+    private static int chartTickIndex(QuoteBoard board) {
+        return Math.max(0, Math.min(GameConstants.TOTAL_TICKS - 1, board.getTickIndex() - 1));
+    }
+
     private void insertRecord(long userId, long stockId, String tradeType, BigDecimal price, int shares,
-                              BigDecimal amount, BigDecimal commission, BigDecimal tax, int gameDay) {
+                              BigDecimal amount, BigDecimal commission, BigDecimal tax, int gameDay,
+                              int tickIndex) {
         TradeRecord record = new TradeRecord();
         record.setUserId(userId);
         record.setStockId(stockId);
@@ -278,6 +284,7 @@ public class TradeService {
         record.setCommission(commission);
         record.setTax(tax);
         record.setGameDay(gameDay);
+        record.setTickIndex(tickIndex);
         tradeRecordMapper.insert(record);
     }
 

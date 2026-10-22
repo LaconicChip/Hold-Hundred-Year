@@ -30,4 +30,9 @@ public class TradeItemDTO {
     private double commission;
 
     private double tax;
+
+    /** 局内交易日与分时槽位：资产页流水按日定位，图表 B/S 用。 */
+    private int gameDay;
+
+    private int tickIndex;
 }

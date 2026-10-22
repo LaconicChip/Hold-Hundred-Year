@@ -16,7 +16,8 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * 安全配置：无状态 JWT。鉴权面只有一句话——**除存档架 /api/saves/** 外的 /api/** 要登录**。
+ * 安全配置：无状态 JWT。鉴权面只有一句话——**除存档架 /api/saves/** 与运行时信息
+ * /api/runtime/** 外的 /api/** 要登录**。
  *
  * <p>这一版没有账号系统：{@code /api/saves/**} 就是入口（列存档 / 新建 / 进入 / 删除），
  * 必须匿名可达；进入某份存档后签发的 JWT 才是后续所有游戏接口的门票。其余请求一律放行，
@@ -48,6 +49,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/saves/**").permitAll()
+                        .requestMatchers("/api/runtime/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/**").authenticated()
