@@ -276,8 +276,6 @@ const doubled = computed(() => items.value.concat(items.value))
   display: flex;
   align-items: stretch;
   overflow: hidden;
-  box-shadow: var(--shadow);
-  margin-top: var(--sp-3);
 }
 /* 左侧固定标签 */
 .tk-label {
@@ -286,11 +284,13 @@ const doubled = computed(() => items.value.concat(items.value))
   align-items: center;
   gap: 4px;
   padding: 0 var(--sp-3);
-  font-family: var(--font-fun);
-  font-size: var(--fs-sm);
+  font-family: var(--font-body);
+  font-weight: 800;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.5px;
   color: var(--ink);
   background: var(--yellow);
-  border-right: 2px solid var(--ink);
+  border-right: 1.5px solid var(--ink);
 }
 .tk-ic { width: 1em; height: 1em; }
 

@@ -19,7 +19,7 @@ rem  便携包只在"升版本号 + 明确要求打包"两个条件同时满足时才重新生成（见 AGENTS.
 rem  本文件与 game.cmd 一样必须存成 GBK(936)：cmd 读 UTF-8 中文批处理会按字节读错位。
 rem =========================================================================
 
-set "VER=0.0.5"
+set "VER=0.1.0"
 set "JAR=Hold-Hundred-Year-%VER%.jar"
 set "IN=target\package-in"
 set "OUT=target\package-out"

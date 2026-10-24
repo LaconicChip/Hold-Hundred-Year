@@ -89,6 +89,9 @@
         </span>
       </div>
 
+      <p class="loan-note muted-2">
+        融资额度按净资产 1 倍单独计算；高利贷余额不会直接占用它（利息与亏损仍会通过净资产影响额度）。
+      </p>
       <dl v-if="loanInfo" class="kv loan-extra">
         <dt>借款余额</dt>
         <dd>{{ fmtMoney(loanInfo.debt) }}</dd>

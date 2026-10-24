@@ -1,6 +1,6 @@
 <template>
   <!-- 营业厅看板：左边「今天第几天」+ 中间「百年指数」+ 右边「阶段/倒计时/操作」 -->
-  <div class="statusbar card">
+  <div class="statusbar">
     <!-- 左：交易日 / 纪元 / 段位 -->
     <div class="sb-left">
       <div class="day-block">
@@ -16,7 +16,7 @@
     </div>
 
     <!-- 中：百年指数（看板主数据） -->
-    <div class="sb-index stat" :class="indexChgCls">
+    <div class="sb-index" :class="indexChgCls">
       <span class="lab">
         <SvgIcon name="chart" class="lab-ic" />
         百年指数
@@ -265,8 +265,13 @@ function onViewResult() {
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
-  gap: var(--sp-4);
-  padding: var(--sp-3) var(--sp-4);
+  gap: var(--sp-5);
+  padding: var(--sp-3) 2px;
+  background: transparent;
+  border: 0;
+  border-top: 2px solid var(--ink);
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
 }
 
 /* ---------- 左：交易日 ---------- */
@@ -279,33 +284,41 @@ function onViewResult() {
 .day-block {
   display: flex;
   align-items: baseline;
-  gap: var(--sp-2);
-  padding: 2px var(--sp-3);
-  border: var(--border);
-  border-radius: var(--radius-md);
-  background: var(--paper-warm);
-  box-shadow: var(--shadow-sm);
+  gap: 6px;
+  padding: 0 var(--sp-3) 0 0;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: transparent;
 }
 .day-block .lab {
-  font-size: var(--fs-xs);
+  font-size: 11px;
+  letter-spacing: 0.5px;
   color: var(--ink-2);
 }
 .day-num {
   font-family: var(--font-fun);
-  font-size: 32px;
+  font-size: 30px;
   line-height: 1;
   color: var(--brand);
 }
 .day-sub {
-  font-size: var(--fs-xs);
+  font-size: 11px;
   color: var(--ink-2);
   white-space: nowrap;
+}
+.sb-left :deep(.tier .badge) {
+  border-width: 1px;
+  box-shadow: none;
+  padding: 3px 10px;
+  font-size: var(--fs-sm);
 }
 
 /* ---------- 中：百年指数 ---------- */
 .sb-index {
   justify-self: center;
-  min-width: 168px;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
   align-items: center;
   text-align: center;
 }
@@ -313,11 +326,22 @@ function onViewResult() {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--ink-2);
 }
 .lab-ic { width: 1em; height: 1em; }
-.sb-index .val { font-size: 26px; }
+.sb-index .val {
+  font-family: var(--font-body);
+  font-weight: 800;
+  font-size: 34px;
+  line-height: 1.1;
+  letter-spacing: -0.5px;
+}
 .sb-index.up .val { color: var(--up); }
 .sb-index.down .val { color: var(--down); }
+/* 平盘不是"禁用"：主指数仍用墨色，只有涨跌幅用弱化灰 */
+.sb-index.flat .val { color: var(--ink); }
 .sb-index.up .sub-val { color: var(--up); }
 .sb-index.down .sub-val { color: var(--down); }
 .sb-index .sub-val {
@@ -342,8 +366,9 @@ function onViewResult() {
 .phase-tag {
   display: inline-flex;
   align-items: center;
-  font-family: var(--font-fun);
-  font-size: var(--fs-base);
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: var(--fs-sm);
   color: var(--ink-2);
   white-space: nowrap;
 }
@@ -376,13 +401,21 @@ function onViewResult() {
 }
 
 @media (max-width: 700px) {
-  .statusbar { grid-template-columns: 1fr; gap: var(--sp-2); }
-  .sb-left,
-  .sb-right { justify-content: space-between; }
-  .sb-index { justify-self: stretch; text-align: left; }
-  .phase-block { align-items: flex-start; }
-  .ops { flex-wrap: wrap; justify-content: flex-end; padding-right: 8px; }
+  .statusbar {
+    grid-template-columns: 1fr auto;
+    grid-template-areas: "left index" "right right";
+    gap: 10px 12px;
+    padding: 8px 2px;
+  }
+  .sb-left { grid-area: left; gap: var(--sp-2); }
+  .sb-index { grid-area: index; justify-self: end; align-items: flex-end; text-align: right; min-width: 0; }
+  .sb-index .val { font-size: 28px; }
+  .sb-left :deep(.tier) { display: none; }
+  .day-block { border-right: 0; padding-right: 0; }
   .day-num { font-size: 26px; }
-  .sb-index .val { font-size: 22px; }
+  .day-sub { font-size: 10px; }
+  .sb-right { grid-area: right; justify-content: space-between; }
+  .phase-block { align-items: flex-start; }
+  .ops { flex-wrap: wrap; justify-content: flex-end; gap: 6px; padding-right: 6px; }
 }
 </style>

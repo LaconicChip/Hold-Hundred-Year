@@ -266,8 +266,9 @@ public class TradeService {
         return commission.max(COMMISSION_MIN);
     }
 
-    /** 成交时价格对应的是"最后一条已画出的分时点"，所以 tickIndex 要减 1；首跳前成交落在 0。 */
-    private static int chartTickIndex(QuoteBoard board) {
+    /** 成交时价格对应的是"最后一条已画出的分时点"，所以 tickIndex 要减 1；首跳前成交落在 0。
+     *  强平/高利贷强卖也走这里，保证券商卖出的 S 点落在真实跳位而不是开盘第一分钟。 */
+    static int chartTickIndex(QuoteBoard board) {
         return Math.max(0, Math.min(GameConstants.TOTAL_TICKS - 1, board.getTickIndex() - 1));
     }
 

@@ -10,7 +10,7 @@
     </parent>
     <groupId>com.HoldHundredYear</groupId>
     <artifactId>Hold-Hundred-Year</artifactId>
-    <version>0.0.5</version>
+    <version>0.1.0</version>
     <name>Hold-Hundred-Year</name>
     <description>你持有一百年看看 —— A 股模拟炒股游戏</description>
     <url/>

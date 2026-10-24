@@ -39,7 +39,8 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * 高利贷（spec §6.6）：场外配资，风险自担。与营业部融资的三条根本区别——
  * <ol>
- *   <li>额度按净资产的 {@code SHARK_LIMIT_RATIO} 倍（融资是 1 倍），借满就是 5 倍仓位；</li>
+ *   <li>额度按净资产的 {@code SHARK_LIMIT_RATIO} 倍（融资是 1 倍），单独借满就是 6 倍仓位
+ *       （自有 1 倍 + 借入 5 倍）；融资与高利贷是两条独立额度线，互不从对方余额直接扣减；</li>
  *   <li>日息按<b>账龄</b>逐档上调（{@code SHARK_ANNUAL_BASE} 起，每满
  *       {@code SHARK_RATE_STEP_DAYS} 个计息日加一档，封顶 {@code SHARK_ANNUAL_MAX}），
  *       融资是固定年化；利息滚进本金，越拖越贵；</li>
@@ -421,7 +422,8 @@ public class SharkService {
                 position.setAvailableShares(position.getAvailableShares() - shares);
                 userPositionMapper.updateById(position);
             }
-            insertTrade(userId, position.getStockId(), price, shares, amount, commission, tax, day);
+            insertTrade(userId, position.getStockId(), price, shares, amount, commission, tax, day,
+                    TradeService.chartTickIndex(board));
             insertLoan(userId, TYPE_LIQUIDATE, paid, sharkOf(user), day);
             sold = true;
         }
@@ -576,7 +578,7 @@ public class SharkService {
     }
 
     private void insertTrade(long userId, long stockId, BigDecimal price, int shares, BigDecimal amount,
-                             BigDecimal commission, BigDecimal tax, int day) {
+                             BigDecimal commission, BigDecimal tax, int day, int tickIndex) {
         TradeRecord record = new TradeRecord();
         record.setUserId(userId);
         record.setStockId(stockId);
@@ -587,6 +589,7 @@ public class SharkService {
         record.setCommission(commission);
         record.setTax(tax);
         record.setGameDay(day);
+        record.setTickIndex(tickIndex);
         tradeRecordMapper.insert(record);
     }
 

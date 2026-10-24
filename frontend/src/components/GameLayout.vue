@@ -231,7 +231,12 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
-  padding: var(--sp-3);
+  /* 侧栏是账本的装订边：纸上一条细线，不再是一张浮起来的卡片 */
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  padding: var(--sp-2) var(--sp-4) var(--sp-3) 0;
   overflow: visible;
   transition: width 0.16s;
 }
@@ -246,7 +251,7 @@ onUnmounted(() => {
   align-items: center;
   gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-2) var(--sp-3);
-  border-bottom: 2px dashed var(--dash);
+  border-bottom: 1px solid var(--line);
 }
 .brand-mascot {
   width: 36px;
@@ -261,11 +266,14 @@ onUnmounted(() => {
   flex-direction: column;
 }
 .brand-text b {
+  font-family: var(--font-fun);
   font-size: var(--fs-lg);
   color: var(--brand);
 }
 .brand-text span {
-  font-size: var(--fs-sm);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 3px;
   color: var(--ink-2);
 }
 
@@ -280,14 +288,14 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  font-family: var(--font-fun);
-  font-size: var(--fs-lg);
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: var(--fs-md);
   color: var(--ink);
-  background: var(--card);
-  border: var(--border);
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
-  padding: 8px var(--sp-3);
+  padding: 8px var(--sp-2);
   text-decoration: none;
   transition: 0.08s;
 }
@@ -296,16 +304,14 @@ onUnmounted(() => {
   padding: 9px 0;
 }
 .nav-item:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: var(--shadow);
   background: var(--hover);
+  border-color: var(--line);
 }
 /* 激活态：品牌红填充 + 白字（规格 §12.1） */
 .nav-item.active {
   background: var(--brand);
   color: var(--on-brand);
-  transform: translate(1px, 1px);
-  box-shadow: var(--shadow-press);
+  border-color: transparent;
 }
 .nav-ic {
   width: 1.25em;
@@ -347,7 +353,7 @@ onUnmounted(() => {
 .side-foot {
   margin-top: auto;
   padding-top: var(--sp-3);
-  border-top: 2px dashed var(--dash);
+  border-top: 1px solid var(--line);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -424,11 +430,11 @@ onUnmounted(() => {
     z-index: 30;
     flex-direction: row;
     padding: 6px 2px calc(6px + env(safe-area-inset-bottom));
-    border-left: 0;
-    border-right: 0;
-    border-bottom: 0;
+    background: var(--card);
+    border: 0;
+    border-top: 2px solid var(--ink);
     border-radius: 0;
-    box-shadow: 0 -3px 0 var(--ink);
+    box-shadow: none;
   }
   .brand,
   .side-foot { display: none; }

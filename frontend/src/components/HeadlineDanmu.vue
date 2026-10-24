@@ -79,12 +79,13 @@ function onEnd() {
   from { transform: translateX(104vw); }
   to { transform: translateX(-105%); }
 }
-/* 手机端把头条压成顶部细条：15% 的位置会正好盖住买卖面板/状态条，虽然不挡点击但很难看 */
+/* 手机端：贴顶 6px 会被状态栏/浏览器栏压住，玩家几乎看不见；放到屏幕上部 20% 处，
+   既不挡底部标签栏，也能从正文上方横穿而过（整层 pointer-events:none，不打断操作）。 */
 @media (max-width: 720px) {
   .headline {
-    top: 6px;
+    top: 20%;
     max-width: 100vw;
-    padding: 4px 10px;
+    padding: 5px 10px;
     gap: var(--sp-2);
     font-size: var(--fs-md);
     border-radius: var(--radius-sm);

@@ -116,16 +116,35 @@ class MeQueryServiceTest {
         assertEquals(50000.00, afterMargin.getBorrowable(), 1e-9,
                 "cash 150000, debt 50000, no shark: room = 150000 - 50000*2 = 50000");
 
-        // 再借 2 万高利贷：高利贷进"累计负债"口径，融资额度必须跟着缩
+        // 再借 2 万高利贷：高利贷余额不直接从融资额度里扣，只通过净资产间接影响
         sharkService.borrow(userId, new BigDecimal("20000.00"));
         AssetsDTO afterShark = meQueryService.assets(userId);
         assertEquals(20000.00, afterShark.getSharkDebt(), 1e-9);
         assertEquals(70000.00, afterShark.getDebt(), 1e-9,
                 "the asset card must show total debt: 50000 margin + 20000 shark, not just the broker line");
-        assertEquals(30000.00, afterShark.getBorrowable(), 1e-9,
-                "room = 170000 - 50000*2 - 20000 = 30000: a private loan squeezes the margin line");
+        assertEquals(50000.00, afterShark.getBorrowable(), 1e-9,
+                "room = net asset 100000 - margin debt 50000: shark debt must not be deducted again");
         assertEquals(afterShark.getCash() + afterShark.getMarketValue() - 50000.00 - 20000.00,
                 afterShark.getNetAsset(), 1e-9, "net asset must subtract both debts");
+    }
+
+    @Test
+    void sharkDebtDoesNotConsumeMarginRoom() {
+        long userId = worldSeeder.seedUser("me_two_lines", BCRYPT_HASH);
+        marketStateService.startDay(userId);
+
+        // 先借 15 万高利贷（超过 10 万本金）：借钱本身不动净资产，融资额度不应被挤掉
+        sharkService.borrow(userId, new BigDecimal("150000.00"));
+        AssetsDTO afterShark = meQueryService.assets(userId);
+        assertEquals(100000.00, afterShark.getBorrowable(), 1e-9,
+                "shark debt must not be deducted from the margin line");
+
+        marginService.borrow(userId, new BigDecimal("100000.00"));
+        AssetsDTO afterMargin = meQueryService.assets(userId);
+        assertEquals(0.0, afterMargin.getBorrowable(), 1e-9,
+                "margin room = net asset 100000 - margin debt 100000");
+        assertEquals(250000.00, afterMargin.getDebt(), 1e-9,
+                "total debt = 100000 margin + 150000 shark");
     }
 
     @Test

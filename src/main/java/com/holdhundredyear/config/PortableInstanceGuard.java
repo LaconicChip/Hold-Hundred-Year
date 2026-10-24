@@ -146,19 +146,26 @@ public final class PortableInstanceGuard {
         return parent == null ? Path.of(".") : parent;
     }
 
-    /** 探测本机服务；任何 HTTP 应答（含 401）都说明服务已经起来了。 */
+    /**
+     * 探测本机服务，只认"这家营业部"：200 + 运行时信息里的 lanUrls/portable 字段。
+     * 8080 被别的开发服务器占住时也会返回 HTTP 应答，若把任何应答都当成自己人，
+     * 便携版会直接开一个别人的页面然后退出，玩家以为游戏坏了。
+     */
     static boolean serverUp(int port) {
         HttpClient client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(500))
                 .build();
         HttpRequest request = HttpRequest.newBuilder(
-                        URI.create("http://localhost:" + port + "/api/saves"))
+                        URI.create("http://localhost:" + port + "/api/runtime/info"))
                 .timeout(Duration.ofMillis(800))
                 .GET()
                 .build();
         try {
-            client.send(request, HttpResponse.BodyHandlers.discarding());
-            return true;
+            HttpResponse<String> response = client.send(request,
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            return response.statusCode() == 200
+                    && response.body().contains("\"lanUrls\"")
+                    && response.body().contains("\"portable\"");
         } catch (IOException e) {
             return false;
         } catch (InterruptedException e) {

@@ -158,7 +158,8 @@ onUnmounted(() => {
 }
 
 @media (max-width: 700px) {
-  .page-title { font-size: var(--fs-2xl); }
+  .page-title { font-size: 22px; }
+  .page-desc { font-size: 11px; }
   .end-banner { flex-wrap: wrap; }
 }
 </style>

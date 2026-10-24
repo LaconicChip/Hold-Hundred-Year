@@ -5,11 +5,15 @@ import com.holdhundredyear.game.model.dto.IntradayPointDTO;
 import com.holdhundredyear.game.model.dto.KlinePointDTO;
 import com.holdhundredyear.game.model.enums.GameMode;
 import com.holdhundredyear.market.entity.StockDailyBar;
+import com.holdhundredyear.market.entity.UserEra;
 import com.holdhundredyear.market.entity.UserGameState;
 import com.holdhundredyear.market.entity.UserScriptDay;
 import com.holdhundredyear.market.mapper.StockDailyBarMapper;
+import com.holdhundredyear.market.mapper.UserEraMapper;
 import com.holdhundredyear.market.mapper.UserGameStateMapper;
 import com.holdhundredyear.market.mapper.UserScriptDayMapper;
+import com.holdhundredyear.world.EraScheduler;
+import com.holdhundredyear.world.ScriptDayScheduler;
 import com.holdhundredyear.world.WorldSeeder;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -63,6 +67,7 @@ class VolatilityDistributionTest {
     @Autowired private UserGameStateMapper userGameStateMapper;
     @Autowired private StockDailyBarMapper stockDailyBarMapper;
     @Autowired private UserScriptDayMapper userScriptDayMapper;
+    @Autowired private UserEraMapper userEraMapper;
 
     @Test
     void wholeGameDistributionSitsInsideTheBrokerBand() throws IOException {
@@ -282,11 +287,42 @@ class VolatilityDistributionTest {
         return gameState(userId).getWorldSeed();
     }
 
-    /** 钉死世界种子：标定要跨轮次可比，就不能每轮换一局。 */
+    /**
+     * 钉死世界种子，并同步重掷 user_era / user_script_day。
+     *
+     * <p>只改 game_state.world_seed 是不够的：播种时的纪元与剧本日是按随机种子写的，
+     * 引擎却会按新种子重算。两边不一致时，同一"固定种子"跑出来的剧本日占比会在
+     * 11.3%~12.6% 之间漂移，贴板闸门时红时绿（2026-10-24 全量测试实际踩到）。
+     */
     private void setWorldSeed(long userId, long seed) {
         UserGameState gs = gameState(userId);
         gs.setWorldSeed(seed);
         userGameStateMapper.updateById(gs);
+        GameMode mode = GameMode.of(gs.getGameMode());
+
+        List<EraScheduler.EraInstance> eras = new EraScheduler().roll(seed, mode);
+        userEraMapper.delete(new LambdaQueryWrapper<UserEra>().eq(UserEra::getUserId, userId));
+        for (EraScheduler.EraInstance era : eras) {
+            UserEra row = new UserEra();
+            row.setUserId(userId);
+            row.setEraIndex(era.eraIndex());
+            row.setEraCode(era.code().name());
+            row.setStartDay(era.startDay());
+            row.setEndDay(era.endDay());
+            row.setParamsJson(era.paramsJson());
+            userEraMapper.insert(row);
+        }
+
+        userScriptDayMapper.delete(new LambdaQueryWrapper<UserScriptDay>()
+                .eq(UserScriptDay::getUserId, userId));
+        for (ScriptDayScheduler.ScriptDayInstance day : new ScriptDayScheduler().roll(seed, eras, mode)) {
+            UserScriptDay row = new UserScriptDay();
+            row.setUserId(userId);
+            row.setGameDay(day.gameDay());
+            row.setScriptType(day.type().name());
+            row.setParamsJson(day.paramsJson());
+            userScriptDayMapper.insert(row);
+        }
     }
 
     private UserGameState gameState(long userId) {

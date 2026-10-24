@@ -40,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * 融资服务集成测试（hold_year_test 库，方法级事务自动回滚）。
  * 覆盖 spec §6.4 在 MarginService 的落地：
- * 借款额度（累计负债 ≤ 净资产）与 BORROW 流水、还款校验顺序（先负债后现金）与 REPAY 流水、
+ * 借款额度（融资余额 ≤ 净资产）与 BORROW 流水、还款校验顺序（先负债后现金）与 REPAY 流水、
  * 非正金额拒绝、终态门禁（任意市场态可借还，FINISHED/BANKRUPT 拒绝）、
  * 追保通知（只警告不动账）、强平（市值从大到小、费用口径同卖出、达标即止、
  * 跳过跌停封死）、爆仓判定（BANKRUPT + 天台通知、不再推普通强平通知）、
@@ -93,7 +93,7 @@ class MarginServiceTest {
         assertEquals(0, asDecimal("150000.00").compareTo(result.getBalance()), "receipt balance");
         assertEquals(0, asDecimal("50000.00").compareTo(result.getDebt()), "receipt debt");
         assertEquals(0, asDecimal("50000.00").compareTo(result.getBorrowable()),
-                "borrowable = assets 150000 - debt 50000 - debt*1.0 = 50000");
+                "borrowable = net asset 100000 - margin debt 50000 = 50000");
         List<LoanRecord> loans = loans(userId);
         assertEquals(1, loans.size());
         LoanRecord record = loans.get(0);
@@ -108,7 +108,7 @@ class MarginServiceTest {
         long userId = seedInMarket();
 
         assertCode(ErrorCode.MARGIN_EXCEED, () -> marginService.borrow(userId, asDecimal("100001.00")),
-                "total debt may not exceed the net asset 100000");
+                "margin debt may not exceed the net asset 100000");
         assertEquals(0, asDecimal("100000.00").compareTo(balance(userId)),
                 "rejected borrow must not touch cash");
 
@@ -129,7 +129,7 @@ class MarginServiceTest {
         assertEquals(0, asDecimal("130000.00").compareTo(balance(userId)), "150000 - 20000");
         assertEquals(0, asDecimal("30000.00").compareTo(sysUser(userId).getDebt()), "50000 - 20000");
         assertEquals(0, asDecimal("70000.00").compareTo(result.getBorrowable()),
-                "borrowable = assets 130000 - debt 30000 - debt*1.0 = 70000");
+                "borrowable = net asset 100000 - margin debt 30000 = 70000");
         List<LoanRecord> loans = loans(userId);
         assertEquals(2, loans.size(), "one BORROW and one REPAY record");
         LoanRecord repay = loans.stream()

@@ -14,7 +14,7 @@ rem  注意：本文件按 GBK(代码页936) 保存。cmd 读 UTF-8 中文批处理会按字节错位，
 rem  表现为某行注释被当成命令执行（"xxx 不是内部或外部命令"）。别把它改成 UTF-8。
 rem =========================================================================
 
-set "JAR=target\Hold-Hundred-Year-0.0.5.jar"
+set "JAR=target\Hold-Hundred-Year-0.1.0.jar"
 set "DB=hold_year"
 set "MYSQLBIN=C:\Program Files\MySQL\MySQL Server 8.0\bin"
 set "PORT=%HOLD_PORT%"

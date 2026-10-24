@@ -1,8 +1,5 @@
 <template>
   <div class="saves-page">
-    <img v-if="showMascots" :src="bullImg" class="side-mascot side-bull" alt="" />
-    <img v-if="showMascots" :src="pandaImg" class="side-mascot side-panda" alt="" />
-
     <div class="card saves-scene">
       <div class="bank-art">
         <img :src="bankDoor" class="bank-art-img" alt="百年证券营业部大门" />
@@ -57,7 +54,13 @@
         @click="load"
       >再试一次</button>
 
-      <button type="button" class="btn btn-primary btn-lg new-btn" :disabled="busy" @click="onNew">
+      <button
+        type="button"
+        class="btn btn-primary btn-lg new-btn"
+        :class="{ 'new-btn-empty': !saves.length }"
+        :disabled="busy"
+        @click="onNew"
+      >
         <SvgIcon name="plus" class="btn-ic" />{{ busyAction === 'new' ? '播种中…' : '新建存档' }}
       </button>
 
@@ -86,7 +89,7 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus/es/components/message/index.mjs'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index.mjs'
@@ -96,8 +99,6 @@ import { fetchRuntimeInfo } from '@/api/runtime'
 import { fmtMoney } from '@/utils/format'
 import SvgIcon from '@/components/SvgIcon.vue'
 import bankDoor from '@/assets/img/bank-door.png'
-import bullImg from '@/assets/img/bull.png'
-import pandaImg from '@/assets/img/panda.png'
 
 const router = useRouter()
 const user = useUserStore()
@@ -108,17 +109,9 @@ const errText = ref('')
 const busy = ref(false)
 const busyAction = ref('')
 const runtimeInfo = ref(null)
-const lanUrls = computed(() => (runtimeInfo.value?.lanUrls || []).slice(0, 3))
-
-// 左右吉祥物仅宽屏展示
-const showMascots = ref(false)
-function syncMascots() {
-  showMascots.value = window.innerWidth >= 1100
-}
+const lanUrls = computed(() => (runtimeInfo.value?.lanUrls || []).slice(0, 1))
 
 onMounted(async () => {
-  syncMascots()
-  window.addEventListener('resize', syncMascots)
   showCarriedNotice()
   loadRuntimeInfo()
   await load()
@@ -141,7 +134,6 @@ async function copyLanUrl(url) {
     ElMessage.info({ message: '请手动输入上面的地址', grouping: true })
   }
 }
-onUnmounted(() => window.removeEventListener('resize', syncMascots))
 
 // 令牌失效时 http.js 会留一句话再跳过来；这里只播一次，不叠加。
 function showCarriedNotice() {
@@ -249,25 +241,28 @@ function reportError(e) {
   overflow: hidden;
 }
 
-.side-mascot {
-  width: 150px;
-  height: 150px;
-  object-fit: contain;
-  position: absolute;
-  bottom: 8%;
-  filter: drop-shadow(3px 3px 0 rgba(43, 38, 32, 0.18));
-}
-.side-bull { left: 8%; transform: rotate(-5deg); }
-.side-panda { right: 8%; transform: rotate(4deg); }
-
 .saves-scene {
   max-width: 480px;
   width: 100%;
   text-align: center;
-  background: linear-gradient(var(--login-grad-1), var(--login-grad-2));
+  background: var(--paper-warm);
+  border-top: 5px solid var(--brand);
   position: relative;
   overflow: hidden;
   padding: var(--sp-7) var(--sp-6);
+}
+/* 宽屏把存档架摊成两列：入口不再像一张居中的手机截图，19 份存档也不用一直滚 */
+@media (min-width: 900px) {
+  .saves-scene { max-width: 820px; }
+  .save-list {
+    grid-template-columns: 1fr 1fr;
+    max-height: 52vh;
+  }
+  /* 空架时不要把提示框和新建按钮拉成 820px 宽的一条 */
+  .rack-empty { max-width: 430px; margin-left: auto; margin-right: auto; }
+  .new-btn-empty { display: flex; max-width: 430px; margin-left: auto; margin-right: auto; }
+  /* 只有一份存档时让它独占整行，避免旁边留半列空白 */
+  .save-list .save-card:only-child { grid-column: 1 / -1; }
 }
 
 .bank-art { margin: 4px auto var(--sp-3); }

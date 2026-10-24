@@ -1,5 +1,5 @@
 <template>
-  <div class="card quote-card">
+  <div class="card quote-card card-hero">
     <div class="quote-head">
       <h3 class="quote-title">
         <SvgIcon name="candle" />
@@ -8,21 +8,20 @@
       <span v-if="isClosed" class="sticker st-halt closed-badge">已收盘</span>
       <span class="quote-tip muted-2">点一行看个股</span>
     </div>
-    <p class="scroll-hint muted-2">左右滑动看今开/最高/最低/连板</p>
 
     <div class="scroll-x">
-      <table class="tbl zebra quotes">
+      <table class="tbl quotes">
         <thead>
           <tr>
             <th>名称</th>
             <th>现价</th>
             <th>涨跌幅</th>
-            <th>今开</th>
-            <th>最高</th>
-            <th>最低</th>
-            <th>收</th>
-            <th>连板</th>
-            <th>状态</th>
+            <th class="col-open">今开</th>
+            <th class="col-high">最高</th>
+            <th class="col-low">最低</th>
+            <th class="col-prev">昨收</th>
+            <th class="col-streak">连板</th>
+            <th class="col-status">状态</th>
           </tr>
         </thead>
         <tbody>
@@ -44,6 +43,12 @@
                 <SvgIcon name="wallet" class="st-ic" />持仓 {{ held(q.stockId).shares }}
               </span>
               <span class="sec-tag">{{ q.sector }}</span>
+              <span class="mob-meta">
+                {{ q.sector }} · 开 {{ fmtPrice(q.open) }} · 高 {{ fmtPrice(q.high) }} · 低 {{ fmtPrice(q.low) }} · 昨收 {{ fmtPrice(q.prevClose) }}
+                <template v-if="q.limitUpStreak > 0"> · {{ q.limitUpStreak }} 连板</template>
+                <template v-if="q.sealed === 'UP'"> · 封板</template>
+                <template v-else-if="q.sealed === 'DOWN'"> · 跌停</template>
+              </span>
             </td>
 
             <!-- 现价（变动闪烁） -->
@@ -59,14 +64,13 @@
               >{{ fmtPct(q.changePct) }}</span>
             </td>
 
-            <td class="num dim">{{ fmtPrice(q.open) }}</td>
-            <td class="num dim">{{ fmtPrice(q.high) }}</td>
-            <td class="num dim">{{ fmtPrice(q.low) }}</td>
-            <!-- 收盘价：收盘态即当日收盘（现价已按 day_change_pct 通道带涨跌幅语义） -->
-            <td class="num dim">{{ fmtPrice(q.current) }}</td>
+            <td class="num dim col-open">{{ fmtPrice(q.open) }}</td>
+            <td class="num dim col-high">{{ fmtPrice(q.high) }}</td>
+            <td class="num dim col-low">{{ fmtPrice(q.low) }}</td>
+            <td class="num dim col-prev">{{ fmtPrice(q.prevClose) }}</td>
 
             <!-- 连板：火苗叠加 -->
-            <td class="streak-cell">
+            <td class="streak-cell col-streak">
               <template v-if="q.limitUpStreak > 0">
                 <SvgIcon
                   v-for="n in Math.min(q.limitUpStreak, 5)"
@@ -80,7 +84,7 @@
             </td>
 
             <!-- 状态：封板印章 / 跌停 / 停牌 -->
-            <td class="status-cell">
+            <td class="status-cell col-status">
               <SealStamp v-if="q.sealed === 'UP'" mini text="封板" />
               <span v-else-if="q.sealed === 'DOWN'" class="limit-down">跌停</span>
               <span v-else-if="q.halted" class="sticker st-halt st-inline">小黑屋</span>
@@ -180,18 +184,45 @@ watch(
   justify-content: space-between;
   gap: var(--sp-3);
   padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--line-soft);
+  margin-bottom: var(--sp-1);
 }
 .quote-title {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--fs-lg);
+  font-size: var(--fs-md);
 }
 .quote-tip { font-size: var(--fs-xs); }
-/* 手机端行情表是横向滑动的，给一句提示，免得玩家以为只有三列 */
-.scroll-hint { display: none; }
+/* 手机端不再横向滑动：表头只留名称/现价/涨跌幅，开高低与昨收落到名称下方的第二行 */
+.mob-meta { display: none; }
 @media (max-width: 700px) {
-  .scroll-hint { display: block; font-size: var(--fs-xs); margin: 0 0 4px; }
+  .col-open,
+  .col-high,
+  .col-low,
+  .col-prev,
+  .col-streak,
+  .col-status { display: none; }
+  .scroll-x { overflow: visible; }
+  .scroll-x > table { min-width: 0; }
+  /* 固定列宽：名称列 54%，现价/涨跌幅各 23%。不固定的话第二行元信息会把
+     名称列撑到 400px，整张表溢出手机屏（实拍踩过）。 */
+  .quotes { font-size: 13px; table-layout: fixed; }
+  .quotes th:nth-child(1) { width: 54%; }
+  .quotes th:nth-child(2) { width: 23%; }
+  .quotes th:nth-child(3) { width: 23%; }
+  .name-cell { overflow: hidden; }
+  .mob-meta {
+    display: block;
+    margin-top: 1px;
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--ink-2);
+    white-space: normal;
+  }
+  .sec-tag { display: none; }
+  .name-cell b { font-size: var(--fs-base); }
+  .price { font-size: var(--fs-md); }
 }
 
 .quotes { font-size: 13.5px; }

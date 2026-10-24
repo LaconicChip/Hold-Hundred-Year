@@ -36,8 +36,9 @@ import java.util.concurrent.locks.ReentrantLock;
  * 融资服务（Phase 7，spec §6.4）：借款/还款入口 + 追保/强平/爆仓核查核心。
  * 借款/还款在世界锁 + TransactionTemplate 锁内提交（模式同 TradeService），再取
  * 行情板锁保护现价读取；市场态宽口径——休市/午休/结算中均可借还，仅终态
- * （FINISHED/BANKRUPT）拒绝（终态口径同 TradeService）。额度规则：累计负债
- * 不得超过净资产（融资上限 = 自有资金 1 倍），借/还各落一条 loan_record。
+ * （FINISHED/BANKRUPT）拒绝（终态口径同 TradeService）。额度规则：<b>融资负债
+ * 不得超过净资产</b>（融资上限 = 净资产 1 倍），融资与高利贷是两条互不挤占的
+ * 额度线，借/还各落一条 loan_record。
  *
  * <p>核查核心 marginCheck：担保比例 = (现金 + 全部持仓市值)/负债，负债为 0 直接
  * 跳过。比例 &lt; MARGIN_CALL_RATIO(1.4) 只推追保通知（同日去重）；&lt;
@@ -102,8 +103,8 @@ public class MarginService {
     }
 
     /**
-     * 融资借款：累计负债不得超过净资产（净资产 = 现金 + 持仓市值 − 负债），通过后
-     * 现金与负债同额增加并落 BORROW 流水。返回操作后余额/负债/剩余可借额度。
+     * 融资借款：融资余额不得超过净资产（净资产 = 现金 + 持仓市值 − 融资债 − 高利贷余额），
+     * 通过后现金与负债同额增加并落 BORROW 流水。返回操作后余额/负债/剩余可借额度。
      */
     public LoanResultDTO borrow(long userId, BigDecimal amount) {
         return execute(userId, requireAmount(amount), true);
@@ -169,7 +170,7 @@ public class MarginService {
             BigDecimal marketValue = marketValueOf(positions(userId), board);
             BigDecimal debt = debtOf(user);
             BigDecimal assets = user.getBalance().add(marketValue);
-            // 额度：累计负债（融资 + 高利贷）≤ 净资产。借满高利贷之后不能再找券商加杠杆
+            // 额度：融资余额 ≤ 净资产。高利贷余额只通过净资产间接影响，不直接从融资额度里扣
             if (amount.compareTo(marginBorrowableOf(assets, debt, SharkService.sharkOf(user))) > 0) {
                 throw new BizException(ErrorCode.MARGIN_EXCEED);
             }
@@ -301,7 +302,7 @@ public class MarginService {
                 userPositionMapper.updateById(position);
             }
             insertTradeRecord(userId, position.getStockId(), "SELL", price, shares,
-                    amount, commission, tax, day);
+                    amount, commission, tax, day, TradeService.chartTickIndex(board));
             insertLoanRecord(userId, LOAN_TYPE_LIQUIDATE, repaid, user.getDebt(), day);
             sold = true;
         }
@@ -410,7 +411,8 @@ public class MarginService {
     }
 
     private void insertTradeRecord(long userId, long stockId, String tradeType, BigDecimal price, int shares,
-                                   BigDecimal amount, BigDecimal commission, BigDecimal tax, int gameDay) {
+                                   BigDecimal amount, BigDecimal commission, BigDecimal tax, int gameDay,
+                                   int tickIndex) {
         TradeRecord record = new TradeRecord();
         record.setUserId(userId);
         record.setStockId(stockId);
@@ -421,6 +423,7 @@ public class MarginService {
         record.setCommission(commission);
         record.setTax(tax);
         record.setGameDay(gameDay);
+        record.setTickIndex(tickIndex);
         tradeRecordMapper.insert(record);
     }
 
@@ -435,15 +438,17 @@ public class MarginService {
     }
 
     /**
-     * 融资还能借多少，且不小于 0。规则本身是"累计负债（融资 + 高利贷 + 这次借的）
-     * 不超过净资产"，而借钱只是把负债和现金同额一起加、净资产不动，解出来就是
-     * {@code 可借 = 现金 + 市值 − (融资债 + 高利贷) × (1 + 上限倍率)}。
-     * 高利贷必须一起算：不然借满高利贷之后还能再找券商借一份，杠杆直接翻倍。
+     * 融资还能借多少，且不小于 0。规则是"融资余额不超过净资产"（净资产 = 现金 + 市值
+     * − 融资债 − 高利贷余额）；借钱只是把现金和负债同额一起加、净资产不动，所以
+     * {@code 可借 = 净资产 − 融资债 = 现金 + 市值 − 融资债 × 2 − 高利贷余额}。
+     * 高利贷不直接扣融资额度：先借高利贷再融资，只要净资产还够，额度照样在
+     * （高利贷的利息与亏损会通过净资产间接影响，这是真实风险，不是额度挤占）。
      * 公式只写这一处，借款校验与视图（含 /api/me/assets 的 borrowable）共用。
      */
     public static BigDecimal marginBorrowableOf(BigDecimal assets, BigDecimal marginDebt, BigDecimal sharkDebt) {
-        BigDecimal limit = BigDecimal.valueOf(1 + GameConstants.BORROW_LIMIT_RATIO);
-        BigDecimal room = assets.subtract(marginDebt.add(sharkDebt).multiply(limit));
+        BigDecimal netAsset = assets.subtract(marginDebt).subtract(sharkDebt);
+        BigDecimal limit = BigDecimal.valueOf(GameConstants.BORROW_LIMIT_RATIO);
+        BigDecimal room = netAsset.multiply(limit).subtract(marginDebt);
         return room.signum() > 0 ? room.setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
     }
 }

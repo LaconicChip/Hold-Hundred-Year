@@ -310,36 +310,35 @@ onMounted(reload)
   min-width: 0;
 }
 .chip {
-  font-family: var(--font-fun);
+  font-family: var(--font-body);
+  font-weight: 600;
   font-size: var(--fs-sm);
-  border: var(--border);
+  border: 1px solid var(--line);
   background: var(--card);
   color: var(--ink-2);
   border-radius: var(--radius-pill);
-  padding: 3px var(--sp-3);
-  box-shadow: var(--shadow-sm);
+  padding: 4px var(--sp-3);
   cursor: pointer;
   transition: 0.08s;
 }
-.chip:hover { background: var(--hover); color: var(--ink); transform: translate(-1px, -1px); box-shadow: var(--shadow); }
+.chip:hover { background: var(--hover); color: var(--ink); border-color: var(--ink-2); }
 .chip.on {
   background: var(--brand);
   color: var(--on-brand);
-  transform: translate(1px, 1px);
-  box-shadow: var(--shadow-press);
+  border-color: transparent;
 }
 .unread-toggle {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   flex: none;
-  font-family: var(--font-fun);
+  font-family: var(--font-body);
+  font-weight: 600;
   font-size: var(--fs-sm);
   color: var(--ink-2);
-  border: var(--border);
+  border: 1px solid var(--line);
   border-radius: var(--radius-pill);
-  padding: 3px var(--sp-3);
-  box-shadow: var(--shadow-sm);
+  padding: 4px var(--sp-3);
   cursor: pointer;
   white-space: nowrap;
   transition: 0.08s;
@@ -362,18 +361,13 @@ onMounted(reload)
   display: flex;
   gap: var(--sp-3);
   padding: var(--sp-3) var(--sp-2);
-  border-bottom: 1px dashed var(--dash);
-  border-left: 3px solid transparent;
+  border-bottom: 1px solid var(--line-soft);
   cursor: pointer;
   transition: background 0.12s;
 }
 .msg:hover { background: var(--hover); }
 .msg:last-of-type { border-bottom: none; }
-.msg.unread {
-  border-left-color: var(--up);
-  background: var(--brand-soft);
-}
-.msg.unread:hover { background: var(--hover); }
+/* 未读只靠粗标题 + 行内小红点，不再加左侧竖线 */
 .msg.hl {
   background: var(--tr-pending-bg);
   border-radius: var(--radius-sm);

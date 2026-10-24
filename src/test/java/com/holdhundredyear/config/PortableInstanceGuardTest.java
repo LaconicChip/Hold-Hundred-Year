@@ -4,6 +4,7 @@ import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
 
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -42,21 +43,40 @@ class PortableInstanceGuardTest {
                 PortableInstanceGuard.dataDirOf(null).normalize());
     }
 
-    /** 只要 HTTP 有应答就说明服务已经起来；探测失败不能误判成"已在运行"。 */
+    /** 探测只认自家运行时信息；端口上的陌生网页不能被当成"游戏已经在跑"。 */
     @Test
-    void serverProbeUsesHttpNotJustThePort() throws Exception {
+    void serverProbeRequiresTheGameRuntimeInfo() throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
-        server.createContext("/api/saves", exchange -> {
-            exchange.sendResponseHeaders(200, -1);
+        server.createContext("/api/runtime/info", exchange -> {
+            byte[] body = "{\"code\":0,\"data\":{\"port\":8080,\"portable\":true,\"lanUrls\":[]}}"
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
             exchange.close();
         });
         server.start();
         int port = server.getAddress().getPort();
         try {
-            assertTrue(PortableInstanceGuard.serverUp(port), "a live server must be detected");
+            assertTrue(PortableInstanceGuard.serverUp(port), "a live game server must be detected");
         } finally {
             server.stop(0);
         }
         assertFalse(PortableInstanceGuard.serverUp(port), "a stopped server must not be reported as running");
+
+        HttpServer foreign = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        foreign.createContext("/api/runtime/info", exchange -> {
+            byte[] body = "<html>another app</html>".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        foreign.start();
+        try {
+            assertFalse(PortableInstanceGuard.serverUp(foreign.getAddress().getPort()),
+                    "a foreign server on the same port must not be mistaken for the game");
+        } finally {
+            foreign.stop(0);
+        }
     }
 }

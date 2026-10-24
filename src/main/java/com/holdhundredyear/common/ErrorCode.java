@@ -21,7 +21,7 @@ public enum ErrorCode {
     INSUFFICIENT_CASH(1008, "资金不足"),
     INSUFFICIENT_SHARES(1009, "可卖股数不足"),
     STOCK_NOT_FOUND(1010, "股票不存在"),
-    MARGIN_EXCEED(1011, "融资额度不足，累计负债不能超过净资产"),
+    MARGIN_EXCEED(1011, "融资额度不足，融资负债不能超过净资产"),
     REPAY_EXCEED(1012, "还款金额超过负债"),
     FINISHED_STATE(1013, "本局已结束，无法操作"),
     PARAM_ERROR(1015, "请求参数错误"),
