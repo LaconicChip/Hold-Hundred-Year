@@ -7,7 +7,7 @@
           <SvgIcon name="chart" class="title-ic" />
           大盘行情
         </h1>
-        <p class="page-desc">24 只标的同屏博弈 · 点任意一行进入个股详情</p>
+        <p class="page-desc">24 只个股 + 3 只 ETF 同屏博弈 · 点任意一行进入详情</p>
       </div>
       <span class="who muted">
         <SvgIcon name="user" class="who-ic" />
@@ -67,6 +67,32 @@ const quotes = useQuotesStore()
 const messages = useMessagesStore()
 
 let pollTimer = null
+// 暂停自愈计数：连续两轮"服务端说停了、前端却没有弹窗"才补一次 resume（见 poll）
+let pausedPolls = 0
+
+// 盘中轮询：每 2s 校正状态与倒计时（WS 只推行情不推状态，这里兜住阶段/跳号变化），
+// 顺带校正封板/停牌/涨跌停价——这些当日口径同样只在 REST 里，盘中会随时变化。
+// 2026-10-25 新增暂停自愈：ALERT 由服务端直接冻结世界，恢复仍靠一次 HTTP；
+// 那次恢复要是丢了（刷新页面、断网、切后台），世界会一直冻着——这里负责把它救回来。
+async function poll() {
+  try {
+    await market.fetchState()
+  } catch {
+    return
+  }
+  if (market.paused && !messages.modals.length) {
+    pausedPolls += 1
+    if (pausedPolls >= 2) {
+      pausedPolls = 0
+      market.resumeWorld()
+    }
+  } else {
+    pausedPolls = 0
+  }
+  fetchStockList()
+    .then((list) => quotes.applyStockList(list))
+    .catch(() => {})
+}
 
 // 跳过成功后由 StatusBar 抛出 DailySummaryDTO，跳转正式收盘晚报页
 function onSkipped(s) {
@@ -98,12 +124,7 @@ onMounted(async () => {
   user.fetchPositions().catch(() => {})
   // 盘中轮询：每 2s 校正状态与倒计时（WS 只推行情不推状态，这里兜住阶段/跳号变化），
   // 顺带校正封板/停牌/涨跌停价——这些当日口径同样只在 REST 里，盘中会随时变化
-  pollTimer = setInterval(() => {
-    market.fetchState().catch(() => {})
-    fetchStockList()
-      .then((list) => quotes.applyStockList(list))
-      .catch(() => {})
-  }, 2000)
+  pollTimer = setInterval(poll, 2000)
 })
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)

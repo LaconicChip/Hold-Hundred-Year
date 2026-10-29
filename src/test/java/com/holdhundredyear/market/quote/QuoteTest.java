@@ -14,6 +14,25 @@ class QuoteTest {
         return q;
     }
 
+    /**
+     * ETF 无涨跌停（2026-10-25）：价格是跟踪标的折算出来的，不设限价、不拦成交。
+     * 之前用 ±9.8% 的固定阈值判断，快速模式（±20%）下 +10% 的 ETF 会被误判成"封死买不进"。
+     */
+    @Test
+    void limitlessInstrumentIsNeverBlocked() {
+        Quote q = quote(1.00);
+        q.setLimitPct(0.20);
+        q.setLimitless(true);
+
+        q.setCurrent(1.50);
+        assertTrue(q.canBuy(), "无涨跌停标的涨多少都能买");
+        assertTrue(q.canSell(), "无涨跌停标的跌多少都能卖");
+
+        q.setCurrent(0.50);
+        assertTrue(q.canBuy());
+        assertTrue(q.canSell());
+    }
+
     @Test
     void limitPricesForNormalStocks() {
         Quote q = quote(168.00);

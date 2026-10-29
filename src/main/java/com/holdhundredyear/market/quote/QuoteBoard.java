@@ -1,5 +1,6 @@
 package com.holdhundredyear.market.quote;
 
+import com.holdhundredyear.game.constants.StockDefs;
 import com.holdhundredyear.game.model.enums.GameMode;
 import com.holdhundredyear.game.model.enums.VolRegime;
 import com.holdhundredyear.market.entity.UserStockState;
@@ -48,8 +49,11 @@ public class QuoteBoard {
 
     /** 把本局涨跌停幅度下发给每只票（恢复行情板与开盘时各一次）。 */
     public void applyLimits() {
-        for (Quote quote : quotes.values()) {
+        for (Map.Entry<Long, Quote> entry : quotes.entrySet()) {
+            Quote quote = entry.getValue();
             quote.setLimitPct(gameMode.getLimitPct());
+            // ETF 不设涨跌停：价格只由跟踪标的决定（见 Quote.limitless）
+            quote.setLimitless(StockDefs.isEtf(entry.getKey()));
         }
     }
 

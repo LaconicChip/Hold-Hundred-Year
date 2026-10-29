@@ -1,5 +1,7 @@
 package com.holdhundredyear.trade;
 
+import com.holdhundredyear.common.ErrorCode;
+import com.holdhundredyear.game.constants.StockDefs;
 import com.holdhundredyear.common.BizException;
 import com.holdhundredyear.game.model.enums.EraCode;
 import com.holdhundredyear.game.model.enums.GameMode;
@@ -176,8 +178,11 @@ class IpoServiceTest {
     void subscribeRejectedOffSubscriptionDayOrForWrongScriptDay() {
         long userId = seedInMarket();
         UserScriptDay future = insertIpo(userId, 99, "雷霆安防", 10.0);
-        assertThrows(BizException.class, () -> ipoService.subscribe(userId, future.getId()),
+        BizException expired = assertThrows(BizException.class,
+                () -> ipoService.subscribe(userId, future.getId()),
                 "subscribing a non-today IPO script day must be rejected");
+        assertEquals(ErrorCode.IPO_EXPIRED, expired.getErrorCode(),
+                "过期申购要给一句人话，而不是笼统的请求参数错误");
 
         UserScriptDay notIpo = insertScriptDay(userId, 1, "LIMIT_UP_ALL", Map.of("sealRatio", 0.90));
         assertThrows(BizException.class, () -> ipoService.subscribe(userId, notIpo.getId()),
@@ -338,7 +343,8 @@ class IpoServiceTest {
 
         Long rows = userStockStateMapper.selectCount(new LambdaQueryWrapper<UserStockState>()
                 .eq(UserStockState::getUserId, userId));
-        assertEquals(24L, rows, "IPO settlement must stay off the 24-stock board (no new stock_state)");
+        assertEquals((long) StockDefs.ALL_INSTRUMENTS.size(), rows,
+                "IPO settlement must stay off the 24-stock + ETF board (no new stock_state)");
     }
 
     // ---- 辅助 ----

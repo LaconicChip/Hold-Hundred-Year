@@ -152,6 +152,10 @@ public class WorldTickService {
                 if (q.isHalted()) {
                     continue;
                 }
+                // ETF 不走在册股票的波动链路：它的价格在指数算完之后按跟踪标的折算（见 updateEtfs）
+                if (StockDefs.isEtf(q.getStockId())) {
+                    continue;
+                }
                 StockDef def = StockDefs.byId(q.getStockId());
                 if (q.getSealed() != SealState.NONE) {
                     // 封板：钉价；推进封板状态机（炸板掷骰）；intraday 补点保持 90 点对齐
@@ -180,12 +184,15 @@ public class WorldTickService {
                 returns.put(q.getStockId(), (finalPrice - prev) / prev);
             }
 
-            // 指数：非停牌股（含封板 0 收益）按权重平均
+            // 指数：非停牌股（含封板 0 收益）按权重平均；ETF 不在指数成分里（weight=0 也不该混进来）
             List<StockDef> active = board.getQuotes().values().stream()
-                    .filter(q -> !q.isHalted())
+                    .filter(q -> !q.isHalted() && !StockDefs.isEtf(q.getStockId()))
                     .map(q -> StockDefs.byId(q.getStockId()))
                     .toList();
             board.appendIndexTick(indexCalculator.nextIndex(board.getIndexValue(), active, returns));
+
+            // ETF：指数算完之后按跟踪标的折算（大盘跟指数、科创/新能源跟成分股等权篮子）
+            updateEtfs(board);
 
             // 熔断判定（仅上午、熔断日）：指数日内跌幅触及 -7% 当跳提前收盘
             if (board.isCircuitBreakerDay() && state == MarketState.MORNING_OPEN
@@ -223,6 +230,55 @@ public class WorldTickService {
             }
         } finally {
             lock.unlock();
+        }
+    }
+
+    /**
+     * ETF 定价（2026-10-25）：每跳在指数算完之后折算一次，价格 = 昨收 × 跟踪标的当日涨跌幅。
+     *
+     * <ul>
+     *   <li>大盘 ETF：跟百年指数（指数当跳点位 / 昨收指数），1000 点对应 2.00 元；</li>
+     *   <li>科创 / 新能源 ETF：跟成分股等权篮子的当日涨跌幅（current / prevClose 的均值）；</li>
+     * </ul>
+     *
+     * <p>不加随机抖动：ETF 的职责是把指数/篮子**照实**折出来，人为抖 ±0.15% 在 1.00 的价位上
+     * 等于一个多价位，玩家看到的就是"不精确"。
+     *
+     * <p>用"昨收 × 当日涨幅"而不是"发行价 × 涨幅"：否则跨日会天天回到发行价，ETF 就没有累计走势。
+     * 价格同样受本局涨跌停约束；ETF 不进封板状态机、不做 GARCH、不参与停牌核查。
+     */
+    private void updateEtfs(QuoteBoard board) {
+        double indexRatio = board.getPrevIndex() > 0
+                ? board.getIndexValue() / board.getPrevIndex() : 1.0;
+        for (StockDefs.StockDef def : StockDefs.ETFS) {
+            Quote q = board.quote(def.id());
+            if (q == null) {
+                continue; // 理论上 registry 已补齐；缺行时静默跳过，绝不让一跳炸掉整个世界
+            }
+            double ratio;
+            if (def.id() == StockDefs.ETF_MARKET) {
+                ratio = indexRatio;
+            } else {
+                List<Long> basket = StockDefs.ETF_BASKETS.getOrDefault(def.id(), List.of());
+                double sum = 0.0;
+                int counted = 0;
+                for (Long stockId : basket) {
+                    Quote member = board.quote(stockId);
+                    if (member == null || member.getPrevClose() <= 0) {
+                        continue;
+                    }
+                    sum += member.getCurrent() / member.getPrevClose();
+                    counted++;
+                }
+                ratio = counted == 0 ? 1.0 : sum / counted;
+            }
+            double target = q.getPrevClose() * ratio;
+            // 无涨跌停：不夹在涨跌停价之间，只保证价格为正
+            double price = q.isLimitless()
+                    ? Math.max(0.001, Quote.round3(target))
+                    : Math.max(q.limitDownPrice(), Math.min(q.limitUpPrice(), Quote.round3(target)));
+            q.setCurrent(price);
+            q.appendTick(price);
         }
     }
 

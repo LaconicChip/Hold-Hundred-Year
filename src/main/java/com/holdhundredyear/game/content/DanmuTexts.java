@@ -47,6 +47,11 @@ public final class DanmuTexts {
      */
     public static final List<String> CHATTER = ContentCatalog.require(FILE, "CHATTER");
 
+    /** 利好事件落地时的跟读（{title} 槽位填事件标题，2026-10-25）。 */
+    public static final List<String> EVENT_GOOD = ContentCatalog.require(FILE, "EVENT_GOOD");
+    /** 利空事件落地时的跟读（{title} 槽位填事件标题，2026-10-25）。 */
+    public static final List<String> EVENT_BAD = ContentCatalog.require(FILE, "EVENT_BAD");
+
     /** 全局类别池：类别名 -> 弹幕池，就是上面这些常量的汇总视图（供计数与遍历）。 */
     static final Map<String, List<String>> GLOBAL_POOLS = globalPools();
 
@@ -83,6 +88,8 @@ public final class DanmuTexts {
         byCategory.put("DIVE_MINOR", DIVE_MINOR);
         byCategory.put("FLAT", FLAT);
         byCategory.put("CHATTER", CHATTER);
+        byCategory.put("EVENT_GOOD", EVENT_GOOD);
+        byCategory.put("EVENT_BAD", EVENT_BAD);
         return Map.copyOf(byCategory);
     }
 

@@ -19,7 +19,7 @@ rem  便携包只在"升版本号 + 明确要求打包"两个条件同时满足时才重新生成（见 AGENTS.
 rem  本文件与 game.cmd 一样必须存成 GBK(936)：cmd 读 UTF-8 中文批处理会按字节读错位。
 rem =========================================================================
 
-set "VER=0.1.0"
+set "VER=0.1.1"
 set "JAR=Hold-Hundred-Year-%VER%.jar"
 set "IN=target\package-in"
 set "OUT=target\package-out"
@@ -96,16 +96,16 @@ set "TRIES=0"
 :smokeloop
 set /a TRIES+=1
 set "CODE=000"
-for /f "usebackq tokens=*" %%c in (`curl -s -o nul -w "%%{http_code}" http://localhost:%SMOKE_PORT%/api/game/modes`) do set "CODE=%%c"
+for /f "usebackq tokens=*" %%c in (`curl -s -m 2 -o nul -w "%%{http_code}" http://localhost:%SMOKE_PORT%/api/game/modes`) do set "CODE=%%c"
 if "%CODE%"=="401" goto smokeok
 if "%CODE%"=="200" goto smokeok
 if %TRIES% GEQ 30 goto smokefail
-timeout /t 2 /nobreak >nul
+ping -n 3 127.0.0.1 >nul
 goto smokeloop
 :smokeok
 echo      冒烟通过（HTTP %CODE%），关掉测试实例
 taskkill /f /im %APP%.exe >nul 2>&1
-timeout /t 3 /nobreak >nul
+ping -n 4 127.0.0.1 >nul
 rmdir /s /q "%SMOKE_DIR%" 2>nul
 rmdir /s /q "%OUT%\%APP%\data" 2>nul
 goto zip

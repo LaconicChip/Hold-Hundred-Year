@@ -73,6 +73,11 @@ public class DanmuService {
      */
     static final double CHATTER_MIX_WHEN_MOVING = 0.35;
 
+    /** 一条消息落地后股吧接话的概率：不是每条消息都值一条弹幕，但大多数值得。 */
+    static final double EVENT_REACTION_P = 0.75;
+    /** 跟读文案里引用事件标题的最大字数：再长就不是弹幕，是转载。 */
+    static final int EVENT_TITLE_MAX = 14;
+
     private final ObjectProvider<PushService> pushProvider;
     /**
      * per-user × per-stock 发送节流（内存态，跨日靠跳序回零自动复位；重启后从头计也没坏处）。
@@ -120,7 +125,7 @@ public class DanmuService {
         List<Quote> sealedUp = new ArrayList<>();
         List<Quote> sealedDown = new ArrayList<>();
         for (Quote q : board.getQuotes().values()) {
-            if (q.isHalted()) {
+            if (q.isHalted() || StockDefs.isEtf(q.getStockId())) {
                 continue;
             }
             if (q.getSealed() == SealState.UP) {
@@ -153,7 +158,7 @@ public class DanmuService {
         List<Quote> minorUps = new ArrayList<>();
         List<Quote> minorDowns = new ArrayList<>();
         for (Quote q : board.getQuotes().values()) {
-            if (q.isHalted()) {
+            if (q.isHalted() || StockDefs.isEtf(q.getStockId())) {
                 continue;
             }
             double pct = q.dayChangePct();
@@ -204,7 +209,7 @@ public class DanmuService {
         int tick = board.getTickIndex();
         // ① 每只票各自的流：热门的票话多、冷门的票偶尔一句（真实的股吧就是这样）
         for (Quote q : board.getQuotes().values()) {
-            if (q.isHalted()) {
+            if (q.isHalted() || StockDefs.isEtf(q.getStockId())) {
                 continue;
             }
             long stockId = q.getStockId();
@@ -230,6 +235,41 @@ public class DanmuService {
                 push.pushDanmu(userId, payload(market, seq, tick));
             }
         }
+    }
+
+    /**
+     * 事件跟读（2026-10-25）：一条消息落地后，股吧里立刻有人接着这条消息说话。
+     *
+     * <p>为什么不让随机流自己"碰巧"聊到事件：原来的弹幕只认行情快照（涨跌幅、封板、指数），
+     * 消息中心里写着"某公司被立案调查"，股吧里却还在聊"这票明天怎么看"——两条信息流各说各的。
+     * 这条口子把事件标题塞进股吧，玩家读到的是"同一件事的两种说法"。
+     *
+     * <p>独立随机流（盐 {@code evdanmu}）不消费主 tick 的 rng，行情与事件的确定性不受影响；
+     * 仍然走 {@link #allow} 的按票冷却，不会因为一天十条消息就把股吧刷成播报栏。
+     *
+     * @param stockId  焦点股（0 = 不点名的大盘闲聊，每个股吧都看得见）
+     * @param positive 利好还是利空，决定抽哪一组跟读文案
+     */
+    public void pushEventReaction(long userId, long stockId, String eventTitle, boolean positive,
+                                  int tick, long worldSeed, int day) {
+        PushService push = pushProvider.getIfAvailable();
+        if (push == null || eventTitle == null || eventTitle.isBlank()) {
+            return;
+        }
+        Random rng = WorldRandom.of(worldSeed, "evdanmu" + day + "." + tick + "." + stockId);
+        if (rng.nextDouble() >= EVENT_REACTION_P) {
+            return;
+        }
+        String title = eventTitle.length() > EVENT_TITLE_MAX
+                ? eventTitle.substring(0, EVENT_TITLE_MAX) + "…" : eventTitle;
+        String text = pick(positive ? DanmuTexts.EVENT_GOOD : DanmuTexts.EVENT_BAD, rng)
+                .replace("{title}", title);
+        DanmuLine line = new DanmuLine("事件", text, stockId);
+        if (!allow(userId, tick, line)) {
+            return;
+        }
+        long seq = remember(userId, line, tick);
+        push.pushDanmu(userId, payload(line, seq, tick));
     }
 
     /**

@@ -47,4 +47,7 @@ public class StockQuoteDTO {
 
     /** 封板状态：NONE/UP/DOWN。 */
     private String sealed;
+
+    /** 是不是 ETF（前端据此按 0.001 展示价格；股票仍两位小数）。 */
+    private boolean etf;
 }

@@ -117,7 +117,8 @@ public class IpoService {
         }
         UserGameState gs = gameState(userId);
         if (sd.getGameDay() != gs.getCurrentDay()) {
-            throw new BizException(ErrorCode.PARAM_ERROR);
+            // 过期申购不是"请求格式错"：前端把昨天的通知又弹出来了，要告诉玩家为什么点不动
+            throw new BizException(ErrorCode.IPO_EXPIRED);
         }
         UserIpoRecord existing = userIpoRecordMapper.selectOne(new LambdaQueryWrapper<UserIpoRecord>()
                 .eq(UserIpoRecord::getUserId, userId)

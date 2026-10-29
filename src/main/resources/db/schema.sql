@@ -1,4 +1,5 @@
 -- 《你持有一百年看看》schema v1 (16 tables)
+-- 2026-10-25：价格类列 2 位小数 → 3 位（ETF 按 0.001 报价；股票仍按 2 位展示）
 
 CREATE TABLE IF NOT EXISTS sys_user (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -15,7 +16,7 @@ CREATE TABLE IF NOT EXISTS stock_info (
     stock_code VARCHAR(10) NOT NULL UNIQUE,
     stock_name VARCHAR(50) NOT NULL,
     sector VARCHAR(20) NOT NULL,
-    base_price DECIMAL(10,2) NOT NULL,
+    base_price DECIMAL(10,3) NOT NULL,
     beta DOUBLE NOT NULL,
     index_weight DOUBLE NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -24,11 +25,11 @@ CREATE TABLE IF NOT EXISTS user_stock_state (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id BIGINT NOT NULL,
     stock_id BIGINT NOT NULL,
-    prev_close DECIMAL(10,2) NOT NULL,
-    open_price DECIMAL(10,2) NULL,
-    high_price DECIMAL(10,2) NULL,
-    low_price DECIMAL(10,2) NULL,
-    current_price DECIMAL(10,2) NOT NULL,
+    prev_close DECIMAL(10,3) NOT NULL,
+    open_price DECIMAL(10,3) NULL,
+    high_price DECIMAL(10,3) NULL,
+    low_price DECIMAL(10,3) NULL,
+    current_price DECIMAL(10,3) NOT NULL,
     limit_up_streak INT NOT NULL DEFAULT 0,
     halted TINYINT(1) NOT NULL DEFAULT 0,
     halt_until_day INT NULL,
@@ -44,10 +45,10 @@ CREATE TABLE IF NOT EXISTS stock_daily_bar (
     user_id BIGINT NOT NULL,
     stock_id BIGINT NOT NULL,
     game_day INT NOT NULL,
-    open DECIMAL(10,2) NOT NULL,
-    high DECIMAL(10,2) NOT NULL,
-    low DECIMAL(10,2) NOT NULL,
-    close DECIMAL(10,2) NOT NULL,
+    open DECIMAL(10,3) NOT NULL,
+    high DECIMAL(10,3) NOT NULL,
+    low DECIMAL(10,3) NOT NULL,
+    close DECIMAL(10,3) NOT NULL,
     change_pct DOUBLE NULL,
     UNIQUE KEY uk_user_stock_day (user_id, stock_id, game_day),
     INDEX idx_user_stock (user_id, stock_id)
@@ -59,7 +60,7 @@ CREATE TABLE IF NOT EXISTS user_position (
     stock_id BIGINT NOT NULL,
     shares INT NOT NULL DEFAULT 0,
     available_shares INT NOT NULL DEFAULT 0,
-    avg_cost DECIMAL(10,2) NOT NULL DEFAULT 0,
+    avg_cost DECIMAL(10,3) NOT NULL DEFAULT 0,
     UNIQUE KEY uk_user_stock (user_id, stock_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -68,7 +69,7 @@ CREATE TABLE IF NOT EXISTS trade_record (
     user_id BIGINT NOT NULL,
     stock_id BIGINT NOT NULL,
     trade_type VARCHAR(8) NOT NULL,
-    price DECIMAL(10,2) NOT NULL,
+    price DECIMAL(10,3) NOT NULL,
     shares INT NOT NULL,
     amount DECIMAL(12,2) NOT NULL,
     commission DECIMAL(12,2) NOT NULL,
@@ -193,7 +194,7 @@ CREATE TABLE IF NOT EXISTS user_ipo_record (
     user_id BIGINT NOT NULL,
     script_day_id BIGINT NOT NULL,
     ipo_name VARCHAR(64) NOT NULL,
-    issue_price DECIMAL(10,2) NOT NULL,
+    issue_price DECIMAL(10,3) NOT NULL,
     status VARCHAR(16) NOT NULL,
     profit DECIMAL(12,2) NULL,
     game_day INT NOT NULL,

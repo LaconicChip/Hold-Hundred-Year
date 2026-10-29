@@ -5,6 +5,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * 24 只股票静态档案（spec §4.1 化名股、§4.2 等权指数权重）。
@@ -59,11 +62,52 @@ public final class StockDefs {
     /** 全部板块名（按声明顺序去重，共 21 个）：波动引擎 beginTick 按此顺序抽板块因子。 */
     public static final List<String> ALL_SECTORS = ALL.stream().map(StockDef::sector).distinct().toList();
 
+    /**
+     * 三只 ETF（2026-10-25 新增）：给"不会选股"的玩家一条买指数的退路。
+     *
+     * <p>ETF 不是第 25~27 只股票：它们不参与指数权重（weight=0）、不吃板块因子与事件冲击
+     * （beta/policyBeta/volMult 全 0），价格每跳由跟踪标的折算出来——大盘 ETF 跟百年指数，
+     * 科创 ETF 跟半导体+算力+通信，新能源 ETF 跟三只新能源股。
+     *
+     * <p>三只发行价统一 1.00 元：ETF 按 0.001 报价（真实 A 股 ETF 就是三位小数），
+     * 1.00 的价位上最小变动 0.001 = 0.1%，才跟得住每跳约 0.05% 的指数波动。
+     *
+     * <p>id 从 25 起、与 24 只股票分开，是为了让所有"按 StockDefs.ALL 遍历"的既有逻辑
+     * （事件池、主力剧本、NPC 荐股、涨停板洗牌、股吧人设）天然只认股票；凡是走
+     * {@code board.getQuotes()} 的地方则显式用 {@link #isEtf(long)} 分流。
+     */
+    public static final List<StockDef> ETFS = List.of(
+            new StockDef(25L, "510100", "百年大盘ETF", "ETF", 1.00, 0.0, 0.0, 0, 0.0, 0.0),
+            new StockDef(26L, "588100", "科创百年ETF", "ETF", 1.00, 0.0, 0.0, 0, 0.0, 0.0),
+            new StockDef(27L, "516100", "新能源ETF", "ETF", 1.00, 0.0, 0.0, 0, 0.0, 0.0)
+    );
+
+    /** 大盘 ETF：直接按百年指数折算（发行价 1.00 元对应 1000 点）。 */
+    public static final long ETF_MARKET = 25L;
+    /** 科创 ETF（半导体 / 算力 / 通信 等权篮子）。 */
+    public static final long ETF_TECH = 26L;
+    /** 新能源 ETF（新能源三只等权篮子）。 */
+    public static final long ETF_NEW_ENERGY = 27L;
+
+    /** 跟踪篮子：ETF id → 成分股 id（等权）。大盘 ETF 不在此表，走指数。 */
+    public static final Map<Long, List<Long>> ETF_BASKETS = Map.of(
+            26L, List.of(2L, 15L, 24L),   // 科创：寒武急（半导体）/ 瓷器曙光（算力）/ 中星通讯（通信）
+            27L, List.of(3L, 4L, 10L)     // 新能源：宁得时代 / 光茅绿能 / 比养迪
+    );
+
+    /** 全部 ETF id（行情板分流用，避免每跳装箱 Stream 判断）。 */
+    public static final Set<Long> ETF_IDS = ETFS.stream().map(StockDef::id)
+            .collect(Collectors.toUnmodifiableSet());
+
+    /** 股票 + ETF：播种、行情板恢复与"这只标的存在吗"校验用的全集。 */
+    public static final List<StockDef> ALL_INSTRUMENTS =
+            Stream.concat(ALL.stream(), ETFS.stream()).toList();
+
     /** id → 档案（LinkedHashMap 保持声明顺序）：盘中引擎每跳按 id 查静态档案。 */
     private static final Map<Long, StockDef> BY_ID;
     static {
         Map<Long, StockDef> byId = new LinkedHashMap<>();
-        for (StockDef def : ALL) {
+        for (StockDef def : ALL_INSTRUMENTS) {
             byId.put(def.id(), def);
         }
         BY_ID = Collections.unmodifiableMap(byId);
@@ -73,7 +117,12 @@ public final class StockDefs {
     }
 
     public static Optional<StockDef> byCode(String code) {
-        return ALL.stream().filter(s -> s.code().equals(code)).findFirst();
+        return ALL_INSTRUMENTS.stream().filter(s -> s.code().equals(code)).findFirst();
+    }
+
+    /** 该 id 是不是 ETF（价格由跟踪标的折算，不参与指数、事件、封板与停牌核查）。 */
+    public static boolean isEtf(long stockId) {
+        return ETF_IDS.contains(stockId);
     }
 
     /** 按 id 查静态档案；未知 id 属编程错误，直接抛。 */

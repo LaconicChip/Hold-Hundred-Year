@@ -78,7 +78,6 @@ import { useMessagesStore } from '@/stores/messages'
 import { useQuotesStore } from '@/stores/quotes'
 import { useUserStore } from '@/stores/user'
 import { fetchStockList } from '@/api/stocks'
-import { resumeMarket } from '@/api/market'
 
 const route = useRoute()
 const router = useRouter()
@@ -204,7 +203,7 @@ onMounted(() => {
   // 铃铛角标：连接建立之前落库的未读不会推送过来，这里补拉一次（不播报）
   messages.syncUnread()
   // 安全阀：上一次会话留下的暂停标记不该把新世界一直冻住——页面刚打开时没有弹窗在等玩家
-  if (!messages.modals.length) resumeMarket().catch(() => {})
+  if (!messages.modals.length) market.resumeWorld()
 })
 onUnmounted(() => {
   window.removeEventListener('resize', syncCollapsed)

@@ -6,7 +6,7 @@
       </span>
       <span class="trade-cash stat" :class="[priceCls(changePct), flashCls]">
         <span class="lab">现价</span>
-        <b class="num val">{{ fmtMoney(price) }}</b>
+        <b class="num val">{{ fmtPrice(price, digits) }}</b>
       </span>
       <span class="trade-cash stat">
         <span class="lab">可用资金</span>
@@ -113,7 +113,8 @@ import { ElMessage } from 'element-plus/es/components/message/index.mjs'
 import 'element-plus/es/components/input-number/style/css'
 import { buy, sell } from '@/api/trade'
 import SvgIcon from './SvgIcon.vue'
-import { priceCls, fmtMoney } from '@/utils/format'
+import { priceCls, fmtMoney, fmtPrice, priceDigits } from '@/utils/format'
+import { useQuotesStore } from '@/stores/quotes'
 
 const props = defineProps({
   stockId: { type: Number, required: true },
@@ -123,10 +124,16 @@ const props = defineProps({
   balance: { type: Number, default: 0 }, // 可用资金（user.assets.cash）
   holdingShares: { type: Number, default: 0 }, // 当前股可卖股数（T+1：available_shares）
   holdingCost: { type: Number, default: 0 }, // 持仓成本价（avg_cost）
-  holdingValue: { type: Number, default: 0 } // 持仓市值（现价 × 持股数）
+  holdingValue: { type: Number, default: 0 }, // 持仓市值（现价 × 持股数）
+  // 本局涨跌停价（服务端按模式算好；0 = 无涨跌停，ETF 就是这一类）
+  limitUp: { type: Number, default: 0 },
+  limitDown: { type: Number, default: 0 }
 })
 
 const emit = defineEmits(['traded'])
+const quotes = useQuotesStore()
+// 现价位数：ETF 0.001、股票 0.01
+const digits = computed(() => priceDigits(quotes.defOf(props.stockId)))
 
 const qty = ref(0)
 const loading = ref(false)
@@ -147,9 +154,6 @@ watch(
 )
 // 红涨绿跌（现价块按当日涨跌幅着色，闪烁按逐跳方向）
 
-// 涨停/跌停阈值（按价格推断，非后端字段，与行情表展示口径一致）
-const LIMIT_UP = 9.8
-const LIMIT_DOWN = -9.8
 
 function setQty(v) {
   qty.value = v
@@ -179,14 +183,16 @@ const notWholeLot = computed(() => qty.value > 0 && qty.value % 100 !== 0)
 
 // 禁用原因（按优先级逐条）
 const closedReason = computed(() => (props.isOpen ? '' : '休市中，无法下单'))
+// 涨跌停只看服务端下发的价位：0 表示这只标的没有涨跌停（ETF）。
+// 原来写死 ±9.8% 的做法在快速模式（±20%）下会把 +10% 的 ETF 误判成封死，已经废弃。
 const buyReason = computed(() => {
   if (closedReason.value) return ''
-  if (props.changePct >= LIMIT_UP) return '涨停封死，买单排不上'
+  if (props.limitUp > 0 && props.price >= props.limitUp - 1e-9) return '涨停封死，买单排不上'
   return ''
 })
 const sellReason = computed(() => {
   if (closedReason.value) return ''
-  if (props.changePct <= LIMIT_DOWN) return '跌停封死，卖不出去'
+  if (props.limitDown > 0 && props.price <= props.limitDown + 1e-9) return '跌停封死，卖不出去'
   return ''
 })
 const buyDisabled = computed(() => !!closedReason.value || !!buyReason.value || !validQty.value)

@@ -31,12 +31,12 @@
     <!-- 右：阶段 + 倒计时 + 操作 -->
     <div class="sb-right">
       <div class="phase-block">
-        <span class="phase-tag" :class="{ 'is-open': market.isOpen }">
-          <span class="dot" :class="market.isOpen ? 'r' : ''"></span>
-          {{ phaseLabel }}
+        <span class="phase-tag" :class="market.paused ? 'is-paused' : market.isOpen ? 'is-open' : ''">
+          <span class="dot" :class="market.isOpen && !market.paused ? 'r' : ''"></span>
+          {{ market.paused ? '行情已暂停' : phaseLabel }}
         </span>
-        <span v-if="market.isOpen" class="countdown num">
-          <SvgIcon name="clock" class="cd-ic" />{{ countdownText }}
+        <span v-if="market.isOpen" class="countdown num" :class="{ 'is-paused': market.paused }">
+          <SvgIcon name="clock" class="cd-ic" />{{ market.paused ? '已暂停 · ' : '' }}{{ countdownText }}
         </span>
         <span v-else-if="market.marketState === 'LUNCH_BREAK'" class="phase-note">午休中 · 不可交易</span>
       </div>
@@ -190,15 +190,34 @@ function fmt(s) {
   return String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0')
 }
 const remaining = computed(() => Math.max(0, (deadline.value - nowTick.value) / 1000))
-const countdownText = computed(() => fmt(remaining.value))
+
+// 暂停时把倒计时冻在暂停那一刻（2026-10-25）：以前服务端停了、这个本地时钟照走，
+// 玩家盯着"还剩 00:32"一直掉，自然会觉得"行情根本没暂停"。
+const frozenRemaining = ref(0)
+const displayRemaining = computed(() => (market.paused ? frozenRemaining.value : remaining.value))
+const countdownText = computed(() => fmt(displayRemaining.value))
+
+function snapshotPausedRemaining() {
+  if (market.paused) frozenRemaining.value = remaining.value
+}
 
 function recalibrate() {
   if (market.isOpen) {
     deadline.value = Date.now() + (market.countdownTicks || 0) * market.tickSeconds * 1000
+    snapshotPausedRemaining()
   }
 }
 watch(() => market.countdownTicks, recalibrate)
 watch(() => market.isOpen, recalibrate)
+// 暂停/恢复切换：暂停即冻结剩余时间，恢复即按服务端倒计时重新对齐
+watch(
+  () => market.paused,
+  (p) => {
+    if (p) snapshotPausedRemaining()
+    else recalibrate()
+  },
+  { immediate: true }
+)
 
 onMounted(() => {
   recalibrate()
@@ -373,6 +392,9 @@ function onViewResult() {
   white-space: nowrap;
 }
 .phase-tag.is-open { color: var(--up); }
+/* 暂停态：只用一个暖色标签把"世界冻住了"说清楚，倒计时随之冻结 */
+.phase-tag.is-paused { color: var(--brand); }
+.countdown.is-paused { color: var(--brand); }
 .countdown {
   display: inline-flex;
   align-items: center;

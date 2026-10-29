@@ -44,7 +44,7 @@
               </span>
               <span class="sec-tag">{{ q.sector }}</span>
               <span class="mob-meta">
-                {{ q.sector }} · 开 {{ fmtPrice(q.open) }} · 高 {{ fmtPrice(q.high) }} · 低 {{ fmtPrice(q.low) }} · 昨收 {{ fmtPrice(q.prevClose) }}
+                {{ q.sector }} · 开 {{ fmtPrice(q.open, digitsOf(q)) }} · 高 {{ fmtPrice(q.high, digitsOf(q)) }} · 低 {{ fmtPrice(q.low, digitsOf(q)) }} · 昨收 {{ fmtPrice(q.prevClose, digitsOf(q)) }}
                 <template v-if="q.limitUpStreak > 0"> · {{ q.limitUpStreak }} 连板</template>
                 <template v-if="q.sealed === 'UP'"> · 封板</template>
                 <template v-else-if="q.sealed === 'DOWN'"> · 跌停</template>
@@ -53,7 +53,7 @@
 
             <!-- 现价（变动闪烁） -->
             <td class="num price" :class="[priceCls(q.changePct), flashMap[q.stockId]]">
-              {{ fmtPrice(q.current) }}
+              {{ fmtPrice(q.current, digitsOf(q)) }}
             </td>
 
             <!-- 涨跌幅：涨跌停色块 -->
@@ -64,10 +64,10 @@
               >{{ fmtPct(q.changePct) }}</span>
             </td>
 
-            <td class="num dim col-open">{{ fmtPrice(q.open) }}</td>
-            <td class="num dim col-high">{{ fmtPrice(q.high) }}</td>
-            <td class="num dim col-low">{{ fmtPrice(q.low) }}</td>
-            <td class="num dim col-prev">{{ fmtPrice(q.prevClose) }}</td>
+            <td class="num dim col-open">{{ fmtPrice(q.open, digitsOf(q)) }}</td>
+            <td class="num dim col-high">{{ fmtPrice(q.high, digitsOf(q)) }}</td>
+            <td class="num dim col-low">{{ fmtPrice(q.low, digitsOf(q)) }}</td>
+            <td class="num dim col-prev">{{ fmtPrice(q.prevClose, digitsOf(q)) }}</td>
 
             <!-- 连板：火苗叠加 -->
             <td class="streak-cell col-streak">
@@ -105,7 +105,7 @@ import { useMarketStore } from '@/stores/market'
 import { useUserStore } from '@/stores/user'
 import SealStamp from './SealStamp.vue'
 import SvgIcon from './SvgIcon.vue'
-import { priceCls, fmtPrice, fmtPct } from '@/utils/format'
+import { priceCls, fmtPrice, fmtPct, priceDigits } from '@/utils/format'
 
 const quotes = useQuotesStore()
 const market = useMarketStore()
@@ -115,6 +115,7 @@ const list = computed(() => quotes.quoteList)
 
 // 持仓股：行情表给一眼可辨的标记（行高亮 + 名称后"持仓 N股"贴纸）
 const held = (stockId) => user.heldMap[stockId] || null
+const digitsOf = (q) => priceDigits(q)
 onMounted(() => {
   // 已有缓存不重复拉（个股页成交后会刷新同一份，两处共用）
   if (!user.positions.length) user.fetchPositions()

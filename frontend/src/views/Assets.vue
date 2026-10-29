@@ -230,8 +230,8 @@
                 <StickerTag type="plain" :text="p.sector" />
               </td>
               <td class="num">{{ p.shares }}</td>
-              <td class="num">{{ p.costPrice.toFixed(2) }}</td>
-              <td class="num" :class="priceCls(p.current - p.costPrice)">{{ p.current.toFixed(2) }}</td>
+              <td class="num">{{ fmtPrice(p.costPrice, digitsOf(p.stockId)) }}</td>
+              <td class="num" :class="priceCls(p.current - p.costPrice)">{{ fmtPrice(p.current, digitsOf(p.stockId)) }}</td>
               <td class="num">{{ p.marketValue.toFixed(2) }}</td>
               <td class="num" :class="priceCls(p.profit)">{{ fmtMoney(p.profit) }}</td>
               <td class="num" :class="priceCls(p.profit)">{{ fmtPct(p.profitPct) }}</td>
@@ -278,7 +278,7 @@
                   </span>
                 </td>
                 <td class="num">{{ t.shares }}</td>
-                <td class="num">{{ t.price.toFixed(2) }}</td>
+                <td class="num">{{ fmtPrice(t.price, digitsOf(t.stockId)) }}</td>
                 <td class="num">{{ t.amount.toFixed(2) }}</td>
                 <td class="num">{{ t.commission.toFixed(2) }}</td>
                 <td class="num">{{ t.tax.toFixed(2) }}</td>
@@ -409,13 +409,17 @@ import { ElMessageBox } from 'element-plus/es/components/message-box/index.mjs'
 import 'element-plus/es/components/input-number/style/css'
 import bullImg from '@/assets/img/bull.png'
 import pandaImg from '@/assets/img/panda.png'
-import { priceCls, fmtPct, fmtMoney } from '@/utils/format'
+import { priceCls, fmtPct, fmtMoney, fmtPrice, priceDigits } from '@/utils/format'
+import { useQuotesStore } from '@/stores/quotes'
 
 // 按需注册 ECharts 模块（与 StockChart 一致）
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent])
 
 const market = useMarketStore()
 const user = useUserStore()
+const quotes = useQuotesStore()
+// 价格位数：ETF 0.001、股票 0.01
+const digitsOf = (stockId) => priceDigits(quotes.defOf(stockId))
 
 // 初始资金常量（与后端约定 100000 起始）
 const INIT_CAPITAL = 100000

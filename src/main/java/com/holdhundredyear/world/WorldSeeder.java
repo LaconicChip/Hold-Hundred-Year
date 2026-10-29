@@ -125,7 +125,7 @@ public class WorldSeeder {
      */
     @Transactional(rollbackFor = Exception.class)
     public void seedWorld(long userId, long worldSeed) {
-        for (StockDefs.StockDef def : StockDefs.ALL) {
+        for (StockDefs.StockDef def : StockDefs.ALL_INSTRUMENTS) {
             BigDecimal price = BigDecimal.valueOf(def.basePrice());
             UserStockState stockState = new UserStockState();
             stockState.setUserId(userId);
@@ -147,7 +147,7 @@ public class WorldSeeder {
         // 开局前的 20 根日K（game_day 0..-19，纯展示）：第 1 天点开个股页就有历史可看，
         // 也让日K图交代清"这只票开局前被怎么对待"。走势档案见 PreHistoryDefs。
         GameMode preHistoryMode = modeOf(userId);
-        for (StockDefs.StockDef def : StockDefs.ALL) {
+        for (StockDefs.StockDef def : StockDefs.ALL_INSTRUMENTS) {
             for (StockDailyBar bar : buildPreHistoryBars(worldSeed, def, preHistoryMode)) {
                 bar.setUserId(userId);
                 stockDailyBarMapper.insert(bar);
@@ -205,6 +205,8 @@ public class WorldSeeder {
         Random rng = WorldRandom.of(worldSeed, "prehistory" + def.id());
         double limit = mode.getLimitPct();
         int bars = PreHistoryDefs.BARS;
+        // ETF 按 0.001 报价，前史日K也保留三位；股票仍是两位
+        int digits = StockDefs.isEtf(def.id()) ? 3 : 2;
 
         // 1) 掷 bars 个日收益，铺出 bars+1 个收盘价（closes[0] 是最老的一天）
         double[] closes = new double[bars + 1];
@@ -218,16 +220,16 @@ public class WorldSeeder {
 
         List<StockDailyBar> out = new ArrayList<>(bars);
         for (int i = 1; i <= bars; i++) {
-            double prevClose = round2(closes[i - 1] * scale);
-            double close = round2(closes[i] * scale);
-            double open = round2(Math.max(0.01, prevClose * (1 + (rng.nextDouble() - 0.5) * profile.dailyVol())));
+            double prevClose = roundTo(closes[i - 1] * scale, digits);
+            double close = roundTo(closes[i] * scale, digits);
+            double open = roundTo(Math.max(0.01, prevClose * (1 + (rng.nextDouble() - 0.5) * profile.dailyVol())), digits);
             double bodyHigh = Math.max(open, close);
             double bodyLow = Math.min(open, close);
             // 上下影线夹在涨跌停价与实体之间：high 必 >= 实体上沿、low 必 <= 实体下沿
-            double high = Math.max(Math.min(round2(prevClose * (1 + limit)),
-                    round2(bodyHigh * (1 + rng.nextDouble() * profile.dailyVol() * 0.5))), bodyHigh);
-            double low = Math.min(Math.max(round2(prevClose * (1 - limit)),
-                    round2(bodyLow * (1 - rng.nextDouble() * profile.dailyVol() * 0.5))), bodyLow);
+            double high = Math.max(Math.min(roundTo(prevClose * (1 + limit), digits),
+                    roundTo(bodyHigh * (1 + rng.nextDouble() * profile.dailyVol() * 0.5), digits)), bodyHigh);
+            double low = Math.min(Math.max(roundTo(prevClose * (1 - limit), digits),
+                    roundTo(bodyLow * (1 - rng.nextDouble() * profile.dailyVol() * 0.5), digits)), bodyLow);
 
             StockDailyBar bar = new StockDailyBar();
             bar.setStockId(def.id());
@@ -247,10 +249,15 @@ public class WorldSeeder {
         return BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP).doubleValue();
     }
 
-    /** 幂等播种 stock_info：24 只 StockDefs 以显式 id 写入，已存在则跳过。 */
+    /** 价格口径：股票两位、ETF 三位（与行情板一致）。 */
+    private static double roundTo(double value, int scale) {
+        return BigDecimal.valueOf(value).setScale(scale, RoundingMode.HALF_UP).doubleValue();
+    }
+
+    /** 幂等播种 stock_info：24 只股票 + 3 只 ETF 以显式 id 写入，已存在则跳过。 */
 
     private void ensureStockInfoSeeded() {
-        for (StockDefs.StockDef def : StockDefs.ALL) {
+        for (StockDefs.StockDef def : StockDefs.ALL_INSTRUMENTS) {
             StockInfo info = new StockInfo();
             info.setId(def.id());
             info.setStockCode(def.code());
@@ -279,7 +286,7 @@ public class WorldSeeder {
         for (StockInfo row : stockInfoMapper.selectList(null)) {
             existing.put(row.getId(), row);
         }
-        for (StockDefs.StockDef def : StockDefs.ALL) {
+        for (StockDefs.StockDef def : StockDefs.ALL_INSTRUMENTS) {
             StockInfo row = existing.get(def.id());
             if (row == null) {
                 continue;

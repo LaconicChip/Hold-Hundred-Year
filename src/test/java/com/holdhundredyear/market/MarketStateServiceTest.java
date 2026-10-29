@@ -104,7 +104,8 @@ class MarketStateServiceTest {
         assertEquals("MORNING_OPEN", state.getMarketState());
         assertEquals(1, state.getCurrentDay());
         assertEquals(0, state.getTickIndex());
-        assertEquals(24, board.getQuotes().size());
+        assertEquals(StockDefs.ALL_INSTRUMENTS.size(), board.getQuotes().size(),
+                "24 只股票 + 3 只 ETF 都要在行情板上");
         assertEquals(0, board.getTickIndex());
         assertEquals(0, board.getShocks().activeCount());
     }
@@ -351,7 +352,9 @@ class MarketStateServiceTest {
         QuoteBoard board = startDayAt(userId, script.getGameDay());
 
         assertEquals(script.getGameDay(), gameState(userId).getCurrentDay());
-        int expectedSealed = (int) Math.round(board.getQuotes().size() * sealRatio);
+        long stockCount = board.getQuotes().values().stream()
+                .filter(q -> !StockDefs.isEtf(q.getStockId())).count();
+        int expectedSealed = (int) Math.round(stockCount * sealRatio);
         List<Quote> sealed = board.getQuotes().values().stream()
                 .filter(q -> q.getSealed() == SealState.UP)
                 .collect(Collectors.toList());
@@ -384,8 +387,12 @@ class MarketStateServiceTest {
 
         // 首个跌停日与"停牌潮"同日：那几只连板股在钉板前就被冻住，跌停板只能钉在还能交易的
         // 那批上——取"比例×总数"与"可交易数"两者的小值（这就是"停牌躲过股灾"的字面意思）
-        int tradable = (int) board.getQuotes().values().stream().filter(q -> !q.isHalted()).count();
-        int expectedSealed = Math.min((int) Math.round(board.getQuotes().size() * sealRatio), tradable);
+        long tradable = board.getQuotes().values().stream()
+                .filter(q -> !q.isHalted() && !StockDefs.isEtf(q.getStockId())).count();
+        long stockCount = board.getQuotes().values().stream()
+                .filter(q -> !StockDefs.isEtf(q.getStockId())).count();
+        // 配额 = round(24×比例)，但只能钉在还能交易的票上（停牌潮先落地）
+        int expectedSealed = (int) Math.min(Math.round(stockCount * sealRatio), tradable);
         List<Quote> sealed = board.getQuotes().values().stream()
                 .filter(q -> q.getSealed() == SealState.DOWN)
                 .collect(Collectors.toList());
@@ -414,7 +421,7 @@ class MarketStateServiceTest {
         // 期望：昨收 × (1 + 未停牌股等权平均开盘收益)——跳空/钉板/复牌补跌全部入指数
         double prevIndex = 1000.0;
         double avgOpenReturn = board.getQuotes().values().stream()
-                .filter(q -> !q.isHalted())
+                .filter(q -> !q.isHalted() && !StockDefs.isEtf(q.getStockId()))
                 .mapToDouble(q -> (q.getCurrent() - q.getPrevClose()) / q.getPrevClose())
                 .average().orElse(0.0);
         assertEquals(prevIndex * (1 + avgOpenReturn), board.getIndexValue(), 1e-6,
@@ -444,7 +451,11 @@ class MarketStateServiceTest {
         double avgStockPct = userStockStateMapper.selectList(new LambdaQueryWrapper<UserStockState>()
                         .eq(UserStockState::getUserId, userId))
                 .stream()
-                .filter(s -> !Boolean.TRUE.equals(s.getHalted()))
+                .filter(s -> !StockDefs.isEtf(s.getStockId()))
+                // 只剔除"全天停牌"的票（停牌核查在收盘时落库，这类票当天是正常交易并计入指数的）；
+                // 全天停牌的票日涨跌幅恒为 0，用这个特征与"收盘才停牌"区分开
+                .filter(s -> !(Boolean.TRUE.equals(s.getHalted())
+                        && (s.getDayChangePct() == null || s.getDayChangePct() == 0.0)))
                 .mapToDouble(s -> s.getDayChangePct() != null ? s.getDayChangePct() * 100 : 0.0)
                 .average().orElse(0.0);
         assertEquals(avgStockPct, snapshot.getIndexDayPct(), 1.0,

@@ -8,9 +8,14 @@ export function priceCls(v) {
   return 'flat'
 }
 
-// 价格：缺值给全角破折号，其余两位小数
-export function fmtPrice(v) {
-  return v == null ? '—' : Number(v).toFixed(2)
+// 价格：缺值给全角破折号；股票两位小数、ETF 三位（0.001 报价）
+export function fmtPrice(v, digits = 2) {
+  return v == null ? '—' : Number(v).toFixed(digits)
+}
+
+// 按标的取价格位数：ETF 3 位，股票 2 位
+export function priceDigits(obj) {
+  return obj && obj.etf ? 3 : 2
 }
 
 // 百分比（带符号）：NaN/0 一律 "0.00%"

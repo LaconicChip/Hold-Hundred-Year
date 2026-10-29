@@ -1,6 +1,8 @@
 package com.holdhundredyear.event;
 
 import com.holdhundredyear.market.entity.UserMessage;
+import com.holdhundredyear.market.quote.QuoteBoard;
+import com.holdhundredyear.market.QuoteBoardRegistry;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -23,9 +25,11 @@ import java.time.LocalDateTime;
 public class NotifyPublisher {
 
     private final MessageService messageService;
+    private final QuoteBoardRegistry quoteBoardRegistry;
 
-    public NotifyPublisher(MessageService messageService) {
+    public NotifyPublisher(MessageService messageService, QuoteBoardRegistry quoteBoardRegistry) {
         this.messageService = messageService;
+        this.quoteBoardRegistry = quoteBoardRegistry;
     }
 
     /** 系统通知（source=SYSTEM）：不绑定个股。 */
@@ -44,6 +48,14 @@ public class NotifyPublisher {
      */
     public void alert(long userId, int gameDay, String title, String content, Long stockId) {
         publish(userId, gameDay, "SYSTEM", "ALERT", title, content, stockId);
+        // 暂停在这里由服务端自己按下（2026-10-25）。以前只靠前端弹窗时发的一次
+        // POST /api/market/pause：那次请求只要丢了/超时了，玩家就会看到"要紧事"盖在屏幕上、
+        // 后面的行情照跑（这正是玩家报的 bug）。暂停是 ALERT 语义的一部分，不能挂在浏览器身上。
+        // 只动已缓存的行情板：没缓存说明这个世界当前没有在推进，等玩家回来由布局页 resume 兜底。
+        QuoteBoard board = quoteBoardRegistry.peek(userId);
+        if (board != null) {
+            board.setPaused(true);
+        }
     }
 
     /** 营业部 NPC 台词（source=NPC），前端据此配头像与蓝标。 */

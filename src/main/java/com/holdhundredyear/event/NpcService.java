@@ -160,7 +160,7 @@ public class NpcService {
         }
         List<Long> tradable = new ArrayList<>();
         for (Quote quote : board.getQuotes().values()) {
-            if (!quote.isHalted()) {
+            if (!quote.isHalted() && !StockDefs.isEtf(quote.getStockId())) {
                 tradable.add(quote.getStockId());
             }
         }

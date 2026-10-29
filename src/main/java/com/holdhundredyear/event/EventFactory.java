@@ -97,6 +97,7 @@ public class EventFactory {
     private final UserStockStateMapper userStockStateMapper;
     private final MainScriptService mainScriptService;
     private final CorporateActionService corporateActionService;
+    private final DanmuService danmuService;
 
     /** userId → 到期待结算动作（TRUTH_REVEAL 每事件一条；冲击类每股一条）。 */
     private final ConcurrentHashMap<Long, List<PendingAction>> pendingActions = new ConcurrentHashMap<>();
@@ -107,7 +108,8 @@ public class EventFactory {
                         UserPositionMapper userPositionMapper,
                         UserStockStateMapper userStockStateMapper,
                         MainScriptService mainScriptService,
-                        CorporateActionService corporateActionService) {
+                        CorporateActionService corporateActionService,
+                        DanmuService danmuService) {
         this.userMessageMapper = userMessageMapper;
         this.messageService = messageService;
         this.gameEventMapper = gameEventMapper;
@@ -115,6 +117,7 @@ public class EventFactory {
         this.userStockStateMapper = userStockStateMapper;
         this.mainScriptService = mainScriptService;
         this.corporateActionService = corporateActionService;
+        this.danmuService = danmuService;
     }
 
     /**
@@ -275,6 +278,11 @@ public class EventFactory {
         message.setGameDay(gs.getCurrentDay());
         message.setCreatedAt(LocalDateTime.now());
         messageService.publish(message);
+
+        // 股吧跟读（2026-10-25）：这条消息落地的那一跳，就有人接着它说话。
+        // stockId=0 的事件挂在"大盘闲聊"上，每个股吧都看得见；点名个股的挂在它的股吧。
+        danmuService.pushEventReaction(userId, targetStockId == null ? 0L : targetStockId,
+                title, mag > 0, board.getTickIndex(), gs.getWorldSeed(), gs.getCurrentDay());
 
         GameEvent event = new GameEvent();
         event.setUserId(userId);
@@ -666,7 +674,7 @@ public class EventFactory {
         }
         for (PendingAction action : due) {
             if (action.kind() == PendingKind.TRUTH_REVEAL) {
-                flushTruthReveal(userId, gs, action);
+                flushTruthReveal(userId, gs, action, board);
             } else {
                 board.getShocks().enqueue(new PriceShock(action.stockId(), action.marketWide(),
                         action.pct(), 1, PriceShock.Decay.ONCE));
@@ -676,7 +684,7 @@ public class EventFactory {
 
     /** TRUTH_REVEAL 结算：原消息 truth_status 翻面 + 追一条 followup（source 同原消息，
      *  title 加【证实】/【辟谣】前缀，content 为入队时预选文案；掷骰为零）。 */
-    private void flushTruthReveal(long userId, UserGameState gs, PendingAction action) {
+    private void flushTruthReveal(long userId, UserGameState gs, PendingAction action, QuoteBoard board) {
         userMessageMapper.update(null, new LambdaUpdateWrapper<UserMessage>()
                 .eq(UserMessage::getId, action.messageId())
                 .set(UserMessage::getTruthStatus, action.truthValue()));
@@ -695,6 +703,11 @@ public class EventFactory {
         followup.setGameDay(gs.getCurrentDay());
         followup.setCreatedAt(LocalDateTime.now());
         messageService.publish(followup);
+        // 证实/辟谣也要有人在股吧接一句：这条追报本身就是"剧情反转"的时刻
+        danmuService.pushEventReaction(userId,
+                original.getStockId() == null ? 0L : original.getStockId(),
+                followup.getTitle(), "CONFIRMED".equals(action.truthValue()),
+                board.getTickIndex(), gs.getWorldSeed(), gs.getCurrentDay());
     }
 
     /** 冲击类待办：每股一条（MARKET 为 marketWide 单条）。 */

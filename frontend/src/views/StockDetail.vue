@@ -23,7 +23,7 @@
           :name="quote.changePct > 0 ? 'arrow-up' : quote.changePct < 0 ? 'arrow-down' : 'minus'"
           class="price-arrow"
         />
-        <span class="cur-price num">{{ quote.current.toFixed(2) }}</span>
+        <span class="cur-price num">{{ fmtPrice(quote.current, digits) }}</span>
         <span class="cur-chg num">{{ fmtSigned(chgAmount) }}</span>
         <span class="cur-pct num">{{ fmtPct(quote.changePct) }}</span>
       </div>
@@ -32,12 +32,12 @@
     <!-- 行情信息卡：开/昨收/高/低/涨停/跌停 + 连板/封板/停牌/ST -->
     <div class="card info-card">
       <div class="info-grid">
-        <div class="kv-item"><span class="lab">今开</span><b class="num" :class="priceCls(infoOpen - dayPrevClose)">{{ fmtPrice(infoOpen) }}</b></div>
-        <div class="kv-item"><span class="lab">昨收</span><b class="num">{{ fmtPrice(dayPrevClose) }}</b></div>
-        <div class="kv-item"><span class="lab">最高</span><b class="num" :class="priceCls(infoHigh - dayPrevClose)">{{ fmtPrice(infoHigh) }}</b></div>
-        <div class="kv-item"><span class="lab">最低</span><b class="num" :class="priceCls(infoLow - dayPrevClose)">{{ fmtPrice(infoLow) }}</b></div>
-        <div class="kv-item"><span class="lab">涨停价</span><b class="num up">{{ fmtPrice(limitUpPrice) }}</b></div>
-        <div class="kv-item"><span class="lab">跌停价</span><b class="num down">{{ fmtPrice(limitDownPrice) }}</b></div>
+        <div class="kv-item"><span class="lab">今开</span><b class="num" :class="priceCls(infoOpen - dayPrevClose)">{{ fmtPrice(infoOpen, digits) }}</b></div>
+        <div class="kv-item"><span class="lab">昨收</span><b class="num">{{ fmtPrice(dayPrevClose, digits) }}</b></div>
+        <div class="kv-item"><span class="lab">最高</span><b class="num" :class="priceCls(infoHigh - dayPrevClose)">{{ fmtPrice(infoHigh, digits) }}</b></div>
+        <div class="kv-item"><span class="lab">最低</span><b class="num" :class="priceCls(infoLow - dayPrevClose)">{{ fmtPrice(infoLow, digits) }}</b></div>
+        <div class="kv-item"><span class="lab">涨停价</span><b class="num up">{{ limitUpPrice > 0 ? fmtPrice(limitUpPrice, digits) : '无涨跌停' }}</b></div>
+        <div class="kv-item"><span class="lab">跌停价</span><b class="num down">{{ limitDownPrice > 0 ? fmtPrice(limitDownPrice, digits) : '无涨跌停' }}</b></div>
       </div>
       <div class="info-badges">
         <span v-if="row.limitUpStreak > 0" class="streak-badge">
@@ -71,8 +71,9 @@
       :closed="isClosed"
       :danmu="forumPosts"
       :trades="todayTrades"
+      :digits="digits"
     />
-    <KlineChart v-else-if="tab === 'kline'" :kline="kline" :danmu="forumPosts" :trades="trades" />
+    <KlineChart v-else-if="tab === 'kline'" :kline="kline" :danmu="forumPosts" :trades="trades" :digits="digits" />
     <StockForum v-else :stock-id="stock.id" :stock-name="stock.name" />
 
     <!-- 成交点小条：弹幕飘过时可能盖住图上的 B/S，这里再给一份一眼能读的清单 -->
@@ -80,7 +81,7 @@
       <span class="tm-title">成交点</span>
       <span v-for="t in visibleTradeMarks" :key="t.id" class="tm-item">
         <b class="tm-bs" :class="t.side === 'BUY' ? 'tm-b' : 'tm-s'">{{ t.side === 'BUY' ? 'B' : 'S' }}</b>
-        <span class="num">{{ t.price.toFixed(2) }}</span>
+        <span class="num">{{ fmtPrice(t.price, digits) }}</span>
         <span class="tm-shares">×{{ t.shares }}</span>
       </span>
     </div>
@@ -95,6 +96,8 @@
       :holding-shares="position ? position.availableShares : 0"
       :holding-cost="position ? position.costPrice : 0"
       :holding-value="position ? position.marketValue : 0"
+      :limit-up="limitUpPrice"
+      :limit-down="limitDownPrice"
       @traded="onTraded"
     />
 
@@ -130,9 +133,9 @@
             <tr>
               <td class="num">{{ position.shares }}</td>
               <td class="num">{{ position.availableShares }}</td>
-              <td class="num">{{ position.costPrice.toFixed(2) }}</td>
+              <td class="num">{{ fmtPrice(position.costPrice, digits) }}</td>
               <td class="num" :class="priceCls(position.current - position.costPrice)">
-                {{ position.current.toFixed(2) }}
+                {{ fmtPrice(position.current, digits) }}
               </td>
               <td class="num">{{ position.marketValue.toFixed(2) }}</td>
               <td class="num" :class="priceCls(position.profit)">{{ fmtMoney(position.profit) }}</td>
@@ -180,8 +183,10 @@ const stockId = computed(() => {
   return isNaN(id) ? 0 : id
 })
 const stock = computed(
-  () => quotes.defOf(stockId.value) || { id: 0, name: '未知', code: '', sector: '', basePrice: 0 }
+  () => quotes.defOf(stockId.value) || { id: 0, name: '未知', code: '', sector: '', basePrice: 0, etf: false }
 )
+// 价格位数：ETF 按 0.001 展示，股票两位
+const digits = computed(() => (stock.value.etf ? 3 : 2))
 
 // 实时行情：quotes store rows[stockId]（WS 快照 + REST 全量兜底）
 const quote = computed(() => {
@@ -288,8 +293,8 @@ function goBack() {
 // 红涨绿跌：涨红 / 跌绿 / 平墨色
 function fmtSigned(v) {
   const n = +v
-  if (!n) return '0.00'
-  return (n > 0 ? '+' : '') + n.toFixed(2)
+  if (!n) return Number(0).toFixed(digits.value)
+  return (n > 0 ? '+' : '') + Number(n || 0).toFixed(digits.value)
 }
 
 // 进入页面：向服务端要"这只票的历史消息"（带 stockId 过滤）。

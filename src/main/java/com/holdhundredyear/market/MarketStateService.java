@@ -432,7 +432,8 @@ public class MarketStateService {
     private void applyCircuitBreakerOpen(long userId, QuoteBoard board, int newDay, long worldSeed) {
         Random rng = WorldRandom.of(worldSeed, "circuit" + newDay);
         for (Quote quote : board.getQuotes().values()) {
-            if (quote.isHalted() || quote.getSealed() != SealState.NONE) {
+            if (quote.isHalted() || quote.getSealed() != SealState.NONE
+                    || StockDefs.isEtf(quote.getStockId())) {
                 continue;
             }
             double gap = -(0.06 + 0.02 * rng.nextDouble());
@@ -462,7 +463,7 @@ public class MarketStateService {
                     prevClose > 0 ? (quote.getCurrent() - prevClose) / prevClose : 0.0);
         }
         List<StockDef> active = board.getQuotes().values().stream()
-                .filter(q -> !q.isHalted())
+                .filter(q -> !q.isHalted() && !StockDefs.isEtf(q.getStockId()))
                 .map(q -> StockDefs.byId(q.getStockId()))
                 .toList();
         board.setIndexValue(indexCalculator.nextIndex(board.getPrevIndex(), active, openReturns));
@@ -487,17 +488,20 @@ public class MarketStateService {
                 names + " 今日起停牌 " + haltDays + " 天，躲过了今天的千股跌停——复牌那天要还的，一分都不会少。", null);
     }
 
-    /** 千股涨停/跌停：非停牌股洗牌后取前 round(24×sealRatio) 只钉板。 */
+    /** 千股涨停/跌停：非停牌股洗牌后取前 round(24×sealRatio) 只钉板；ETF 不钉板（它跟指数走）。 */
     private void sealAllDirection(long userId, QuoteBoard board, double sealRatio,
                                   SealState direction, Random rng) {
         List<Long> candidates = new ArrayList<>();
         for (Quote quote : board.getQuotes().values()) {
-            if (!quote.isHalted()) {
+            if (!quote.isHalted() && !StockDefs.isEtf(quote.getStockId())) {
                 candidates.add(quote.getStockId());
             }
         }
         Collections.shuffle(candidates, rng);
-        int target = (int) Math.round(board.getQuotes().size() * sealRatio);
+        // 配额按"股票全集（含停牌）"算：ETF 不是股票、不参与千股涨跌停，也不能把分母撑大
+        long stockCount = board.getQuotes().values().stream()
+                .filter(q -> !StockDefs.isEtf(q.getStockId())).count();
+        int target = (int) Math.round(stockCount * sealRatio);
         int sealedCount = 0;
         for (Long stockId : candidates) {
             if (sealedCount >= target) {
@@ -508,9 +512,13 @@ public class MarketStateService {
         }
     }
 
-    /** 黑7月崩盘：半导体/算力/通信全部钉跌停，银行/煤炭全部钉涨停（停牌股除外）。 */
+    /** 黑7月崩盘：半导体/算力/通信全部钉跌停，银行/煤炭全部钉涨停（停牌股与 ETF 除外）。 */
     private void sealCrashSectors(long userId, QuoteBoard board) {
         for (Quote quote : board.getQuotes().values()) {
+            // ETF 不在板块映射里（get 返回 null，而 Set.of.contains(null) 会 NPE），先跳过
+            if (StockDefs.isEtf(quote.getStockId())) {
+                continue;
+            }
             String sector = SECTOR_BY_STOCK_ID.get(quote.getStockId());
             if (CRASH_DOWN_SECTORS.contains(sector)) {
                 forceSealStock(userId, board, quote.getStockId(), SealState.DOWN);

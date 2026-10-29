@@ -6,9 +6,12 @@ import {
   skipDay,
   fetchDailySummary,
   fetchLeaderboard,
-  fetchEquityCurve
+  fetchEquityCurve,
+  pauseMarket,
+  resumeMarket
 } from '@/api/market'
 import { fetchGameModes } from '@/api/game'
+import { useQuotesStore } from './quotes'
 
 export const useMarketStore = defineStore('market', {
   state: () => ({
@@ -36,6 +39,9 @@ export const useMarketStore = defineStore('market', {
     indexValue: 0,
     prevIndex: 0,
     indexDayPct: 0,
+    // 这一份世界是否已被服务端冻住（MarketStateDTO.paused，2026-10-25）：
+    // 状态条的"行情已暂停"与倒计时冻结只认这个字段，不认"我刚发过 pause 请求"。
+    paused: false,
     // 可选模式清单（开新局的选择器用，来自后端 GameMode，不再前端另抄）
     modes: [],
     // 加载态
@@ -84,8 +90,37 @@ export const useMarketStore = defineStore('market', {
       try {
         const s = await fetchMarketState()
         Object.assign(this, s)
+        // 收盘 / 结算 / 跳过当日之后 WS 不再推指数，行情 store 里还留着"点下跳过那一刻"的旧值，
+        // 大盘页就会一直显示旧指数（老 bug）。这里把 game_state 里的收盘指数写回去；
+        // 盘中不动它——盘中以 WS 实时值为准，状态接口的 index_value 每 5 跳才落库一次。
+        if (!this.isOpen) {
+          useQuotesStore().indexValue = s.indexValue
+        }
       } finally {
         this.loading = false
+      }
+    },
+
+    /**
+     * 冻结 / 恢复本账户世界。
+     *
+     * <p>服务端在 ALERT 落地时已经自己暂停（NotifyPublisher），这里的调用是幂等补刀；
+     * 失败也不谎报——paused 只认下一次 fetchState 带回来的真值，前端绝不自己"假装"停住了。
+     */
+    async pauseWorld() {
+      try {
+        await pauseMarket()
+      } catch {
+        // 网络抖动由服务端兜底；下一次状态轮询会把真实 paused 带回来
+      }
+    },
+
+    async resumeWorld() {
+      try {
+        await resumeMarket()
+        this.paused = false
+      } catch {
+        // 同上：不谎报，等轮询校正
       }
     },
 

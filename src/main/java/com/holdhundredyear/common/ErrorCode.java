@@ -28,7 +28,9 @@ public enum ErrorCode {
     INTERNAL_ERROR(1016, "系统开小差了，请稍后重试"),
     NOT_FOUND(1018, "资源不存在"),
     GAME_NOT_FINISHED(1019, "本局尚未结束"),
-    SHARK_EXCEED(1020, "高利贷额度不足，已超过可借上限");
+    SHARK_EXCEED(1020, "高利贷额度不足，已超过可借上限"),
+    /** 打新申购日已过（2026-10-25）：旧通知重开申购窗时给一句人话，而不是笼统的"请求参数错误"。 */
+    IPO_EXPIRED(1021, "这只新股的申购日已过，今天不能再申购");
 
     private final int code;
     private final String msg;

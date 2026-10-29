@@ -28,9 +28,11 @@ import { ElMessage } from 'element-plus/es/components/message/index.mjs'
 import 'element-plus/es/components/dialog/style/css'
 import { useMessagesStore } from '@/stores/messages'
 import { subscribe as apiSubscribe } from '@/api/ipo'
+import { useMarketStore } from '@/stores/market'
 import SvgIcon from './SvgIcon.vue'
 
 const messages = useMessagesStore()
+const market = useMarketStore()
 const visible = ref(false)
 const ipo = ref(null)
 const subscribing = ref(false)
@@ -41,6 +43,8 @@ const shown = new Set()
 // 是否为打新通知：含 scriptDayId，且（含 ipoName / issuePrice / kind|type 含 IPO 字样）
 function isIpo(n) {
   if (!n || !n.scriptDayId) return false
+  // 只认当天的申购通知：旧通知跨日后还留着，点"申购"就会被后端判"申购日已过"
+  if (n.gameDay != null && Number(n.gameDay) !== market.currentDay) return false
   if (n.ipoName || n.issuePrice != null) return true
   const k = `${n.kind || ''} ${n.type || ''}`.toLowerCase()
   return /ipo/.test(k)
@@ -61,6 +65,30 @@ watch(
     }
   },
   { deep: true }
+)
+
+// 跨日：把还开着的旧申购窗关掉（同一条通知不再反复弹）
+watch(
+  () => market.currentDay,
+  (day) => {
+    if (visible.value && ipo.value && ipo.value.gameDay != null
+        && Number(ipo.value.gameDay) !== day) {
+      shown.add(ipo.value.scriptDayId)
+      visible.value = false
+    }
+  }
+)
+
+// 跨日：把还开着的旧申购窗关掉（同一条通知不再反复弹）
+watch(
+  () => market.currentDay,
+  (day) => {
+    if (visible.value && ipo.value && ipo.value.gameDay != null
+        && Number(ipo.value.gameDay) !== day) {
+      shown.add(ipo.value.scriptDayId)
+      visible.value = false
+    }
+  }
 )
 
 async function subscribe() {

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhundredyear.common.BizException;
 import com.holdhundredyear.common.ErrorCode;
 import com.holdhundredyear.game.constants.GameConstants;
+import com.holdhundredyear.game.constants.StockDefs;
 import com.holdhundredyear.game.model.dto.TradeDTO;
 import com.holdhundredyear.game.model.dto.TradeResultDTO;
 import com.holdhundredyear.game.model.enums.MarketState;
@@ -131,14 +132,15 @@ public class TradeService {
                 position.setStockId(dto.getStockId());
                 position.setShares(dto.getShares());
                 position.setAvailableShares(0);
-                position.setAvgCost(total.divide(BigDecimal.valueOf(dto.getShares()), 2, RoundingMode.HALF_UP));
+                position.setAvgCost(total.divide(BigDecimal.valueOf(dto.getShares()),
+                        costScale(dto.getStockId()), RoundingMode.HALF_UP));
                 userPositionMapper.insert(position);
             } else {
                 int newShares = position.getShares() + dto.getShares();
                 BigDecimal newAvgCost = position.getAvgCost()
                         .multiply(BigDecimal.valueOf(position.getShares()))
                         .add(total)
-                        .divide(BigDecimal.valueOf(newShares), 2, RoundingMode.HALF_UP);
+                        .divide(BigDecimal.valueOf(newShares), costScale(dto.getStockId()), RoundingMode.HALF_UP);
                 position.setShares(newShares);
                 position.setAvgCost(newAvgCost);
                 userPositionMapper.updateById(position);
@@ -257,7 +259,14 @@ public class TradeService {
     }
 
     private BigDecimal priceOf(Quote quote) {
-        return BigDecimal.valueOf(quote.getCurrent()).setScale(2, RoundingMode.HALF_UP);
+        // ETF 按 0.001 成交（与行情一致）；股票仍是 0.01
+        int scale = StockDefs.isEtf(quote.getStockId()) ? 3 : 2;
+        return BigDecimal.valueOf(quote.getCurrent()).setScale(scale, RoundingMode.HALF_UP);
+    }
+
+    /** 持仓成本精度与成交价一致：ETF 三位、股票两位。 */
+    private static int costScale(long stockId) {
+        return StockDefs.isEtf(stockId) ? 3 : 2;
     }
 
     /** 佣金：成交金额 × 万 3，单笔最低 5 元（双边）。 */

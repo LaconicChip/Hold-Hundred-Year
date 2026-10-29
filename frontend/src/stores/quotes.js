@@ -32,6 +32,7 @@ export const useQuotesStore = defineStore('quotes', {
             code: def.code,
             name: def.name,
             sector: def.sector,
+            etf: !!def.etf,
             basePrice: def.basePrice,
             current: r.current != null ? r.current : def.basePrice,
             prevCurrent: r.prevCurrent != null ? r.prevCurrent : def.basePrice,
@@ -74,6 +75,7 @@ export const useQuotesStore = defineStore('quotes', {
           code: q.code,
           name: q.name,
           sector: q.sector,
+          etf: !!q.etf,
           basePrice: q.basePrice
         }
       })

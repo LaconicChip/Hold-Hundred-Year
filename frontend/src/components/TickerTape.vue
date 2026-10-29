@@ -29,6 +29,8 @@ const quotes = useQuotesStore()
 const market = useMarketStore()
 const user = useUserStore()
 const messages = useMessagesStore()
+// 价格位数：ETF 三位、股票两位（按 stockId 查静态档案）
+const digitsOf = (stockId) => (quotes.defOf(stockId)?.etf ? 3 : 2)
 
 /**
  * 快讯条只放"看了能改变操作"的信息，一条废话都不留：
@@ -130,7 +132,8 @@ const items = computed(() => {
 
   // 持仓异动：只报自己的，且只报值得动手的那几只
   for (const r of held.movers) {
-    const note = r.sealed === 'DOWN' ? '跌停封死，卖不出' : r.sealed === 'UP' ? '涨停封死' : r.halted ? '停牌' : `现价 ${r.current.toFixed(2)}`
+    const note = r.sealed === 'DOWN' ? '跌停封死，卖不出' : r.sealed === 'UP' ? '涨停封死' : r.halted ? '停牌'
+      : `现价 ${r.current.toFixed(digitsOf(r.stockId))}`
     add('异动', `${r.name} ${fmtPct(pct(r))} · ${note}`, pct(r) > 0 ? 'up' : pct(r) < 0 ? 'down' : 'none')
   }
   const latest = holdingMessage()

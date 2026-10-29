@@ -81,11 +81,13 @@ function spawn(post) {
   const text = String(post.text || '')
   const key = ++nextKey
   const category = String(post.category || '')
-  const cls = category === '涨停' || category === '急拉'
-    ? 'is-up'
-    : category === '跌停' || category === '跳水'
-      ? 'is-down'
-      : ''
+  const cls = category === '事件'
+    ? 'is-event'
+    : category === '涨停' || category === '急拉'
+      ? 'is-up'
+      : category === '跌停' || category === '跳水'
+        ? 'is-down'
+        : ''
   items.value.push({
     key,
     lane,
@@ -150,13 +152,15 @@ onBeforeUnmount(() => {
   left: 100%;
   white-space: nowrap;
   padding: 1px 8px;
-  border: 1.5px solid var(--ink);
+  /* 2026-10-25：整体调透（0.94 → 0.52），边框与阴影一起收轻。
+     弹幕是背景氛围，不该在分时图上糊一层不透明的贴纸；文字仍保持 86% 墨色保证可读。 */
+  border: 1px solid color-mix(in srgb, var(--ink) 38%, transparent);
   border-radius: var(--radius-pill);
-  background: rgba(255, 252, 244, 0.94);
-  color: var(--ink);
+  background: color-mix(in srgb, var(--card) 52%, transparent);
+  color: color-mix(in srgb, var(--ink) 86%, transparent);
   font-size: 11px;
   line-height: 1.35;
-  box-shadow: 2px 2px 0 var(--ink);
+  box-shadow: none;
   animation-name: danmu-fly;
   animation-timing-function: linear;
   animation-fill-mode: forwards;
@@ -164,21 +168,31 @@ onBeforeUnmount(() => {
 }
 .danmu-cat {
   margin-right: 4px;
-  color: var(--brand);
+  font-weight: 700;
+  color: color-mix(in srgb, var(--brand) 78%, transparent);
 }
 .danmu.is-up {
-  color: var(--up);
-  border-color: var(--up);
+  color: color-mix(in srgb, var(--up) 82%, transparent);
+  border-color: color-mix(in srgb, var(--up) 42%, transparent);
 }
 .danmu.is-up .danmu-cat {
-  color: var(--up);
+  color: color-mix(in srgb, var(--up) 82%, transparent);
 }
 .danmu.is-down {
-  color: var(--down);
-  border-color: var(--down);
+  color: color-mix(in srgb, var(--down) 82%, transparent);
+  border-color: color-mix(in srgb, var(--down) 42%, transparent);
 }
 .danmu.is-down .danmu-cat {
-  color: var(--down);
+  color: color-mix(in srgb, var(--down) 82%, transparent);
+}
+/* 事件跟读（2026-10-25）：消息落地后股吧接的那句话，给一条淡黄底把它从闲聊里挑出来 */
+.danmu.is-event {
+  border-color: color-mix(in srgb, var(--brand) 45%, transparent);
+  background: color-mix(in srgb, var(--yellow) 42%, transparent);
+  color: color-mix(in srgb, var(--ink) 90%, transparent);
+}
+.danmu.is-event .danmu-cat {
+  color: color-mix(in srgb, var(--brand) 90%, transparent);
 }
 @keyframes danmu-fly {
   from {

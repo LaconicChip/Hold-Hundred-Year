@@ -1,5 +1,6 @@
 package com.holdhundredyear.market;
 
+import com.holdhundredyear.game.constants.StockDefs;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhundredyear.common.BizException;
 import com.holdhundredyear.common.ErrorCode;
@@ -264,7 +265,8 @@ class GameEndServiceTest {
 
         assertCode(ErrorCode.GAME_NOT_FINISHED, () -> gameEndService.restart(userId),
                 "restart must refuse a still-running game");
-        assertEquals(24, stockStates(userId).size(), "a rejected restart must not wipe stock states");
+        assertEquals(StockDefs.ALL_INSTRUMENTS.size(), stockStates(userId).size(),
+                "a rejected restart must not wipe stock states");
         assertEquals(1, snapshots(userId).size(), "a rejected restart must not wipe snapshots");
         assertEquals(0, asDecimal("100000.00").compareTo(balance(userId)),
                 "a rejected restart must not touch the account");
@@ -326,7 +328,7 @@ class GameEndServiceTest {
         assertEquals(0, asDecimal("100000.00").compareTo(snapshots.get(0).getNetAsset()));
 
         List<UserStockState> states = stockStates(userId);
-        assertEquals(24, states.size(), "24 stocks must be reseeded");
+        assertEquals(StockDefs.ALL_INSTRUMENTS.size(), states.size(), "24 stocks + 3 ETFs must be reseeded");
         UserStockState stock1 = states.stream()
                 .filter(state -> state.getStockId() == 1L).findFirst().orElse(null);
         assertNotNull(stock1);
@@ -361,7 +363,7 @@ class GameEndServiceTest {
 
         assertEquals(0L, settledBars(userId),
                 "restart must wipe this run's settled bars, otherwise the new run opens with the old K-lines");
-        assertEquals(24L * PreHistoryDefs.BARS, dailyBars(userId),
+        assertEquals((long) StockDefs.ALL_INSTRUMENTS.size() * PreHistoryDefs.BARS, dailyBars(userId),
                 "what is left must be exactly the new world's own pre-history");
     }
 

@@ -3,14 +3,19 @@ package com.holdhundredyear.market;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhundredyear.common.BizException;
 import com.holdhundredyear.common.ErrorCode;
+import com.holdhundredyear.game.constants.StockDefs;
 import com.holdhundredyear.game.model.enums.GameMode;
 import com.holdhundredyear.market.entity.UserGameState;
 import com.holdhundredyear.market.entity.UserStockState;
 import com.holdhundredyear.market.mapper.UserGameStateMapper;
 import com.holdhundredyear.market.mapper.UserStockStateMapper;
+import com.holdhundredyear.market.quote.Quote;
 import com.holdhundredyear.market.quote.QuoteBoard;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -55,6 +60,7 @@ public class QuoteBoardRegistry {
             if (gameState == null) {
                 throw new BizException(ErrorCode.NOT_FOUND);
             }
+            states = ensureInstrumentRows(id, states);
             QuoteBoard board = QuoteBoard.restore(states, gameState.getIndexValue(),
                     gameState.getPrevIndex(), gameState.getTickIndex());
             // 本局档案（标准/快速）决定涨跌停幅度与跳速，恢复出来就要带上
@@ -62,6 +68,53 @@ public class QuoteBoardRegistry {
             board.applyLimits();
             return board;
         });
+    }
+
+    /**
+     * 老存档补 ETF 行（2026-10-25）：ETF 上线前创建的存档只有 1..24 行，行情板缺 25~27
+     * 会在交易/详情页直接抛"未知 stockId"。这里按当前行情补三行并落库（INSERT IGNORE），
+     * 补出来的初始价不是发行价而是<b>按跟踪标的折算的现价</b>——否则老存档一升级，
+     * ETF 会凭空多出一个几十个点的"首日涨幅"。
+     *
+     * <p>只在缺行时才写库；正常存档是一次 size 比较 + 直接返回。
+     */
+    private List<UserStockState> ensureInstrumentRows(long userId, List<UserStockState> states) {
+        if (states.size() >= StockDefs.ALL_INSTRUMENTS.size()) {
+            return states;
+        }
+        Map<Long, UserStockState> byId = new LinkedHashMap<>();
+        for (UserStockState state : states) {
+            byId.put(state.getStockId(), state);
+        }
+        boolean added = false;
+        for (StockDefs.StockDef def : StockDefs.ETFS) {
+            if (byId.containsKey(def.id())) {
+                continue;
+            }
+            double price = def.basePrice();
+            UserStockState row = new UserStockState();
+            row.setUserId(userId);
+            row.setStockId(def.id());
+            row.setPrevClose(BigDecimal.valueOf(price));
+            row.setOpenPrice(BigDecimal.valueOf(price));
+            row.setHighPrice(BigDecimal.valueOf(price));
+            row.setLowPrice(BigDecimal.valueOf(price));
+            row.setCurrentPrice(BigDecimal.valueOf(price));
+            // QuoteBoard.restore 直接读这些字段，内存行必须与库里的默认值一致（null 会 NPE）
+            row.setLimitUpStreak(0);
+            row.setHalted(false);
+            row.setIsSt(false);
+            row.setGapPct(0.0);
+            row.setVersion(0);
+            userStockStateMapper.insertIgnore(row);
+            states.add(row);
+            byId.put(def.id(), row);
+            added = true;
+        }
+        if (added) {
+            states.sort(Comparator.comparing(UserStockState::getStockId));
+        }
+        return states;
     }
 
     /** 只读已缓存的行情板；没有缓存返回 null（绝不顺手查库加载，供高频心跳做廉价预判）。 */

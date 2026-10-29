@@ -152,6 +152,9 @@ public class MarketQueryService {
         dto.setIndexValue(gameState.getIndexValue());
         dto.setPrevIndex(prevIndex);
         dto.setIndexDayPct(prevIndex > 0 ? (gameState.getIndexValue() / prevIndex - 1) * 100 : 0.0);
+        // 暂停标记只在行情板已缓存时可读；没缓存说明这个世界当前没有在推，按未暂停下发
+        QuoteBoard board = quoteBoardRegistry.peek(userId);
+        dto.setPaused(board != null && board.isPaused());
         return dto;
     }
 
@@ -317,12 +320,14 @@ public class MarketQueryService {
                 // 涨跌停价按"展示用的昨收"算：收盘态昨收取当日日K bar，与 prevClose 字段同源
         double limitPct = quote.effectiveLimitPct();
         double shownPrevClose = row.getPrevClose();
-        row.setLimitUp(Quote.limitPrice(shownPrevClose, limitPct, true));
-        row.setLimitDown(Quote.limitPrice(shownPrevClose, limitPct, false));
+        // 无涨跌停（ETF）下发 0：前端据此隐藏涨跌停价、也不再按涨停/跌停拦单
+        row.setLimitUp(quote.isLimitless() ? 0.0 : Quote.limitPrice(shownPrevClose, limitPct, true));
+        row.setLimitDown(quote.isLimitless() ? 0.0 : Quote.limitPrice(shownPrevClose, limitPct, false));
         row.setLimitUpStreak(quote.getLimitUpStreak());
                 row.setHalted(quote.isHalted());
                 row.setSt(quote.isSt());
                 row.setSealed(quote.getSealed().name());
+                row.setEtf(StockDefs.isEtf(quote.getStockId()));
                 rows.add(row);
             }
             return rows;

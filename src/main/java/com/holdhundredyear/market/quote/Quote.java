@@ -58,6 +58,14 @@ public class Quote {
      */
     private double limitPct = 0.10;
 
+    /**
+     * 无涨跌停标的（ETF，2026-10-25）：不封板、不拦成交、涨跌停价不下发。
+     *
+     * <p>ETF 的价格是"昨收 × 跟踪标的涨幅"算出来的，指数在快速模式下单日能走 ±20%，
+     * 再给它套一层涨跌停只会让 ETF 跟不住标的、还会在 +10% 处误判成"封死买不进"。
+     */
+    private boolean limitless;
+
     /** 涨停价：按本局幅度（ST 减半）上浮 prevClose，HALF_UP 保留 2 位。 */
     public double limitUpPrice() {
         return limitPrice(prevClose, effectiveLimitPct(), true);
@@ -105,12 +113,12 @@ public class Quote {
 
     /** 未钉死在涨停价（可买；封板交易判定 Phase 6 用）。 */
     public boolean canBuy() {
-        return current < limitUpPrice();
+        return limitless || current < limitUpPrice();
     }
 
     /** 未钉死在跌停价（可卖；封板交易判定 Phase 6 用）。 */
     public boolean canSell() {
-        return current > limitDownPrice();
+        return limitless || current > limitDownPrice();
     }
 
     /**
@@ -140,8 +148,13 @@ public class Quote {
         intraday = rebased;
     }
 
-    /** HALF_UP 保留 2 位：涨跌停价与展示共用，语义明确化用 BigDecimal。 */
+    /** HALF_UP 保留 2 位：股票价格与涨跌停价共用，语义明确化用 BigDecimal。 */
     public static double round2(double v) {
         return BigDecimal.valueOf(v).setScale(2, RoundingMode.HALF_UP).doubleValue();
+    }
+
+    /** HALF_UP 保留 3 位：ETF 报价精度（1.00 的价位上 0.001 才跟得住指数）。 */
+    public static double round3(double v) {
+        return BigDecimal.valueOf(v).setScale(3, RoundingMode.HALF_UP).doubleValue();
     }
 }

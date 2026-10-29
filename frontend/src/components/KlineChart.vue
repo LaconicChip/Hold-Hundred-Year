@@ -59,7 +59,9 @@ const props = defineProps({
   // 股吧帖子（按 seq 稳定）：本票专属 + 大盘闲聊，由个股页传入
   danmu: { type: Array, default: () => [] },
   // 本票成交标记：[{ gameDay, side:'BUY'|'SELL', price }]
-  trades: { type: Array, default: () => [] }
+  trades: { type: Array, default: () => [] },
+  // 价格展示位数（ETF 3 位、股票 2 位）
+  digits: { type: Number, default: 2 }
 })
 
 // ---- 股吧弹幕：飘屏逻辑已抽到 DanmuLayer.vue（2026-10-20），分时图与日K图共用 ----
@@ -233,7 +235,7 @@ const option = computed(() => {
         fontSize: 11,
         fontWeight: 700,
         color: lastBar.close >= lastBar.open ? cUp : cDown,
-        formatter: lastBar.close.toFixed(2)
+        formatter: lastBar.close.toFixed(props.digits)
       }
     })
   }
@@ -283,7 +285,7 @@ const option = computed(() => {
     const cls = pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat'
     const rows = [
       `<b>${params[0].axisValue}</b>`,
-      `开 <span class="num">${b.open.toFixed(2)}</span>　收 <span class="num">${b.close.toFixed(2)}</span>`,
+      `开 <span class="num">${b.open.toFixed(props.digits)}</span>　收 <span class="num">${b.close.toFixed(props.digits)}</span>`,
       `高 <span class="num">${b.high.toFixed(2)}</span>　低 <span class="num">${b.low.toFixed(2)}</span>`,
       `涨跌幅 <span class="num ${cls}">${pct > 0 ? '+' : ''}${pct.toFixed(2)}%</span>`
     ]

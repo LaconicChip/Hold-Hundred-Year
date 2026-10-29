@@ -112,14 +112,15 @@ class WorldTickServiceTest {
         assertEquals(halted.getPrevClose(), halted.getCurrent(), 1e-9, "halted price must stay frozen");
         assertEquals(0, halted.getTickCount());
         assertTrue(halted.getIntraday().isEmpty(), "halted stock must not append intraday points");
-        assertEquals(23, board.getQuotes().values().stream().filter(q -> !q.isHalted()).count(),
-                "active stock count must be 23");
+        assertEquals(23, board.getQuotes().values().stream()
+                        .filter(q -> !q.isHalted() && !StockDefs.isEtf(q.getStockId())).count(),
+                "active stock count must be 23 (ETFs are not index constituents)");
 
         // 指数第 1 跳 = 23 只活跃股的等权平均收益（停牌股不进指数；同序浮点累计应精确一致）
         double weighted = 0.0;
         double weightSum = 0.0;
         for (Quote q : board.getQuotes().values()) {
-            if (q.isHalted()) {
+            if (q.isHalted() || StockDefs.isEtf(q.getStockId())) {
                 continue;
             }
             double r = (q.getIntraday().getFirst() - q.getPrevClose()) / q.getPrevClose();
@@ -202,6 +203,9 @@ class WorldTickServiceTest {
 
         assertTrue(board.isCircuitBreakerDay(), "era5 opens year 2 and is always a circuit breaker day");
         for (Quote q : board.getQuotes().values()) {
+            if (StockDefs.isEtf(q.getStockId())) {
+                continue; // ETF 不直接吃熔断跳空，它跟指数
+            }
             double chg = q.getCurrent() / q.getPrevClose() - 1;
             assertTrue(chg <= -0.06 + 1e-9 && chg >= -0.08 - 1e-9,
                     "circuit open gap must be -6%~-8%, stock " + q.getStockId() + " chg=" + chg);
@@ -297,6 +301,77 @@ class WorldTickServiceTest {
             assertEquals(0, BigDecimal.valueOf(q.getLow()).compareTo(row.getLowPrice()),
                     "stock " + q.getStockId() + " low_price");
         }
+    }
+
+    /**
+     * ETF 定价（2026-10-25）：大盘 ETF 的当日涨跌幅必须与百年指数一致（±0.15% 跟踪误差
+     * 与两位小数取整之和），且永远不进封板状态机；ETF 也不该污染指数——指数仍只由 24 只股票决定。
+     */
+    @Test
+    void etfTracksIndexAndStaysOutOfIt() {
+        long userId = worldSeeder.seedUser("tick_etf1", "$2a$10$bcrypthash");
+        setWorldSeed(userId, 20261025L);
+        marketStateService.startDay(userId);
+        QuoteBoard board = quoteBoardRegistry.getOrLoad(userId);
+
+        for (int i = 0; i < 12; i++) {
+            worldTickService.tickOne(userId);
+        }
+
+        Quote etf = board.quote(StockDefs.ETF_MARKET);
+        double indexRatio = board.getIndexValue() / board.getPrevIndex();
+        double expected = etf.getPrevClose() * indexRatio;
+        // 只允许 0.001 的报价取整误差：ETF 的职责是照实折出指数，不是"差不多"
+        assertEquals(expected, etf.getCurrent(), 0.0006,
+                "大盘 ETF 必须精确跟着百年指数走（0.001 报价精度）");
+        assertEquals(Math.round(etf.getCurrent() * 1000) / 1000.0, etf.getCurrent(), 1e-9,
+                "ETF 报价必须落在 0.001 的价位上");
+        assertEquals(SealState.NONE, etf.getSealed(), "ETF 不进封板状态机");
+        assertEquals(0, etf.getLimitUpStreak(), "ETF 不累计连板");
+
+        // 指数只由 24 只股票决定：手工按股票权重重算，必须与 board 的指数逐位相等
+        double weighted = 0.0;
+        double weightSum = 0.0;
+        for (Quote q : board.getQuotes().values()) {
+            if (q.isHalted() || StockDefs.isEtf(q.getStockId())) {
+                continue;
+            }
+            double r = (q.getCurrent() - q.getPrevClose()) / q.getPrevClose();
+            weighted += StockDefs.byId(q.getStockId()).weight() * r;
+            weightSum += StockDefs.byId(q.getStockId()).weight();
+        }
+        // 逐跳复利累计与"按当日累计涨幅一次算"有极小的复合差，容差放到 0.5 点（≈0.05%）
+        assertEquals(board.getPrevIndex() * (1.0 + weighted / weightSum), board.getIndexValue(), 0.5,
+                "ETF 不得进入指数成分");
+    }
+
+    /**
+     * 老存档升级（2026-10-25）：ETF 上线前建的存档没有 25~27 行，行情板加载时必须幂等补齐，
+     * 否则交易/详情页会抛"未知 stockId"。补出来的价格按当时指数折算，不能凭空跳一个涨幅。
+     */
+    @Test
+    void oldSaveWithoutEtfRowsIsBackfilledOnBoardLoad() {
+        long userId = worldSeeder.seedUser("tick_etf2", "$2a$10$bcrypthash");
+        marketStateService.startDay(userId);
+        userStockStateMapper.delete(new LambdaQueryWrapper<UserStockState>()
+                .eq(UserStockState::getUserId, userId)
+                .gt(UserStockState::getStockId, 24L));
+        quoteBoardRegistry.evict(userId);
+
+        QuoteBoard reloaded = quoteBoardRegistry.getOrLoad(userId);
+
+        assertEquals(StockDefs.ALL_INSTRUMENTS.size(), reloaded.getQuotes().size(),
+                "加载行情板时必须补齐 3 只 ETF");
+        for (StockDefs.StockDef d : StockDefs.ETFS) {
+            Quote q = reloaded.quote(d.id());
+            assertTrue(q.getPrevClose() > 0, d.name() + " 补行必须有价格");
+            assertEquals(q.getPrevClose(), q.getCurrent(), 1e-9, d.name() + " 补行不得凭空产生涨幅");
+        }
+        // 老存档补出来的 ETF 等于"今天上市"：发行价 1.00，不追认历史涨跌
+        assertEquals(1.00, reloaded.quote(StockDefs.ETF_MARKET).getPrevClose(), 1e-9,
+                "补出来的 ETF 必须按发行价 1.00 上市");
+        assertEquals(1.00, reloaded.quote(StockDefs.ETF_TECH).getPrevClose(), 1e-9,
+                "三只 ETF 发行价统一 1.00");
     }
 
     /** 每跳价格不变式：非停牌股 current 处于跌停价~涨停价区间（容差 1e-9）且 high>=current>=low。 */

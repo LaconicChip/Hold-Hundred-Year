@@ -35,7 +35,9 @@ class DanmuTextsTest {
             DanmuTexts.RALLY_MINOR,
             DanmuTexts.DIVE_MINOR,
             DanmuTexts.FLAT,
-            DanmuTexts.CHATTER);
+            DanmuTexts.CHATTER,
+            DanmuTexts.EVENT_GOOD,
+            DanmuTexts.EVENT_BAD);
 
     @Test
     void totalCountIsAtLeastOneHundredFifty() {

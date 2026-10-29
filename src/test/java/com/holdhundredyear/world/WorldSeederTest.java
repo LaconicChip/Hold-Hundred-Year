@@ -112,20 +112,20 @@ class WorldSeederTest {
     }
 
     @Test
-    void seedUserCreatesTwentyFourStockStatesAtBasePrice() {
+    void seedUserCreatesStockAndEtfStatesAtBasePrice() {
         long userId = worldSeeder.seedUser("seeder_stocks", "$2a$10$bcrypthash");
 
         List<UserStockState> states = userStockStateMapper.selectList(
                 new LambdaQueryWrapper<UserStockState>().eq(UserStockState::getUserId, userId)
                         .orderByAsc(UserStockState::getStockId));
-        assertEquals(24, states.size(), "24 user_stock_state rows");
+        assertEquals(27, states.size(), "24 只股票 + 3 只 ETF 共 27 行 user_stock_state");
 
-        Set<Long> expectedIds = StockDefs.ALL.stream().map(StockDefs.StockDef::id).collect(Collectors.toSet());
+        Set<Long> expectedIds = StockDefs.ALL_INSTRUMENTS.stream().map(StockDefs.StockDef::id).collect(Collectors.toSet());
         Set<Long> actualIds = states.stream().map(UserStockState::getStockId).collect(Collectors.toSet());
         assertEquals(expectedIds, actualIds, "stock ids must match StockDefs");
 
         for (UserStockState state : states) {
-            StockDefs.StockDef def = StockDefs.ALL.stream()
+            StockDefs.StockDef def = StockDefs.ALL_INSTRUMENTS.stream()
                     .filter(s -> s.id() == state.getStockId()).findFirst().orElseThrow();
             BigDecimal base = BigDecimal.valueOf(def.basePrice());
             assertEquals(0, base.compareTo(state.getPrevClose()), def.name() + " prevClose");
@@ -172,9 +172,10 @@ class WorldSeederTest {
             assertTrue(Math.abs(bar.getChangePct()) <= GameMode.STANDARD.getLimitPct() + 1e-9,
                     "a pre-history day must not move further than the daily limit, got " + bar.getChangePct());
         }
-        assertEquals(24L * PreHistoryDefs.BARS, stockDailyBarMapper.selectCount(
+        assertEquals((long) StockDefs.ALL_INSTRUMENTS.size() * PreHistoryDefs.BARS,
+                stockDailyBarMapper.selectCount(
                         new LambdaQueryWrapper<StockDailyBar>().eq(StockDailyBar::getUserId, userId)),
-                "every one of the 24 stocks gets a pre-history");
+                "每只股票与 ETF 都要有前史日K");
     }
 
     /** 前史由 worldSeed 决定：同 seed 同形状，不同 seed 换形状（可复现协议 P6）。 */
@@ -197,15 +198,15 @@ class WorldSeederTest {
     }
 
     @Test
-    void seedUserSeedsStockInfoWithCanonicalIdsOneToTwentyFour() {
+    void seedUserSeedsStockInfoWithCanonicalIds() {
         worldSeeder.seedUser("seeder_info", "$2a$10$bcrypthash");
 
         List<StockInfo> infos = stockInfoMapper.selectList(null);
-        assertEquals(24, infos.size(), "24 stock_info rows");
+        assertEquals(StockDefs.ALL_INSTRUMENTS.size(), infos.size(), "stock_info rows must cover stocks + ETFs");
 
         Set<Long> actualIds = infos.stream().map(StockInfo::getId).collect(Collectors.toSet());
-        assertEquals(24, actualIds.size(), "stock_info ids must be distinct");
-        for (long expected = 1; expected <= 24; expected++) {
+        assertEquals(StockDefs.ALL_INSTRUMENTS.size(), actualIds.size(), "stock_info ids must be distinct");
+        for (long expected = 1; expected <= StockDefs.ALL_INSTRUMENTS.size(); expected++) {
             assertTrue(actualIds.contains(expected), "stock_info must contain id " + expected);
         }
 

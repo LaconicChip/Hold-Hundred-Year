@@ -1,5 +1,6 @@
 package com.holdhundredyear.market;
 
+import com.holdhundredyear.game.constants.StockDefs;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.holdhundredyear.common.BizException;
 import com.holdhundredyear.common.ErrorCode;
@@ -155,7 +156,11 @@ class MarketQueryServiceTest {
 
         List<StockQuoteDTO> rows = marketQueryService.stocksWithQuotes(userId);
 
-        assertEquals(24, rows.size(), "all 24 stocks must be listed");
+        assertEquals(StockDefs.ALL_INSTRUMENTS.size(), rows.size(), "24 只股票 + 3 只 ETF 都要在列表里");
+        StockQuoteDTO etfRow = rows.stream().filter(StockQuoteDTO::isEtf).findFirst().orElseThrow();
+        assertEquals(0.0, etfRow.getLimitUp(), 1e-9,
+                "ETF 不下发涨停价（前端据此隐藏涨跌停、不拦单）");
+        assertEquals(0.0, etfRow.getLimitDown(), 1e-9, "ETF 不下发跌停价");
         StockQuoteDTO first = rows.get(0);
         assertEquals(1L, first.getStockId());
         assertEquals("600001", first.getCode());

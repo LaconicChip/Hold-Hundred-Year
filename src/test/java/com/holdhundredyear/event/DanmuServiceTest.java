@@ -257,6 +257,25 @@ class DanmuServiceTest {
         }
     }
 
+    /**
+     * 事件跟读（2026-10-25）：消息落地后股吧要有人接这条消息的话，而且引用的是同一条标题；
+     * 跟读走独立随机流，靠"换跳号多试几次"兜住 75% 概率，不赌单个种子恰好命中。
+     */
+    @Test
+    void eventReactionQuotesTheHeadlineIntoTheStockForum() {
+        List<DanmuService.DanmuPost> posts = List.of();
+        for (int tick = 0; tick < 40 && posts.isEmpty(); tick++) {
+            danmuService.pushEventReaction(424242L, 3L, "寒武急被立案调查", false,
+                    tick, 20261025L, 2);
+            posts = danmuService.recentFor(424242L, 3L, 20).stream()
+                    .filter(p -> "事件".equals(p.category()) && p.text().contains("寒武急被立案调查"))
+                    .toList();
+        }
+        assertFalse(posts.isEmpty(), "事件跟读必须落到该票的股吧历史里");
+        assertTrue(posts.get(0).text().contains("「"), "跟读文案要把事件标题引用出来");
+        assertEquals(3L, posts.get(0).stockId(), "跟读必须挂在这只票上");
+    }
+
     @Test
     void danmuServiceIsInjectableAndSoftDependencyIsCompatible() {
         // 无论 PushService bean 是否存在，DanmuService 均可注入且 maybePush 静默兼容

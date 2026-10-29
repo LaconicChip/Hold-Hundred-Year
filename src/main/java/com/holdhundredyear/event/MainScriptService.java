@@ -127,7 +127,7 @@ public class MainScriptService {
             return false;
         }
         List<Long> candidates = board.getQuotes().values().stream()
-                .filter(q -> !q.isHalted())
+                .filter(q -> !q.isHalted() && !StockDefs.isEtf(q.getStockId()))
                 .map(Quote::getStockId)
                 .toList();
         if (candidates.isEmpty()) {

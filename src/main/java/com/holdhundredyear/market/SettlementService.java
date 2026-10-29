@@ -192,9 +192,11 @@ public class SettlementService {
         for (UserStockState state : states) {
             Quote quote = board.quote(state.getStockId());
             boolean wasHalted = quote.isHalted();
+            // ETF 不参与连板/停牌核查：它跟指数走，连续两天贴板也不该被关进小黑屋
+            boolean etf = StockDefs.isEtf(state.getStockId());
             // 收涨停判定必须先于 setPrevClose：limitUpPrice 基于昨日 prevClose；
             // 收盘价被盘中钳制不超涨停，!canBuy() 即收于涨停
-            boolean closedAtLimitUp = !wasHalted && !quote.canBuy();
+            boolean closedAtLimitUp = !wasHalted && !etf && !quote.canBuy();
             double close = state.getCurrentPrice().doubleValue();
             // 当日涨跌幅必须在 setPrevClose 双写之前计算：双写后 current==prevClose 恒为 0
             double prevCloseBefore = state.getPrevClose().doubleValue();
@@ -205,7 +207,7 @@ public class SettlementService {
             insertDailyBar(userId, day, state, close, dayChangePct);
             state.setPrevClose(state.getCurrentPrice());
             quote.setPrevClose(close);
-            if (!wasHalted) {
+            if (!wasHalted && !etf) {
                 int streak = closedAtLimitUp ? quote.getLimitUpStreak() + 1 : 0;
                 state.setLimitUpStreak(streak);
                 quote.setLimitUpStreak(streak);

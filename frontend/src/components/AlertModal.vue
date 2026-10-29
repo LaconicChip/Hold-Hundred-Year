@@ -19,7 +19,9 @@
           知道了，继续<span v-if="queued" class="alert-queue num">（还有 {{ queued }} 条）</span>
         </button>
       </div>
-      <span class="alert-foot muted-2">行情已替你暂停，看完才走</span>
+      <span class="alert-foot muted-2">
+        {{ market.paused ? '行情已暂停，看完才走' : '正在暂停行情…' }}
+      </span>
     </div>
   </div>
 </template>
@@ -28,10 +30,11 @@
 import { computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMessagesStore } from '@/stores/messages'
+import { useMarketStore } from '@/stores/market'
 import SvgIcon from './SvgIcon.vue'
-import { pauseMarket, resumeMarket } from '@/api/market'
 
 const messages = useMessagesStore()
+const market = useMarketStore()
 const router = useRouter()
 
 const current = computed(() => messages.modals[0] || null)
@@ -39,17 +42,19 @@ const queued = computed(() => Math.max(messages.modals.length - 1, 0))
 
 // 弹窗出现即请求冻结这一份世界，队列清空即恢复。pausedHere 只是本地记账，
 // 保证连续两条要紧事也只暂停一次、恢复一次。
+// 2026-10-25：服务端在 ALERT 落库时已经自己暂停（这才是"一定停得住"的那道保险），
+// 这里的调用变成幂等补刀；文案与倒计时只认 market.paused（服务端真值）。
 let pausedHere = false
 watch(
   () => messages.modals.length,
   async (n) => {
     if (n > 0 && !pausedHere) {
       pausedHere = true
-      await pauseMarket().catch(() => {})
+      await market.pauseWorld()
     }
     if (n === 0 && pausedHere) {
       pausedHere = false
-      await resumeMarket().catch(() => {})
+      await market.resumeWorld()
     }
   },
   { immediate: true }

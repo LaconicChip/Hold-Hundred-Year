@@ -64,6 +64,8 @@ const props = defineProps({
   closed: { type: Boolean, default: false },
   // 股吧帖子流（分时图里飘的弹幕）：本票专属 + 不点名的大盘闲聊
   danmu: { type: Array, default: () => [] },
+  // 价格展示位数（ETF 3 位、股票 2 位）
+  digits: { type: Number, default: 2 },
   // 本局每跳秒数（空态提示语用，来自后端模式档案）
   tickSeconds: { type: Number, default: 1 },
   // 今日成交标记：[{ tickIndex, side:'BUY'|'SELL', price }]
@@ -161,7 +163,7 @@ const option = computed(() => {
         fontSize: 11,
         fontWeight: 700,
         color: lastPct >= 0 ? cUp : cDown,
-        formatter: last.price.toFixed(2)
+        formatter: last.price.toFixed(props.digits)
       }
     })
   }
@@ -199,7 +201,7 @@ const option = computed(() => {
       const pct = ((value - base) / base) * 100
       const cls = pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat'
       rows.push(
-        `${item.marker}${item.seriesName} <span class="num ${cls}">${value.toFixed(2)}（${pct > 0 ? '+' : ''}${pct.toFixed(2)}%）</span>`
+        `${item.marker}${item.seriesName} <span class="num ${cls}">${value.toFixed(props.digits)}（${pct > 0 ? '+' : ''}${pct.toFixed(2)}%）</span>`
       )
     }
     return rows.join('<br/>')
@@ -240,7 +242,7 @@ const option = computed(() => {
         axisLabel: {
           color: cInk2,
           fontSize: 11,
-          formatter: (v) => v.toFixed(2)
+          formatter: (v) => Number(v).toFixed(props.digits)
         },
         splitLine: { lineStyle: { color: cDash, type: 'dashed' } }
       },
@@ -279,15 +281,15 @@ const option = computed(() => {
           label: { show: true, fontSize: 10, color: cInk2, position: 'insideStartTop' },
           lineStyle: { type: 'dashed', width: 1.2 },
           data: [
-            { yAxis: base, lineStyle: { color: cInk3 }, label: { formatter: '昨收 ' + base.toFixed(2) } },
+            { yAxis: base, lineStyle: { color: cInk3 }, label: { formatter: '昨收 ' + base.toFixed(props.digits) } },
             // 午休断轴分隔线（11:30 与 13:00 之间留白）
             { xAxis: times[44], lineStyle: { color: cDash }, label: { show: false } },
             // 涨跌停线只在进入当前视野时画；平时把纵轴还给真实振幅
             ...(props.limitUp > 0 && props.limitUp <= yMax
-              ? [{ yAxis: props.limitUp, lineStyle: { color: cUp }, label: { formatter: '涨停 ' + props.limitUp.toFixed(2), color: cUp } }]
+              ? [{ yAxis: props.limitUp, lineStyle: { color: cUp }, label: { formatter: '涨停 ' + props.limitUp.toFixed(props.digits), color: cUp } }]
               : []),
             ...(props.limitDown > 0 && props.limitDown >= yMin
-              ? [{ yAxis: props.limitDown, lineStyle: { color: cDown }, label: { formatter: '跌停 ' + props.limitDown.toFixed(2), color: cDown } }]
+              ? [{ yAxis: props.limitDown, lineStyle: { color: cDown }, label: { formatter: '跌停 ' + props.limitDown.toFixed(props.digits), color: cDown } }]
               : [])
           ]
         }
